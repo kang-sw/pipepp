@@ -19,10 +19,7 @@ public:
 /**
  * 파이프 에러 형식
  */
-enum class pipe_error { ok,
-                        warning,
-                        error,
-                        fatal };
+enum class pipe_error { ok, warning, error, fatal };
 
 /**
  * 파이프 예외 형식

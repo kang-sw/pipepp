@@ -17,16 +17,17 @@ public:
     explicit pipe_exception(const char *msg) : exception(msg) {}
 };
 
+// clang-format off
 /**
  * 파이프 상속 객체 콘셉트
  */
 template <typename Pipe_>
 concept Pipe = requires(Pipe_ pipe, typename Pipe_::input_type input, typename Pipe_::output_type output) {
-    {
-        pipe.exec_once(input, output, [](pipe_error, typename Pipe_::output_type const &) {})
-    }
-    ->std::convertible_to<pipe_error>;
+    std::is_base_of_v<class pipe_base, Pipe_>;
+    {pipe.exec_once(input, output, [](pipe_error, typename Pipe_::output_type const &) {})}
+        ->std::convertible_to<pipe_error>;
 };
+// clang-format on
 
 template <Pipe Pipe_>
 class pipe;

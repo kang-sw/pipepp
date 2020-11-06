@@ -2,19 +2,27 @@
 #include <atomic>
 #include <memory>
 #include <type_traits>
+#include <concepts>
 
 namespace pipepp {
 /**
  * 파이프 에러 형식
  */
-enum class pipe_error { ok, warning, error, fatal };
+enum class pipe_error {
+    ok,
+    warning,
+    error,
+    fatal
+};
 
 /**
  * 파이프 예외 형식
  */
 class pipe_exception : public std::exception {
 public:
-    explicit pipe_exception(const char *msg) : exception(msg) {}
+    explicit pipe_exception(const char* msg)
+        : exception(msg)
+    {}
 };
 
 // clang-format off
@@ -84,7 +92,7 @@ private:
     // clang-format off
     template <typename Fn_>
     requires std::is_invocable_v<Fn_, pipe_error, output_type const &>
-    void invoke__(input_type const &in, output_type &out, Fn_ &&handler) {
+    void invoke__(input_type const &in, output_type &out, Fn_ &&handler = [](auto, auto){}) {
         // clang-format on
         if (is_busy()) {
             throw pipe_exception("Pipe should not be re-launched while running");
@@ -94,7 +102,7 @@ private:
         {
             reset_execution_states__();
 
-            auto result = static_cast<pipe_type *>(this)->exec_once(in, out);
+            auto result = static_cast<pipe_type*>(this)->exec_once(in, out);
             std::invoke(std::forward<Fn_>(handler), result, out);
 
             swap_execution_states__();
@@ -103,7 +111,8 @@ private:
     }
 
 public:
-    virtual ~pipe() noexcept {
+    virtual ~pipe() noexcept
+    {
         if (is_busy()) {
             throw pipe_exception("Pipe must not be disposed while running");
         }

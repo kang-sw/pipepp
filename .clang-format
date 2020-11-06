@@ -29,7 +29,7 @@ BraceWrapping:
   AfterClass:      false
   AfterControlStatement: false
   AfterEnum:       false
-  AfterFunction:   false
+  AfterFunction:   true
   AfterNamespace:  false
   AfterObjCDeclaration: false
   AfterStruct:     false
@@ -46,16 +46,16 @@ BreakBeforeBraces: Custom
 BreakBeforeInheritanceComma: false
 BreakInheritanceList: BeforeColon
 BreakBeforeTernaryOperators: true
-BreakConstructorInitializersBeforeComma: false
+BreakConstructorInitializersBeforeComma: true
 BreakConstructorInitializers: BeforeColon
 BreakAfterJavaFieldAnnotations: false
 BreakStringLiterals: true
-ColumnLimit:     10000
+ColumnLimit:     0
 CommentPragmas:  '^ IWYU pragma:'
 CompactNamespaces: false
 ConstructorInitializerAllOnOneLineOrOnePerLine: false
 ConstructorInitializerIndentWidth: 4
-ContinuationIndentWidth: 4
+ContinuationIndentWidth: 2
 Cpp11BracedListStyle: true
 DeriveLineEnding: true
 DerivePointerAlignment: false

@@ -1,4 +1,6 @@
 #pragma once
+#include <any>
+#include <condition_variable>
 #include <functional>
 #include <map>
 #include <memory>
@@ -6,6 +8,7 @@
 #include <pipepp/pipe.hpp>
 #include <string>
 #include <string_view>
+#include <thread>
 #include <vector>
 
 namespace pipepp {
@@ -14,12 +17,22 @@ inline size_t hash_string(std::string_view str) { return std::hash<std::string_v
 
 class stage_base {
 public:
-    std::string stage_name_;
-    size_t fence_id_;
+    size_t current_fence_id_ = -1;
+    std::any shared_data_ptr_;
 
     virtual pipe_base const *pipe() const = 0;
     virtual pipe_base *pipe() = 0;
     virtual void dispose() = 0;
+
+    // 외부 스레드에서 실행되는 스테이지의 루프
+    // 입출력 관리 수행
+    virtual void exec_loop__() = 0;
+
+private:
+    std::pair<std::condition_variable, std::mutex> event_wait_;
+    std::thread stage_thread_;
+    std::string stage_name_;
+    std::atomic_bool pending_expire_ = false;
 
 public:
     virtual ~stage_base() noexcept {}
@@ -32,7 +45,23 @@ class stage : public impl__::stage_base {
     using input_type = typename Pipe_::input_type;
     using output_type = typename Pipe_::output_type;
     using shared_data_type = SharedData_;
+    using shared_data_pointer = std::weak_ptr<shared_data_type>;
     using handler_type = std::function<void(pipe_error &, shared_data_type &, output_type const &)>;
+
+public:
+    void exec_loop__() final {
+        if (pipe_.has_value() == false) {
+            throw pipe_exception("Given pipe stage is not instanced");
+        }
+
+        for (;;) {
+            if (!shared_data_ptr_.has_value()) {
+                continue;
+            }
+
+            auto ptr = std::any_cast<shared_data_pointer &>(shared_data_ptr_).lock();
+        }
+    }
 
 public:
     impl__::pipe_base const *pipe() const override { return pipe_.has_value() ? &pipe_.value() : nullptr; }
@@ -42,6 +71,9 @@ public:
 private:
     std::optional<pipe_type> pipe_;
     std::map<std::size_t, handler_type> handlers_;
+    input_type reserved_input_data_;
+    output_type reserved_output_data_;
+    std::mutex input_data_lock_;
 };
 
 template <typename SharedData_, Pipe InitialPipe_>

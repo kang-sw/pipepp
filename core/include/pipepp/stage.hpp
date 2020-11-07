@@ -1,5 +1,6 @@
 #pragma once
 #include <any>
+#include <chrono>
 #include <condition_variable>
 #include <functional>
 #include <map>
@@ -116,18 +117,46 @@ public:
     void dispose();
     id_type id() const { return id_; }
     std::string_view name() const { return name_; }
+    bool can_receive_input() const { return can_receive_input_; }
+    fence_index_type fence_index() const { return fence_index_; }
+    std::weak_ptr<shared_data_type> fence_shared_data() const { return fetched_shared_data_; }
 
 private:
     void loop__()
     {
+        using namespace std::chrono_literals;
+
         for (is_running_ = true; pending_dispose_ == false;) {
-            // fetch next pipe data
+            // TODO: fetch next pipe data
             // pipeline class provides next valid fence index and pipe data based on current fence index.
 
             // wait until all inputs are gathered
             // if current fence is invalidated, do 'continue'
+            bool is_fence_valid = true;
+            bool is_ready = false;
+            can_receive_input_ = true;
+            for (; pending_dispose_ == false && !is_ready;) {
+                auto lock = std::unique_lock<std::mutex>{event_wait_.second};
+                event_wait_.first.wait_for(lock, 100ms);
+
+                // TODO: check if fence is still valid
+
+                // check if all inputs were gathered
+                is_ready = true;
+                for (auto& input_stage : input_stages_) {
+                    if (input_stage.input_submit_fence != fence_index_) {
+                        is_ready = false;
+                        break;
+                    }
+                }
+            }
+
+            if (!is_fence_valid) { continue; }
+            if (pending_dispose_) { break; }
 
             // run pipe + handler
+            // before then, input must be disabled.
+            can_receive_input_ = false;
             exec_pipe__();
         }
 
@@ -136,7 +165,11 @@ private:
     }
 
 protected:
-    void notify_submit_input__(size_t stage_id_) {}
+    void notify_submit_input__(id_type stage_id_)
+    {
+        
+    }
+
     static decltype(auto) stage_hash_predicate(id_type id)
     {
         return [id](auto elem) { elem.cached_id == id; };
@@ -283,6 +316,7 @@ private:
 
     pipeline_type* owning_pipeline_;
 
+    std::atomic_bool can_receive_input_ = false;
     std::atomic_bool is_running_ = false;
     std::atomic_bool is_disposed_ = false;
     std::atomic_bool pending_dispose_ = false;
@@ -293,7 +327,7 @@ private:
     struct input_link_desc {
         id_type cached_id;
         std::weak_ptr<stage_type> stage;
-        fence_index_type input_submit_fence;
+        std::atomic<fence_index_type> input_submit_fence;
     };
     struct output_link_desc {
         id_type cached_id;
@@ -304,7 +338,7 @@ private:
     std::vector<output_link_desc> output_stages_;
 
     std::weak_ptr<shared_data_type> fetched_shared_data_;
-    fence_index_type fence_index = 0;
+    fence_index_type fence_index_ = 0;
 };
 
 template <Pipe Pipe_, typename SharedData_>
@@ -315,18 +349,59 @@ public:
     {
     }
 
-    explicit stage(const impl__::stage_base<SharedData_>& other)
-        : impl__::stage_base<SharedData_>(other)
-    {
-    }
+    stage(const stage& other) = delete;
+    stage(stage&& other) noexcept = default;
+    stage& operator=(const stage& other) = delete;
+    stage& operator=(stage&& other) noexcept = default;
 
 public:
     using pipe_type = Pipe_;
     using input_type = typename pipe_type::input_type;
-    using ouput_type = typename pipe_type::output_type;
+    using output_type = typename pipe_type::output_type;
+    using shared_data_type = SharedData_;
+    using pipe_output_handler_type = std::function<bool(pipe_error, output_type const&)>;
+
+    template <Pipe Other_>
+    using stage_type = stage<Other_, shared_data_type>;
+
+public:
+    template <Pipe Other_, typename Fn_>
+    void connect_output_to(std::shared_ptr<stage_type<Other_>> other, Fn_&& handler)
+    {
+        using other_input_type = typename Other_::input_type;
+        static_assert(std::is_invocable_v<Fn_, pipe_error, shared_data_type&, output_type const&, other_input_type&>);
+
+        this->process_output_link__(other);
+
+        // 링크 핸들러
+        output_handlers_.emplace_back(
+          [this, other, handler](pipe_error e, output_type const& o) -> bool {
+              if (!other->can_receive_input()) { return false; }
+
+              auto [input_ptr, lock] = other->input_front__();
+              auto fence_data = other->fence_shared_data().lock();
+
+              bool const is_fence_invalidated = fence_data == nullptr;
+              if (is_fence_invalidated) { return false; }
+
+              handler(e, *fence_data, o, *input_ptr);
+              other->notify_submit_input__(this->id());
+              return true;
+          });
+    }
 
 private:
     void exec_pipe__() override;
+    std::pair<input_type*, std::lock_guard<std::mutex>> input_front__() { return std::make_pair(&inputs[front_input_], std::lock_guard<std::mutex>(front_input_lock_)); }
+    void swap_input__() { front_input_ = !front_input_; }
+
+private:
+    std::optional<pipe_type> pipe_instance_;
+    std::vector<pipe_output_handler_type> output_handlers_;
+
+    input_type inputs[2];
+    bool front_input_ = false;
+    std::mutex front_input_lock_;
 };
 
 } // namespace impl__

@@ -98,36 +98,60 @@ public:
     using fence_index_type = size_t;
 
 public:
-    explicit stage_base(std::string name, stage_execution_policy execution_policy, stage_input_policy input_policy)
+    explicit stage_base(pipeline_type* owner, std::string name, stage_execution_policy execution_policy, stage_input_policy input_policy)
         : id_(stage_id_generator{}())
         , name_(std::move(name))
         , execution_policy_(execution_policy)
         , input_policy_(input_policy)
-        , owning_pipeline_(nullptr)
+        , owning_pipeline_(owner)
     {
-        // TODO: Launch thread, etc ...
+        using namespace std::chrono_literals;
+        default_event_wait_duration = 100ms;
     }
     virtual ~stage_base() = default;
 
     stage_base(const stage_base& other) = delete;
-    stage_base(stage_base&& other) noexcept = default;
+    stage_base(stage_base&& other) = delete;
     stage_base& operator=(const stage_base& other) = delete;
-    stage_base& operator=(stage_base&& other) noexcept = default;
+    stage_base& operator=(stage_base&& other) = delete;
 
-public: // getter/setters
+public: // getters
     id_type id() const { return id_; }
     std::string_view name() const { return name_; }
     bool can_receive_input() const { return can_receive_input_; }
     fence_index_type fence_index() const { return fence_index_; }
     std::weak_ptr<shared_data_type> fence_shared_data() const { return fetched_shared_data_; }
+    bool is_pipe_running() const { return is_pipe_running_; }
+    bool pending_dispose() const
+    {
+        auto ptr = pending_dispose_.lock();
+        return !ptr || *ptr;
+    }
 
 public:
     virtual void dispose()
     {
+        if (!worker_.joinable()) {
+            throw pipe_exception("Worker is not in joinable state!");
+        }
+
         // TODO: Dispose thread, etc ...
+        pending_dispose_.lock()->store(true);
+
+        output_event_wait_.first.notify_all();
+        input_event_wait_.first.notify_all();
+
+        worker_.join();
     }
 
 private:
+    void launch__(std::shared_ptr<bool> dispose_ptr)
+    {
+        // TODO: Launch thread, etc ...
+        pending_dispose_ = dispose_ptr;
+        worker_ = std::thread(&loop__, this);
+    }
+
     bool is_input_ready() const
     {
         auto it = std::find_if(
@@ -140,9 +164,7 @@ private:
 
     void loop__()
     {
-        using namespace std::chrono_literals;
-
-        for (is_running_ = true; pending_dispose_ == false;) {
+        for (is_running_ = true; pending_dispose() == false;) {
             // TODO: fetch next pipe data
             // pipeline class provides next valid fence index and pipe data based on current fence index.
 
@@ -150,11 +172,11 @@ private:
             can_receive_input_ = true;
             output_event_wait_.first.notify_all();
 
-            for (; pending_dispose_ == false && !is_input_ready();) {
+            for (; pending_dispose() == false && !is_input_ready();) {
                 // wait until all the inputs are gathered
                 {
                     auto lock = std::unique_lock<std::mutex>{input_event_wait_.second};
-                    input_event_wait_.first.wait_for(lock, 100ms);
+                    input_event_wait_.first.wait_for(lock, default_event_wait_duration);
                 }
 
                 // if current fence is invalidated, do 'continue'
@@ -165,13 +187,16 @@ private:
                 }
             }
 
+            if (pending_dispose()) { break; }
             if (!is_fence_valid) { continue; }
-            if (pending_dispose_) { break; }
 
             // run pipe + handler
             // before then, input must be disabled.
             can_receive_input_ = false;
+            is_pipe_running_ = true;
             exec_pipe__();
+            is_pipe_running_ = false;
+            output_event_wait_.first.notify_all();
         }
 
         is_disposed_ = true;
@@ -334,8 +359,17 @@ protected:
             .cached_id = to->id()});
     }
 
+    void wait_output(std::chrono::milliseconds duration)
+    {
+        std::unique_lock<std::mutex> lock{output_event_wait_.second};
+        output_event_wait_.first.wait_for(lock, duration);
+    }
+
 private:
     virtual void exec_pipe__() = 0;
+
+public:
+    std::chrono::milliseconds default_event_wait_duration;
 
 private:
     const size_t id_;
@@ -346,12 +380,13 @@ private:
 
     pipeline_type* owning_pipeline_;
 
+    std::atomic_bool is_pipe_running_ = false;
     std::atomic_bool can_receive_input_ = false;
     std::atomic_bool is_running_ = false;
     std::atomic_bool is_disposed_ = false;
-    std::atomic_bool pending_dispose_ = false;
+    std::weak_ptr<std::atomic_bool> pending_dispose_;
 
-    std::thread owning_thread_;
+    std::thread worker_;
     std::pair<std::condition_variable, std::mutex> input_event_wait_;
     std::pair<std::condition_variable, std::mutex> output_event_wait_;
 
@@ -375,15 +410,17 @@ private:
 template <Pipe Pipe_, typename SharedData_>
 class stage : public impl__::stage_base<SharedData_> {
 public:
-    stage(const std::string& name, stage_execution_policy execution_policy, stage_input_policy input_policy)
+    template <typename... PipeArgs_>
+    stage(const std::string& name, stage_execution_policy execution_policy, stage_input_policy input_policy, PipeArgs_&&... args)
         : impl__::stage_base<SharedData_>(name, execution_policy, input_policy)
     {
+        pipe_instance_.emplace(std::forward<PipeArgs_>(args)...);
     }
 
     stage(const stage& other) = delete;
-    stage(stage&& other) noexcept = default;
+    stage(stage&& other) = delete;
     stage& operator=(const stage& other) = delete;
-    stage& operator=(stage&& other) noexcept = default;
+    stage& operator=(stage&& other) = delete;
 
 public:
     using pipe_type = Pipe_;
@@ -404,20 +441,37 @@ public:
 
         this->process_output_link__(other);
 
-        // 링크 핸들러
+        // 링크 핸들러 목록에 추가
         output_handlers_.emplace_back(
-          [this, other, handler](pipe_error e, output_type const& o) -> bool {
-              if (!other->can_receive_input()) { return false; }
+          [this, other, handler](pipe_error e, output_type const& o) -> void {
+              while (!other->can_receive_input()) {
+                  if (stage_input_policy::only_if_possible == other->input_policy_) {
+                      return;
+                  }
+
+                  other->wait_output(this->default_event_wait_duration);
+
+                  // 대기 중 dispose 이벤트 발생하면 즉시 탈출 ...
+                  if (this->pending_dispose()) {
+                      return;
+                  }
+              }
 
               auto [input_ptr, lock] = other->lock_front_input__();
               auto fence_data = other->fence_shared_data().lock();
 
               bool const is_fence_invalidated = fence_data == nullptr;
-              if (is_fence_invalidated) { return false; }
+              if (is_fence_invalidated) { return; }
 
               handler(e, *fence_data, o, *input_ptr);
               other->notify_submit_input__(this->id());
-              return true;
+
+              if (stage_execution_policy::sync == other->execution_policy_) {
+                  // 동기 실행인 경우 대상 파이프의 실행 종료까지 대기 ...
+                  while (other->is_pipe_running()) {
+                      other->wait_output(this->default_event_wait_duration);
+                  }
+              }
           });
     }
 
@@ -425,18 +479,32 @@ private:
     void exec_pipe__() override
     {
         auto [input_ptr, lock] = lock_front_input__();
+        pipe<pipe_type>* pipe_ptr = &pipe_instance_.value();
 
-        
+        if (pipe_ptr->is_busy()) {
+            throw pipe_exception("Invalid pipe execution call detected ... Pipe is busy!");
+        }
+
+        auto perr = pipe_ptr->invoke__(*input_ptr, output_);
+
+        for (auto& handler : output_handlers_) {
+            handler(perr, output_);
+
+            if (this->pending_dispose()) {
+                break;
+            }
+        }
     }
 
-    std::pair<input_type*, std::lock_guard<std::mutex>> lock_front_input__() { return std::make_pair(&inputs[front_input_], std::lock_guard<std::mutex>(front_input_lock_)); }
+    std::pair<input_type*, std::lock_guard<std::mutex>> lock_front_input__() { return std::make_pair(&inputs_[front_input_], std::lock_guard<std::mutex>(front_input_lock_)); }
     void swap_input__() { front_input_ = !front_input_; }
 
 private:
     std::optional<pipe_type> pipe_instance_;
     std::vector<pipe_output_handler_type> output_handlers_;
 
-    input_type inputs[2];
+    output_type output_;
+    input_type inputs_[2];
     bool front_input_ = false;
     std::mutex front_input_lock_;
 };

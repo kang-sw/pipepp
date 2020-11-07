@@ -64,6 +64,11 @@ public:
 private:
     std::atomic_bool is_busy_ = false;
 };
+
+// forward declaration of stage
+template <Pipe Pipe_, typename SharedData_>
+class stage;
+
 } // namespace impl__
 
 /**
@@ -74,6 +79,9 @@ template <Pipe Pipe_>
 class pipe : public impl__::pipe_base {
     static_assert(std::is_reference_v<Pipe_> == false);
     static_assert(std::is_base_of_v<pipe<Pipe_>, Pipe_> == false);
+
+    template <Pipe, typename>
+    friend class impl__::stage;
 
 public:
     using pipe_type = Pipe_;
@@ -88,25 +96,29 @@ private:
     // virtual pipe_error exec_once(input_type const &in, output_type &out) = 0;
 
 private:
-    friend class pipe_proxy;
     template <typename Fn_>
-    requires std::is_invocable_v<Fn_, pipe_error, output_type const &>
-    void invoke__(input_type const &in, output_type &out, Fn_ &&handler = [](auto, auto){}) {
+    requires std::is_invocable_v<Fn_, pipe_error, output_type const&> pipe_error invoke__(
+      input_type const& in, output_type& out, Fn_&& handler = [](auto, auto) {})
+    {
         // clang-format on
         if (is_busy()) {
             throw pipe_exception("Pipe should not be re-launched while running");
         }
 
+        pipe_error result;
+
         is_busy_ = true;
         {
             reset_execution_states__();
 
-            auto result = static_cast<pipe_type*>(this)->exec_once(in, out);
+            result = static_cast<pipe_type*>(this)->exec_once(in, out);
             std::invoke(std::forward<Fn_>(handler), result, out);
 
             swap_execution_states__();
         }
         is_busy_ = false;
+
+        return result;
     }
 
 public:

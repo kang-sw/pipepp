@@ -105,6 +105,7 @@ public:
         , input_policy_(input_policy)
         , owning_pipeline_(nullptr)
     {
+        // TODO: Launch thread, etc ...
     }
     virtual ~stage_base() = default;
 
@@ -113,15 +114,30 @@ public:
     stage_base& operator=(const stage_base& other) = delete;
     stage_base& operator=(stage_base&& other) noexcept = default;
 
-public:
-    void dispose();
+public: // getter/setters
     id_type id() const { return id_; }
     std::string_view name() const { return name_; }
     bool can_receive_input() const { return can_receive_input_; }
     fence_index_type fence_index() const { return fence_index_; }
     std::weak_ptr<shared_data_type> fence_shared_data() const { return fetched_shared_data_; }
 
+public:
+    virtual void dispose()
+    {
+        // TODO: Dispose thread, etc ...
+    }
+
 private:
+    bool is_input_ready() const
+    {
+        auto it = std::find_if(
+          input_stages_.begin(), input_stages_.end(),
+          [this](input_link_desc const& d) {
+              return d.input_submit_fence != fence_index_;
+          });
+        return it == input_stages_.end();
+    }
+
     void loop__()
     {
         using namespace std::chrono_literals;
@@ -130,24 +146,22 @@ private:
             // TODO: fetch next pipe data
             // pipeline class provides next valid fence index and pipe data based on current fence index.
 
-            // wait until all inputs are gathered
-            // if current fence is invalidated, do 'continue'
             bool is_fence_valid = true;
-            bool is_ready = false;
             can_receive_input_ = true;
-            for (; pending_dispose_ == false && !is_ready;) {
-                auto lock = std::unique_lock<std::mutex>{event_wait_.second};
-                event_wait_.first.wait_for(lock, 100ms);
+            output_event_wait_.first.notify_all();
 
+            for (; pending_dispose_ == false && !is_input_ready();) {
+                // wait until all the inputs are gathered
+                {
+                    auto lock = std::unique_lock<std::mutex>{input_event_wait_.second};
+                    input_event_wait_.first.wait_for(lock, 100ms);
+                }
+
+                // if current fence is invalidated, do 'continue'
                 // TODO: check if fence is still valid
-
-                // check if all inputs were gathered
-                is_ready = true;
-                for (auto& input_stage : input_stages_) {
-                    if (input_stage.input_submit_fence != fence_index_) {
-                        is_ready = false;
-                        break;
-                    }
+                if (0) {
+                    is_fence_valid = false;
+                    break;
                 }
             }
 
@@ -167,7 +181,23 @@ private:
 protected:
     void notify_submit_input__(id_type stage_id_)
     {
-        
+        if (
+          auto it = std::find_if(
+            input_stages_.begin(), input_stages_.end(),
+            stage_hash_predicate(stage_id_));
+          it != input_stages_.end()) {
+            if (it->input_submit_fence == fence_index()) {
+                throw pipe_exception("Multiple input notification for same input stage");
+            }
+            it->input_submit_fence.store(fence_index());
+
+            if (is_input_ready()) {
+                input_event_wait_.first.notify_one();
+            }
+        }
+        else {
+            throw pipe_exception("Stage ID is not valid input stage");
+        }
     }
 
     static decltype(auto) stage_hash_predicate(id_type id)
@@ -322,12 +352,13 @@ private:
     std::atomic_bool pending_dispose_ = false;
 
     std::thread owning_thread_;
-    std::pair<std::condition_variable, std::mutex> event_wait_;
+    std::pair<std::condition_variable, std::mutex> input_event_wait_;
+    std::pair<std::condition_variable, std::mutex> output_event_wait_;
 
     struct input_link_desc {
         id_type cached_id;
         std::weak_ptr<stage_type> stage;
-        std::atomic<fence_index_type> input_submit_fence;
+        std::atomic<fence_index_type> input_submit_fence = -1;
     };
     struct output_link_desc {
         id_type cached_id;
@@ -378,7 +409,7 @@ public:
           [this, other, handler](pipe_error e, output_type const& o) -> bool {
               if (!other->can_receive_input()) { return false; }
 
-              auto [input_ptr, lock] = other->input_front__();
+              auto [input_ptr, lock] = other->lock_front_input__();
               auto fence_data = other->fence_shared_data().lock();
 
               bool const is_fence_invalidated = fence_data == nullptr;
@@ -391,8 +422,14 @@ public:
     }
 
 private:
-    void exec_pipe__() override;
-    std::pair<input_type*, std::lock_guard<std::mutex>> input_front__() { return std::make_pair(&inputs[front_input_], std::lock_guard<std::mutex>(front_input_lock_)); }
+    void exec_pipe__() override
+    {
+        auto [input_ptr, lock] = lock_front_input__();
+
+        
+    }
+
+    std::pair<input_type*, std::lock_guard<std::mutex>> lock_front_input__() { return std::make_pair(&inputs[front_input_], std::lock_guard<std::mutex>(front_input_lock_)); }
     void swap_input__() { front_input_ = !front_input_; }
 
 private:

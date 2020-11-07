@@ -1,8 +1,8 @@
 #pragma once
 #include <atomic>
+#include <concepts>
 #include <memory>
 #include <type_traits>
-#include <concepts>
 
 namespace pipepp {
 /**
@@ -89,7 +89,6 @@ private:
 
 private:
     friend class pipe_proxy;
-    // clang-format off
     template <typename Fn_>
     requires std::is_invocable_v<Fn_, pipe_error, output_type const &>
     void invoke__(input_type const &in, output_type &out, Fn_ &&handler = [](auto, auto){}) {

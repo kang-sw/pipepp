@@ -1,9 +1,7 @@
 #pragma once
-#include <any>
 #include <chrono>
 #include <condition_variable>
 #include <functional>
-#include <map>
 #include <memory>
 #include <optional>
 #include <pipepp/pipe.hpp>
@@ -84,6 +82,9 @@ public:
 };
 
 namespace impl__ {
+using id_type = size_t;
+using fence_index_type = size_t;
+
 template <typename SharedData_>
 class stage_base : public std::enable_shared_from_this<stage_base<SharedData_>> {
     template <SharedData_>
@@ -93,9 +94,6 @@ public:
     using shared_data_type = SharedData_;
     using pipeline_type = pipeline_base<shared_data_type>;
     using stage_type = stage_base<shared_data_type>;
-
-    using id_type = size_t;
-    using fence_index_type = size_t;
 
 public:
     explicit stage_base(pipeline_type* owner, std::string name, stage_execution_policy execution_policy, stage_input_policy input_policy)
@@ -120,8 +118,8 @@ public: // getters
     std::string_view name() const { return name_; }
     bool can_receive_input() const { return can_receive_input_; }
     fence_index_type fence_index() const { return fence_index_; }
-    std::weak_ptr<shared_data_type> fence_shared_data() const { return fetched_shared_data_; }
-    bool is_pipe_running() const { return is_pipe_running_; }
+    std::shared_ptr<shared_data_type> fence_shared_data() const { return fetched_shared_data_; }
+    bool is_pipe_busy() const { return is_pipe_busy_; }
     bool pending_dispose() const
     {
         auto ptr = pending_dispose_.lock();
@@ -147,7 +145,6 @@ public:
 private:
     void launch__(std::shared_ptr<bool> dispose_ptr)
     {
-        // TODO: Launch thread, etc ...
         pending_dispose_ = dispose_ptr;
         worker_ = std::thread(&loop__, this);
     }
@@ -165,8 +162,11 @@ private:
     void loop__()
     {
         for (is_running_ = true; pending_dispose() == false;) {
-            // TODO: fetch next pipe data
+            // fetch next pipe data
             // pipeline class provides next valid fence index and pipe data based on current fence index.
+            if (!update_fence_data_(fence_index_, fetched_shared_data_)) {
+                continue;
+            }
 
             bool is_fence_valid = true;
             can_receive_input_ = true;
@@ -180,8 +180,8 @@ private:
                 }
 
                 // if current fence is invalidated, do 'continue'
-                // TODO: check if fence is still valid
-                if (0) {
+                // check if fence is still valid
+                if (!check_fence_validity_(fence_index())) {
                     is_fence_valid = false;
                     break;
                 }
@@ -191,12 +191,19 @@ private:
             if (!is_fence_valid) { continue; }
 
             // run pipe + handler
-            // before then, input must be disabled.
-            can_receive_input_ = false;
-            is_pipe_running_ = true;
-            exec_pipe__();
-            is_pipe_running_ = false;
-            output_event_wait_.first.notify_all();
+            can_receive_input_ = false; // before then, input must be disabled.
+            is_pipe_busy_ = true;       // set pipe busy
+            exec_pipe__();              // run pipe implementation
+            is_pipe_busy_ = false;      // set pipe not busy
+
+            output_event_wait_.first.notify_all(); // let other output handlers to continue
+
+            bool const shared_data_expired = fetched_shared_data_.use_count() == 1;
+            fetched_shared_data_.reset(); // manage object lifecycle
+
+            if (shared_data_expired) {
+                on_fence_data_expired_(fence_index_);
+            }
         }
 
         is_disposed_ = true;
@@ -380,7 +387,7 @@ private:
 
     pipeline_type* owning_pipeline_;
 
-    std::atomic_bool is_pipe_running_ = false;
+    std::atomic_bool is_pipe_busy_ = false;
     std::atomic_bool can_receive_input_ = false;
     std::atomic_bool is_running_ = false;
     std::atomic_bool is_disposed_ = false;
@@ -403,8 +410,12 @@ private:
     std::vector<input_link_desc> input_stages_;
     std::vector<output_link_desc> output_stages_;
 
-    std::weak_ptr<shared_data_type> fetched_shared_data_;
-    fence_index_type fence_index_ = 0;
+    std::shared_ptr<shared_data_type> fetched_shared_data_;
+    fence_index_type fence_index_ = -1;
+
+    std::function<void(fence_index_type)> on_fence_data_expired_;
+    std::function<bool(fence_index_type& io_fence, std::shared_ptr<shared_data_type>&)> update_fence_data_;
+    std::function<bool(fence_index_type)> check_fence_validity_;
 };
 
 template <Pipe Pipe_, typename SharedData_>
@@ -458,7 +469,7 @@ public:
               }
 
               auto [input_ptr, lock] = other->lock_front_input__();
-              auto fence_data = other->fence_shared_data().lock();
+              auto fence_data = other->fence_shared_data();
 
               bool const is_fence_invalidated = fence_data == nullptr;
               if (is_fence_invalidated) { return; }
@@ -468,7 +479,7 @@ public:
 
               if (stage_execution_policy::sync == other->execution_policy_) {
                   // 동기 실행인 경우 대상 파이프의 실행 종료까지 대기 ...
-                  while (other->is_pipe_running()) {
+                  while (other->is_pipe_busy()) {
                       other->wait_output(this->default_event_wait_duration);
                   }
               }

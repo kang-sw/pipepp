@@ -125,6 +125,7 @@ public: // getters
         auto ptr = pending_dispose_.lock();
         return !ptr || *ptr;
     }
+    pipe_error latest_output_result() const { return latest_output_result_; }
 
 public:
     virtual void dispose()
@@ -372,11 +373,19 @@ protected:
         output_event_wait_.first.wait_for(lock, duration);
     }
 
+    void purge_fence_on_error(fence_index_type idx)
+    {
+        purge_fence_on_error_(idx);
+    }
+
 private:
     virtual void exec_pipe__() = 0;
 
 public:
     std::chrono::milliseconds default_event_wait_duration;
+
+protected:
+    std::atomic<pipe_error> latest_output_result_;
 
 private:
     const size_t id_;
@@ -414,6 +423,7 @@ private:
     fence_index_type fence_index_ = -1;
 
     std::function<void(fence_index_type)> on_fence_data_expired_;
+    std::function<void(fence_index_type)> purge_fence_on_error_;
     std::function<bool(fence_index_type& io_fence, std::shared_ptr<shared_data_type>&)> update_fence_data_;
     std::function<bool(fence_index_type)> check_fence_validity_;
 };
@@ -455,6 +465,11 @@ public:
         // 링크 핸들러 목록에 추가
         output_handlers_.emplace_back(
           [this, other, handler](pipe_error e, output_type const& o) -> void {
+              if (e == pipe_error::error) {
+                  // 에러 발생시 링크 끊어버림
+                  return;
+              }
+
               while (!other->can_receive_input()) {
                   if (stage_input_policy::only_if_possible == other->input_policy_) {
                       return;
@@ -497,6 +512,7 @@ private:
         }
 
         auto perr = pipe_ptr->invoke__(*input_ptr, output_);
+        this->latest_output_result_ = perr;
 
         for (auto& handler : output_handlers_) {
             handler(perr, output_);
@@ -505,6 +521,11 @@ private:
                 break;
             }
         }
+
+        if (perr == pipe_error::error) {
+            this->purge_fence_on_error(this->fence_index());
+        }
+
     }
 
     std::pair<input_type*, std::lock_guard<std::mutex>> lock_front_input__() { return std::make_pair(&inputs_[front_input_], std::lock_guard<std::mutex>(front_input_lock_)); }

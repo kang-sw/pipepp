@@ -81,19 +81,23 @@ public:
     {}
 };
 
+struct shared_data_base {
+    virtual ~shared_data_base();
+
+    std::atomic_bool is_expired = false;
+};
+
 namespace impl__ {
 using id_type = size_t;
 using fence_index_type = size_t;
 
-template <typename SharedData_>
-class stage_base : public std::enable_shared_from_this<stage_base<SharedData_>> {
-    template <SharedData_>
+class stage_base : public std::enable_shared_from_this<stage_base> {
     friend class pipeline_base;
 
 public:
-    using shared_data_type = SharedData_;
-    using pipeline_type = pipeline_base<shared_data_type>;
-    using stage_type = stage_base<shared_data_type>;
+    using shared_data_type = shared_data_base;
+    using pipeline_type = pipeline_base;
+    using stage_type = stage_base;
 
 public:
     explicit stage_base(pipeline_type* owner, std::string name, stage_execution_policy execution_policy, stage_input_policy input_policy)
@@ -150,26 +154,10 @@ private:
         worker_ = std::thread(&loop__, this);
     }
 
-    bool is_input_ready() const
-    {
-        auto it = std::find_if(
-          input_stages_.begin(), input_stages_.end(),
-          [this](input_link_desc const& d) {
-              return d.input_submit_fence != fence_index_;
-          });
-        return it == input_stages_.end();
-    }
-
     void loop__()
     {
         for (is_running_ = true; pending_dispose() == false;) {
-            // fetch next pipe data
-            // pipeline class provides next valid fence index and pipe data based on current fence index.
-            if (!update_fence_data_(fence_index_, fetched_shared_data_)) {
-                continue;
-            }
 
-            bool is_fence_valid = true;
             can_receive_input_ = true;
             output_event_wait_.first.notify_all();
 
@@ -179,17 +167,9 @@ private:
                     auto lock = std::unique_lock<std::mutex>{input_event_wait_.second};
                     input_event_wait_.first.wait_for(lock, default_event_wait_duration);
                 }
-
-                // if current fence is invalidated, do 'continue'
-                // check if fence is still valid
-                if (!check_fence_validity_(fence_index())) {
-                    is_fence_valid = false;
-                    break;
-                }
             }
 
             if (pending_dispose()) { break; }
-            if (!is_fence_valid) { continue; }
 
             // run pipe + handler
             can_receive_input_ = false; // before then, input must be disabled.
@@ -212,6 +192,16 @@ private:
     }
 
 protected:
+    bool is_input_ready() const
+    {
+        auto it = std::find_if(
+          input_stages_.begin(), input_stages_.end(),
+          [this](input_link_desc const& d) {
+              return d.input_submit_fence != fence_index_;
+          });
+        return it == input_stages_.end();
+    }
+
     void notify_submit_input__(id_type stage_id_)
     {
         if (
@@ -314,7 +304,8 @@ protected:
         // to의 출력을 재귀적으로 검사해, this의 입력으로 연결되는 순환 연결이 존재하는지 검사합니다.
         bool is_circular = false;
         to->recurse_output_stages([&is_circular, self = this->weak_from_this()](std::weak_ptr<stage_type> const& r) {
-            if (r == self) {
+            bool const same_reference = !r.owner_before(self);
+            if (same_reference) {
                 is_circular = true;
                 return false;
             }
@@ -424,16 +415,15 @@ private:
 
     std::function<void(fence_index_type)> on_fence_data_expired_;
     std::function<void(fence_index_type)> purge_fence_on_error_;
-    std::function<bool(fence_index_type& io_fence, std::shared_ptr<shared_data_type>&)> update_fence_data_;
     std::function<bool(fence_index_type)> check_fence_validity_;
 };
 
-template <Pipe Pipe_, typename SharedData_>
-class stage : public impl__::stage_base<SharedData_> {
+template <Pipe Pipe_>
+class stage : public stage_base {
 public:
     template <typename... PipeArgs_>
-    stage(const std::string& name, stage_execution_policy execution_policy, stage_input_policy input_policy, PipeArgs_&&... args)
-        : impl__::stage_base<SharedData_>(name, execution_policy, input_policy)
+    stage(pipeline_base* owner, const std::string& name, stage_execution_policy execution_policy, stage_input_policy input_policy, PipeArgs_&&... args)
+        : stage_base(owner, name, execution_policy, input_policy)
     {
         pipe_instance_.emplace(std::forward<PipeArgs_>(args)...);
     }
@@ -447,7 +437,7 @@ public:
     using pipe_type = Pipe_;
     using input_type = typename pipe_type::input_type;
     using output_type = typename pipe_type::output_type;
-    using shared_data_type = SharedData_;
+    using shared_data_type = shared_data_base;
     using pipe_output_handler_type = std::function<bool(pipe_error, output_type const&)>;
 
     template <Pipe Other_>
@@ -484,16 +474,22 @@ public:
               }
 
               auto [input_ptr, lock] = other->lock_front_input__();
-              auto fence_data = other->fence_shared_data();
+              auto fence_data = this->fence_shared_data();
+              auto fence_index = this->fence_index();
 
-              bool const is_fence_invalidated = fence_data == nullptr;
-              if (is_fence_invalidated) { return; }
+              if (fence_index != other->fence_index()) {
+                  std::atomic_store(&other->fetched_shared_data_, fence_data);
+              }
 
               handler(e, *fence_data, o, *input_ptr);
               other->notify_submit_input__(this->id());
 
               if (stage_execution_policy::sync == other->execution_policy_) {
                   // 동기 실행인 경우 대상 파이프의 실행 종료까지 대기 ...
+                  if (!other->is_input_ready()) {
+                      throw pipe_exception(
+                        "Input was not correctly supplied to synchronous stage");
+                  }
                   while (other->is_pipe_busy()) {
                       other->wait_output(this->default_event_wait_duration);
                   }
@@ -525,7 +521,6 @@ private:
         if (perr == pipe_error::error) {
             this->purge_fence_on_error(this->fence_index());
         }
-
     }
 
     std::pair<input_type*, std::lock_guard<std::mutex>> lock_front_input__() { return std::make_pair(&inputs_[front_input_], std::lock_guard<std::mutex>(front_input_lock_)); }

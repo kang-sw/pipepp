@@ -75,6 +75,13 @@ public:
     size_t operator()() const { return id_++; }
 };
 
+class pipeline_link_exception : public pipe_exception {
+public:
+    explicit pipeline_link_exception(const char* msg)
+        : pipe_exception(msg)
+    {}
+};
+
 namespace impl__ {
 template <typename SharedData_>
 class stage_base : public std::enable_shared_from_this<stage_base<SharedData_>> {
@@ -168,34 +175,100 @@ protected:
     template <typename Fn_>
     void recurse_output_stages(Fn_ const& opr)
     {
+        struct {
+            std::set<id_type> visit_list;
+            bool do_break = false;
+            void exec(std::weak_ptr<stage_type> const& wptr, Fn_ const& callback)
+            {
+                std::shared_ptr<stage_type> self = wptr.lock();
+
+                for (output_link_desc const& ref : self->output_stages_) {
+                    if (do_break) {
+                        break;
+                    }
+
+                    bool do_continue = callback(ref.stage);
+                    if (do_continue == false) {
+                        do_break = true;
+                    }
+                    else {
+                        exec(ref.stage, callback);
+                    }
+                }
+            }
+        } impl;
+
+        impl.exec(this->weak_from_this(), opr);
     }
 
     // 자손 함수의 connect() 함수에서 본격적인 연결 처리 수행 전 호출
     void process_output_link__(std::shared_ptr<stage_type> to)
     {
         if (is_running_ || is_disposed_) {
-            throw pipe_exception("Pipe connection cannot be changed during running");
+            throw pipeline_link_exception("Pipe connection cannot be changed during running");
         }
 
-        // to가 optional인 경우, 입력 노드는 하나만 존재해야 합니다.
-        if (to->input_policy_ == stage_input_policy::only_if_possible && !to->input_stages_.empty()) {
-            throw pipe_exception("Optional input pipe cannot hold more than one input source");
-        }
-
-        if (auto found = std::find_if(input_stages_.begin(), input_stages_.end(), stage_hash_predicate(to->id())); found != input_stages_.end()) {
-            throw pipe_exception("Given pipeline is already in link list!");
+        bool const is_optional = to->input_policy_ == stage_input_policy::only_if_possible;
+        bool const is_synchronous = to->execution_policy_ == stage_execution_policy::sync;
+        if ((is_optional || is_synchronous) && !to->input_stages_.empty()) {
+            // to가 optional이거나 sync인 경우, 입력 노드는 하나만 존재해야 합니다.
+            throw pipeline_link_exception("Optional input pipe cannot hold more than one input source");
         }
 
         // to의 출력을 재귀적으로 검사해, this의 입력으로 연결되는 순환 연결이 존재하는지 검사합니다.
+        bool is_circular = false;
+        to->recurse_output_stages([&is_circular, self = this->weak_from_this()](std::weak_ptr<stage_type> const& r) {
+            if (r == self) {
+                is_circular = true;
+                return false;
+            }
+            return true;
+        });
+
+        if (is_circular) {
+            throw pipeline_link_exception("Circular link detected!");
+        }
 
         // to의 입력, this의 자신을 포함한 입력을 재귀적으로 검사해, 가장 가까운 optional 스테이지가 같은지 검사합니다.
+        std::weak_ptr<stage_type> first_optional_this = {};
+        std::weak_ptr<stage_type> first_optional_to = {};
+        this->recurse_input_stages([&first_optional_this](std::weak_ptr<stage_type> const& r) {
+            auto ref = r.lock();
+            if (ref->input_policy_ == stage_input_policy::only_if_possible) {
+                first_optional_this = r;
+                return false;
+            }
+            return true;
+        });
+        to->recurse_input_stages([&first_optional_to, &to](std::weak_ptr<stage_type> const& r) {
+            auto ref = r.lock();
+            if (to != r && ref->input_policy_ == stage_input_policy::only_if_possible) {
+                first_optional_to = r;
+                return false;
+            }
+            return true;
+        });
 
+        if (to->input_stages_.empty() || first_optional_this != first_optional_to) {
+            throw pipeline_link_exception("Two pipes must share nearlest input optional stage");
+        }
+
+        // typical duplication check
+        if (auto found = std::find_if(input_stages_.begin(), input_stages_.end(), stage_hash_predicate(to->id())); found != input_stages_.end()) {
+            throw pipeline_link_exception("Given pipeline is already in link list!");
+        }
 
         // establish link
-        auto& insertion = input_stages_.emplace_back();
-        insertion.stage = to;
-        insertion.cached_id = to->id();
-        insertion.input_submit_fence = 0;
+        to->input_stages_.push_back(
+          input_link_desc{
+            .stage = this->weak_from_this(),
+            .cached_id = this->id(),
+            .input_submit_fence = 0});
+
+        this->output_stages_.push_back(
+          output_link_desc{
+            .stage = to->weak_from_this(),
+            .cached_id = to->id()});
     }
 
 private:
@@ -222,13 +295,17 @@ private:
         std::weak_ptr<stage_type> stage;
         fence_index_type input_submit_fence;
     };
+    struct output_link_desc {
+        id_type cached_id;
+        std::weak_ptr<stage_type> stage;
+    };
+
     std::vector<input_link_desc> input_stages_;
+    std::vector<output_link_desc> output_stages_;
 
     std::weak_ptr<shared_data_type> fetched_shared_data_;
     fence_index_type fence_index = 0;
 };
-
-} // namespace impl__
 
 template <Pipe Pipe_, typename SharedData_>
 class stage : public impl__::stage_base<SharedData_> {
@@ -251,4 +328,6 @@ public:
 private:
     void exec_pipe__() override;
 };
+
+} // namespace impl__
 } // namespace pipepp

@@ -106,12 +106,16 @@ decltype(auto) thread_pool::launch_task(Fn_&& f, Args_... args)
         {
             auto& [promise, f, arg_pack] = arg;
 
-            if constexpr (std::is_same_v<void, callable_return_type>) {
-                std::apply(f, std::move(arg_pack));
-                promise->set_value();
-            }
-            else {
-                promise->set_value(std::apply(f, std::move(arg_pack)));
+            try {
+                if constexpr (std::is_same_v<void, callable_return_type>) {
+                    std::apply(f, std::move(arg_pack));
+                    promise->set_value();
+                }
+                else {
+                    promise->set_value(std::apply(f, std::move(arg_pack)));
+                }
+            } catch (std::exception&) {
+                promise->set_exception(std::current_exception());
             }
         }
     };

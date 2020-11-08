@@ -7,7 +7,7 @@
 
 namespace templates {
 
-namespace lock_free {
+namespace LOCK_FREE__ {
 template <typename Ty_>
 class safe_queue {
 public:
@@ -79,7 +79,7 @@ private:
 };
 } // namespace lock_free
 
-inline namespace lock {
+inline namespace LOCK__ {
 template <typename Ty_>
 class safe_queue {
 public:

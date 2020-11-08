@@ -30,7 +30,7 @@ public:
 
 class thread_pool {
 public:
-    thread_pool(size_t task_queue_cap_ = 1024, size_t num_workers = std::thread::hardware_concurrency()) noexcept;
+    thread_pool(size_t task_queue_cap_ = 1024, size_t num_workers = std::thread::hardware_concurrency(), size_t concrete_worker_count_limit = -1) noexcept;
 
     ~thread_pool();
 
@@ -39,12 +39,13 @@ public:
     size_t num_workers() const;
     size_t num_pending_task() const { return tasks_.size(); }
     size_t task_queue_capacity() const { return tasks_.capacity(); }
+    size_t num_available_workers() const { return num_workers() - num_working_workers_; }
 
     template <typename Fn_, typename... Args_>
     decltype(auto) launch_task(Fn_&& f, Args_... args);
 
 private:
-    void add_worker__();
+    bool try_add_worker__();
     void pop_workers__(size_t count);
 
 public:
@@ -58,12 +59,13 @@ private:
     std::condition_variable event_wait_;
     mutable std::mutex event_lock_;
 
-    std::shared_ptr<std::atomic_size_t> available_workers_;
+    std::atomic_size_t num_working_workers_;
+    size_t const worker_limit_;
 };
 
-inline thread_pool::thread_pool(size_t task_queue_cap_, size_t num_workers) noexcept
+inline thread_pool::thread_pool(size_t task_queue_cap_, size_t num_workers, size_t worker_limit) noexcept
     : tasks_(task_queue_cap_)
-    , available_workers_(std::make_shared<std::atomic_size_t>(0))
+    , worker_limit_(worker_limit)
 {
     resize_worker_pool(num_workers);
 }
@@ -80,10 +82,10 @@ inline void thread_pool::resize_worker_pool(size_t new_size)
     }
 
     std::lock_guard<std::mutex> lock(worker_lock_);
-    const bool is_popping = new_size < workers_.size();
     if (new_size > workers_.size()) {
+        new_size = std::min(worker_limit_, new_size);
         while (new_size != workers_.size()) {
-            add_worker__();
+            try_add_worker__();
         }
     }
     else if (new_size < workers_.size()) {
@@ -97,16 +99,20 @@ inline size_t thread_pool::num_workers() const
     return workers_.size();
 }
 
-inline void thread_pool::add_worker__()
+inline bool thread_pool::try_add_worker__()
 {
     auto disposer = std::make_shared<std::atomic_bool>(false);
-    auto worker = [this, disposer, active_jobs = available_workers_]() {
+    if (workers_.size() >= worker_limit_) {
+        return false;
+    }
+
+    auto worker = [this, disposer]() {
         std::function<void()> event;
         while (disposer->load() == false) {
             if (tasks_.try_pop(event)) {
-                active_jobs->fetch_add(1);
+                num_working_workers_.fetch_add(1);
                 event();
-                active_jobs->fetch_add(1);
+                num_working_workers_.fetch_sub(1);
             }
             else {
                 std::unique_lock<std::mutex> lock(event_lock_);
@@ -116,6 +122,7 @@ inline void thread_pool::add_worker__()
     };
 
     workers_.emplace_back(disposer, std::thread(std::move(worker)));
+    return true;
 }
 
 inline void thread_pool::pop_workers__(size_t count)
@@ -167,6 +174,11 @@ decltype(auto) thread_pool::launch_task(Fn_&& f, Args_... args)
         }
 
         std::this_thread::yield();
+    }
+
+    if (num_available_workers() == 0) {
+        std::lock_guard<std::mutex> lock(worker_lock_);
+        try_add_worker__();
     }
 
     event_wait_.notify_one();

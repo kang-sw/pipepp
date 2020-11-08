@@ -14,16 +14,29 @@ TEST_CASE("thread pool default operation", "[thread_pool]")
     thread_pool thr{1024, 1};
     vector<pair<double, future<double>>> futures;
 
+    auto ff = thr.launch_task([]() {
+        vector<int> fs;
+        fs.reserve(1024);
+        fs.resize(512);
+        fs.at(5661) = 3;
+    });
+
+    thread([&ff]() { ff.get_future().get(); }).detach();
+
+    auto fut = thr.launch_task([]() { throw exception("hell, world!"); });
+    REQUIRE_THROWS(fut.get_future().get());
+
     futures.reserve(num_cases);
 
     for (int i = 0; i < num_cases; ++i) {
         futures.emplace_back(
           i, thr.launch_task(
-               [](double c) {
-                   this_thread::sleep_for(chrono::milliseconds(rand() % 128));
-                   return c * c;
-               },
-               i));
+                  [](double c) {
+                      this_thread::sleep_for(chrono::milliseconds(rand() % 128));
+                      return c * c;
+                  },
+                  i)
+               .get_future());
     }
 
     size_t num_error = 0;
@@ -49,7 +62,4 @@ TEST_CASE("thread pool default operation", "[thread_pool]")
     REQUIRE(num_error == 0);
 
     printf("\n");
-
-    auto fut = thr.launch_task([]() { throw exception("hell, world!"); });
-    REQUIRE_THROWS(fut.get());
 }

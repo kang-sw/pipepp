@@ -16,6 +16,28 @@ public:
     }
 };
 
+template <typename Ty_>
+class future_proxy {
+    friend class thread_pool;
+
+public:
+    std::future<Ty_> get_future()
+    {
+        auto future = promise_->get_future();
+        promise_.reset();
+        return std::move(future);
+    }
+
+    future_proxy() = default;
+    future_proxy(const future_proxy& other) = delete;
+    future_proxy(future_proxy&& other) noexcept = default;
+    future_proxy& operator=(const future_proxy& other) = delete;
+    future_proxy& operator=(future_proxy&& other) noexcept = default;
+
+private:
+    std::shared_ptr<std::promise<Ty_>> promise_;
+};
+
 class thread_pool {
 public:
     using clock = std::chrono::system_clock;
@@ -95,7 +117,7 @@ template <typename Fn_, typename... Args_>
 decltype(auto) thread_pool::launch_task(Fn_&& f, Args_... args)
 {
     using callable_return_type = std::invoke_result_t<Fn_, Args_...>;
-    using return_type = std::future<callable_return_type>;
+    using return_type = future_proxy<callable_return_type>;
 
     auto promise = std::make_shared<std::promise<callable_return_type>>();
     auto value_tuple = std::make_tuple(promise, f, std::tuple<Args_...>(args...));
@@ -106,7 +128,11 @@ decltype(auto) thread_pool::launch_task(Fn_&& f, Args_... args)
         {
             auto& [promise, f, arg_pack] = arg;
 
+            // Storing exception features are only available on release build,
+            //to improve debug
+#if defined(NDEBUG)
             try {
+#endif
                 if constexpr (std::is_same_v<void, callable_return_type>) {
                     std::apply(f, std::move(arg_pack));
                     promise->set_value();
@@ -114,9 +140,27 @@ decltype(auto) thread_pool::launch_task(Fn_&& f, Args_... args)
                 else {
                     promise->set_value(std::apply(f, std::move(arg_pack)));
                 }
+#if defined(NDEBUG)
             } catch (std::exception&) {
+                do {
+                    try {
+                        // if future was already retrieved, below statement will throw.
+                        // then do nothing, to mandate error handling to caller
+                        auto v = promise->get_future();
+                    } catch (std::exception&) {
+                        break;
+                    }
+
+                    // else, given promise was expired before the future was retrieved.
+                    // then this block simply rethrow the exception, which occurs program termination.
+                    throw;
+                } while (false);
+
+                // if above statement did not thrown, it means the future was correctly
+                //retrieved when it was launched.
                 promise->set_exception(std::current_exception());
             }
+#endif
         }
     };
 
@@ -139,7 +183,10 @@ decltype(auto) thread_pool::launch_task(Fn_&& f, Args_... args)
 
     event_wait_.notify_one();
 
-    return return_type(promise->get_future());
+    return_type result;
+    result.promise_ = promise;
+
+    return result;
 }
 
 inline thread_pool::thread_pool(size_t task_queue_cap_, size_t num_workers, size_t worker_limit) noexcept

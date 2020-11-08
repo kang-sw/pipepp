@@ -75,6 +75,10 @@ inline thread_pool::~thread_pool()
 
 inline void thread_pool::resize_worker_pool(size_t new_size)
 {
+    if (new_size == 0) {
+        throw std::invalid_argument{"Size 0 is not allowed"};
+    }
+
     std::lock_guard<std::mutex> lock(worker_lock_);
     const bool is_popping = new_size < workers_.size();
     if (new_size > workers_.size()) {

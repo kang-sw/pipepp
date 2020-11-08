@@ -18,7 +18,10 @@ public:
 
 class thread_pool {
 public:
-    thread_pool(size_t task_queue_cap_ = 1024, size_t num_workers = std::thread::hardware_concurrency(), size_t concrete_worker_count_limit = -1) noexcept;
+    using clock = std::chrono::system_clock;
+
+public:
+    thread_pool(size_t task_queue_cap_ = 1024, size_t num_workers = std::thread::hardware_concurrency(), size_t concrete_worker_count_limit = 1024) noexcept;
 
     ~thread_pool();
 
@@ -28,6 +31,9 @@ public:
     size_t num_pending_task() const { return tasks_.size(); }
     size_t task_queue_capacity() const { return tasks_.capacity(); }
     size_t num_available_workers() const { return num_workers_cached_ - num_working_workers_; }
+    clock::duration average_wait() const { return clock::duration(average_wait_.load()); }
+    size_t num_max_workers() const { return num_max_workers_; }
+    void num_max_workers(size_t value);
 
     template <typename Fn_, typename... Args_>
     decltype(auto) launch_task(Fn_&& f, Args_... args);
@@ -39,10 +45,11 @@ private:
 
 public:
     std::chrono::milliseconds launch_timeout_ms{1000};
-    std::chrono::milliseconds stall_wait_tolerance{20};
+    std::chrono::microseconds max_stall_interval_time{20000};
+    std::chrono::microseconds max_task_wait_time{5000};
 
 private:
-    struct worker_desc {
+    struct worker_t {
         struct atomic_bool_wrap_t {
             std::atomic_bool value;
 
@@ -63,9 +70,13 @@ private:
         atomic_bool_wrap_t disposer;
     };
 
+    struct task_t {
+        std::function<void()> event;
+    };
+
 private:
-    safe_queue<std::function<void()>> tasks_;
-    std::vector<worker_desc> workers_;
+    safe_queue<task_t> tasks_;
+    std::vector<worker_t> workers_;
     mutable std::mutex worker_lock_;
 
     std::condition_variable event_wait_;
@@ -73,10 +84,11 @@ private:
 
     std::atomic_size_t num_workers_cached_;
     std::atomic_size_t num_working_workers_;
-    size_t const worker_limit_;
+    std::atomic_size_t num_max_workers_;
 
-    using clock = std::chrono::system_clock;
-    std::atomic<clock::time_point> latest_active_;
+    std::atomic<clock::time_point> latest_active_ = clock::now();
+    std::atomic<clock::time_point> latest_event_;
+    std::atomic<int64_t> average_wait_;
 };
 
 template <typename Fn_, typename... Args_>
@@ -106,7 +118,14 @@ decltype(auto) thread_pool::launch_task(Fn_&& f, Args_... args)
 
     using std::chrono::system_clock;
     auto elapse_begin = system_clock::now();
-    while (!tasks_.try_push(executor{std::move(value_tuple)})) {
+
+    check_reserve_worker__(1);
+
+    task_t task;
+    task.event = executor{std::move(value_tuple)};
+    latest_event_ = clock::now();
+
+    while (!tasks_.try_push(std::move(task))) {
         if (system_clock::now() - elapse_begin > launch_timeout_ms) {
             throw timeout_exception{""};
         }
@@ -114,7 +133,6 @@ decltype(auto) thread_pool::launch_task(Fn_&& f, Args_... args)
         std::this_thread::yield();
     }
 
-    check_reserve_worker__(1);
     event_wait_.notify_one();
 
     return return_type(promise->get_future());
@@ -122,7 +140,7 @@ decltype(auto) thread_pool::launch_task(Fn_&& f, Args_... args)
 
 inline thread_pool::thread_pool(size_t task_queue_cap_, size_t num_workers, size_t worker_limit) noexcept
     : tasks_(task_queue_cap_)
-    , worker_limit_(worker_limit)
+    , num_max_workers_(worker_limit)
 {
     resize_worker_pool(num_workers);
 }
@@ -134,13 +152,13 @@ inline thread_pool::~thread_pool()
 
 inline void thread_pool::resize_worker_pool(size_t new_size)
 {
+    new_size = std::min(num_max_workers_.load(), new_size);
     if (new_size == 0) {
         throw std::invalid_argument{"Size 0 is not allowed"};
     }
 
     std::lock_guard<std::mutex> lock(worker_lock_);
     if (new_size > workers_.size()) {
-        new_size = std::min(worker_limit_, new_size);
         while (new_size != workers_.size()) {
             try_add_worker__();
         }
@@ -150,23 +168,48 @@ inline void thread_pool::resize_worker_pool(size_t new_size)
     }
 }
 
+inline void thread_pool::num_max_workers(size_t value)
+{
+    if (value == 0) {
+        throw std::invalid_argument("0 is not allowed");
+    }
+
+    std::lock_guard<std::mutex> lock{worker_lock_};
+    num_max_workers_ = value;
+
+    if (value < workers_.size()) {
+        pop_workers__(workers_.size() - value);
+    }
+}
+
 inline bool thread_pool::try_add_worker__()
 {
-    if (workers_.size() >= worker_limit_) {
+    if (workers_.size() >= num_max_workers_) {
         return false;
     }
 
     auto worker = [this, index = workers_.size()]() {
-        std::function<void()> event;
+        task_t task;
 
         while (workers_[index].disposer.value == false) {
-            if (tasks_.try_pop(event)) {
-                check_reserve_worker__(1);
+            if (tasks_.try_pop(task)) {
+                auto now = clock::now();
 
-                latest_active_ = std::chrono::system_clock::now();
+                if (num_available_workers() == 1) {
+                    auto wait_time = (now - latest_event_.load()).count();
+                    auto average = average_wait_.load();
+
+                    auto new_average = ((average * 7) + wait_time) / 8;
+                    auto diff = new_average - average;
+                    average_wait_.fetch_add(diff);
+                }
+
+                check_reserve_worker__(1);
+                latest_active_ = now;
+                latest_event_ = now;
                 num_working_workers_.fetch_add(1);
 
-                event();
+                task.event();
                 num_working_workers_.fetch_sub(1);
             }
             else {
@@ -205,7 +248,8 @@ inline void thread_pool::check_reserve_worker__(size_t threshold)
 {
     if ( // reserve workers if required.
       num_available_workers() <= threshold
-      && clock::now() - latest_active_.load() > stall_wait_tolerance) {
+      && (clock::now() - latest_active_.load() > max_stall_interval_time
+          || average_wait() > max_task_wait_time)) {
         resize_worker_pool((num_workers() & ~1) + 2);
     }
 }

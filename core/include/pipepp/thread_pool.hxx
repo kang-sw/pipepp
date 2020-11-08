@@ -36,10 +36,10 @@ public:
 
 public:
     void resize_worker_pool(size_t new_size);
-    size_t num_workers() const;
+    size_t num_workers() const { return num_workers_cached_; }
     size_t num_pending_task() const { return tasks_.size(); }
     size_t task_queue_capacity() const { return tasks_.capacity(); }
-    size_t num_available_workers() const { return num_workers() - num_working_workers_; }
+    size_t num_available_workers() const { return num_workers_cached_ - num_working_workers_; }
 
     template <typename Fn_, typename... Args_>
     decltype(auto) launch_task(Fn_&& f, Args_... args);
@@ -50,8 +50,7 @@ private:
 
 public:
     std::chrono::milliseconds launch_timeout_ms{1000};
-    std::chrono::milliseconds stall_check_period{5};
-    std::chrono::milliseconds stall_wait_tolerance{5};
+    std::chrono::milliseconds stall_wait_tolerance{20};
 
 private:
     struct worker_desc {
@@ -73,7 +72,6 @@ private:
         };
         std::thread thread;
         atomic_bool_wrap_t disposer;
-        std::chrono::system_clock::time_point last_active;
     };
 
 private:
@@ -84,8 +82,12 @@ private:
     std::condition_variable event_wait_;
     mutable std::mutex event_lock_;
 
+    std::atomic_size_t num_workers_cached_;
     std::atomic_size_t num_working_workers_;
     size_t const worker_limit_;
+
+    using clock = std::chrono::system_clock;
+    std::atomic<clock::time_point> latest_active_;
 };
 
 template <typename Fn_, typename... Args_>
@@ -132,35 +134,6 @@ inline thread_pool::thread_pool(size_t task_queue_cap_, size_t num_workers, size
     , worker_limit_(worker_limit)
 {
     resize_worker_pool(num_workers);
-
-    launch_task([this]() {
-        while (!workers_.front().disposer.value) {
-            if (num_available_workers() == 0) {
-                std::lock_guard<std::mutex> lock{worker_lock_};
-                bool should_spawn_worker;
-                {
-                    std::chrono::system_clock::time_point max_tp = {};
-                    for (auto& worker : workers_) {
-                        max_tp = std::max(max_tp, worker.last_active);
-                    }
-
-                    should_spawn_worker
-                      = std::chrono::system_clock::now() - max_tp > stall_wait_tolerance;
-                }
-
-                if (should_spawn_worker) {
-                    // Extend threads 2x
-                    for (size_t count = workers_.size();
-                         count-- && workers_.size() < worker_limit_;
-                         (void)0) {
-                        try_add_worker__();
-                    }
-                }
-            }
-
-            std::this_thread::sleep_for(stall_check_period);
-        }
-    });
 }
 
 inline thread_pool::~thread_pool()
@@ -173,7 +146,6 @@ inline void thread_pool::resize_worker_pool(size_t new_size)
     if (new_size == 0) {
         throw std::invalid_argument{"Size 0 is not allowed"};
     }
-    new_size += 1; // Reserve first
 
     std::lock_guard<std::mutex> lock(worker_lock_);
     if (new_size > workers_.size()) {
@@ -187,12 +159,6 @@ inline void thread_pool::resize_worker_pool(size_t new_size)
     }
 }
 
-inline size_t thread_pool::num_workers() const
-{
-    std::lock_guard<std::mutex> lock(worker_lock_);
-    return workers_.size();
-}
-
 inline bool thread_pool::try_add_worker__()
 {
     if (workers_.size() >= worker_limit_) {
@@ -201,13 +167,18 @@ inline bool thread_pool::try_add_worker__()
 
     auto worker = [this, index = workers_.size()]() {
         std::function<void()> event;
-        auto& desc = workers_[index];
 
-        while (desc.disposer.value == false) {
+        while (workers_[index].disposer.value == false) {
             if (tasks_.try_pop(event)) {
-                desc.last_active = std::chrono::system_clock::now();
+                if ( // reserve workers if required.
+                  num_available_workers() == 1
+                  && clock::now() - latest_active_.load() > stall_wait_tolerance) {
+                    resize_worker_pool(num_workers() + 2);
+                }
 
+                latest_active_ = std::chrono::system_clock::now();
                 num_working_workers_.fetch_add(1);
+
                 event();
                 num_working_workers_.fetch_sub(1);
             }
@@ -221,8 +192,8 @@ inline bool thread_pool::try_add_worker__()
     auto& wd = workers_.emplace_back();
     wd.disposer.value = false;
     wd.thread = std::thread(std::move(worker));
-    wd.last_active = {};
 
+    num_workers_cached_ = workers_.size();
     return true;
 }
 
@@ -240,5 +211,6 @@ inline void thread_pool::pop_workers__(size_t count)
     }
 
     workers_.erase(begin, end);
+    num_workers_cached_ = workers_.size();
 }
 } // namespace templates

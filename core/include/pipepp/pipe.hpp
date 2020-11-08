@@ -41,10 +41,10 @@ public:
 /**
  * Fence object는 pipeline에 데이터를 처음으로 입력할 때 생성되는 오브젝트로, 각각의 pipe에 의해 처리될 때 공유되는 오브젝트 형식입니다.
  */
-enum class fence_index_type : size_t { none = 0 };
+enum class fence_index_t : size_t { none = 0 };
 
 /** 각각의 Pipe는 생성 시 부여된 고유한 pipe id를 갖습니다. */
-enum class pipe_id_type : size_t { none = -1 };
+enum class pipe_id_t : size_t { none = -1 };
 
 /** fence shared data의 기본 상속형입니다. */
 struct base_fence_shared_object {
@@ -79,7 +79,7 @@ private:
 
 struct pipe_id {
     inline static size_t gen_ = 0;
-    static pipe_id_type generate() { return static_cast<pipe_id_type>(gen_++); }
+    static pipe_id_t generate() { return static_cast<pipe_id_t>(gen_++); }
 };
 
 /**
@@ -97,11 +97,11 @@ public:
     static void set_num_workers(size_t n) { pipe_workers_.resize_worker_pool(n); }
 
 public:
-    class input_slot {
+    class input_slot_t {
         friend class pipe_base;
 
     public:
-        explicit input_slot(pipe_base& owner)
+        explicit input_slot_t(pipe_base& owner)
             : owner_(owner)
         {
         }
@@ -125,8 +125,9 @@ public:
          *
          * @param input_index ready_conds에서의 순서를 나타냅니다.
          * @param execute 최종 condition list에 false 포함 시 현재 fence index 증가. 단, 하나라도 false가 들어오는 경우 입력 불가능 상태로 전환하고, fence_index를 1 증가
+         * @param current_fence 현재 fence index를 전달합니다. execute==false일 때 current_fence를 기준으로 active_input_fence_ 값이 증감합니다.
          */
-        void seq2_submit_input(size_t input_index, bool execute);
+        void seq2_submit_input(size_t input_index, bool execute, fence_index_t current_fence);
 
         /**
          * 즉시 실행을 시도합니다. 입력 링크가 없는 경우에만 가능.(있으면 예외 던짐)
@@ -139,7 +140,7 @@ public:
         bool is_optional_ = false;
         std::pair<std::any, std::mutex> cached_input_;
         std::vector<std::optional<bool>> ready_conds_;
-        fence_index_type active_input_fence_ = fence_index_type::none;
+        fence_index_t active_input_fence_ = fence_index_t::none;
     };
 
     class executor_slot {
@@ -158,7 +159,7 @@ public:
         execution_context& context_write() { return contexts_[!context_front_]; }
         void swap_exec_context() { context_front_ = !context_front_; }
 
-    public: // 초기화 관련 메소드
+    public: // 단계별로 등록되는 콜백 목록
         /**
          * 실행 완료 후 비동기적으로 호출되는 콜백입니다.
          * 연결된 출력 핸들러 각각을 iterate합니다.
@@ -166,7 +167,7 @@ public:
          *  먼저 owner_에게 현재 슬롯 인스턴스가 출력할 차례가 맞는지 질의 필요.
          *      output_fence == input_fence: 출력 준비
          *      output_fence <  input_fence: discard
-         *      output_fence >  input_fence: 
+         *      output_fence >  input_fence: 처리 중. 대기 필요
          *  아니면 대기합니다. 만약 대상 링크의 fence_index가 출력 fence_index보다 높다면, 이는 해당 fence가 invalidated 된 것으로 아무것도 하지 않습니다.
          *
          *  1) 실패 시
@@ -181,14 +182,14 @@ public:
          *  2-B) 성공 시 - 선택적 입력
          *      연결된 입력 슬롯이 가능 상태인지 점검합니다.
          *      1) 가능 상태라면, 출력 데이터를 입력 데이터에 연결합니다
-         *      2) 아니라면, sumit_input에 false 전달.
+         *      2) 아니라면, sumit_input에 false 전달. 즉시 increment합니다.
          *
          *  모든 출력을 처리한 후엔, ready_conditions_를 비우고 입력 가능 상태로 전환
          *
          */
-        void on_execution_finished();
+        void on_execution_finished(); // 파라미터는 나중에 추가
+        void wait_target_input_slot();
 
-    private: // 단계별로 등록되는 콜백 목록
     private:
         pipe_base& owner_;
 
@@ -199,15 +200,15 @@ public:
         bool context_front_ = false;
 
         std::shared_ptr<base_fence_shared_object> fence_object_;
-        fence_index_type current_fence_index_ = fence_index_type::none;
+        fence_index_t current_fence_index_ = fence_index_t::none;
 
         std::any cached_output_;
     };
 
 public: // accessors
-    executor_slot& active_exec_slot() { return slots_[slot_active()]; }
-    executor_slot const& active_exec_slot() const { return slots_[slot_active()]; }
-    size_t slot_active() const { return slot_active_.load() % slots_.size(); }
+    executor_slot& active_exec_slot() { return exec_slots_[slot_active()]; }
+    executor_slot const& active_exec_slot() const { return exec_slots_[slot_active()]; }
+    size_t slot_active() const { return active_exec_slot_.load() % exec_slots_.size(); }
 
 public:
     /** 선택적 입력은 출력 노드가 단일 입력(즉, 자신)일 때만 가능합니다. */
@@ -216,19 +217,17 @@ public:
     /** input_can_be_optional == false면 throw. */
     void set_optional_input(bool is_optional);
 
-    /** this입력->to출력 방향으로 연결합니다. */
+    /** this출력->to입력 방향으로 연결합니다. */
     void connect_output_to(pipe_base* other);
 
+    /** 입력을 강제로 공급합니다. */
+    // TODO
 private:
     /** on_execution_finished()에서 호출, 해당 슬롯이 출력할 차례인지 검사합니다. */
     bool is_valid_output_order__(executor_slot* ref);
 
     /** 다음 입력 슬롯을 활성화. */
-    size_t rotate_slot__() { return slot_active_.fetch_add(1); }
-
-public:
-    /** 모든 파이프 입력을 처리합니다. */
-    input_slot input{*this};
+    size_t rotate_slot__() { return active_exec_slot_.fetch_add(1); }
 
 private:
     struct input_link_desc {
@@ -240,12 +239,14 @@ private:
     };
 
 private:
-    pipe_id_type const id_ = pipe_id::generate();
+    pipe_id_t const id_ = pipe_id::generate();
 
-    //
-    std::vector<executor_slot> slots_;
-    std::atomic_size_t slot_active_;         // idle 슬롯 선택(반드시 순차적)
-    std::atomic_size_t slot_pending_output_; // 순차적 출력 보장
+    /** 모든 파이프 입력을 처리합니다. */
+    input_slot_t input_slot_{*this};
+
+    std::vector<executor_slot> exec_slots_;
+    std::atomic_size_t active_exec_slot_;         // idle 슬롯 선택(반드시 순차적)
+    std::atomic_size_t pending_output_exec_slot_; // 순차적 출력 보장
 
     std::vector<input_link_desc> input_links_;
     std::vector<output_link_desc> output_links_;

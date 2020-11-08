@@ -30,34 +30,22 @@ public:
 
 class thread_pool {
 public:
-    struct thread_instance {
+    thread_pool(size_t task_queue_cap_ = 1024, size_t num_workers = std::thread::hardware_concurrency()) noexcept;
 
-        std::atomic_bool pending_dispose_;
-        std::thread thr_;
-    };
+    ~thread_pool();
 
 public:
-    thread_pool(size_t task_queue_cap_ = 1024, size_t num_workers = std::thread::hardware_concurrency()) noexcept
-        : tasks_(task_queue_cap_)
-        , available_workers_(std::make_shared<std::atomic_size_t>(0))
-    {
-        resize_worker_pool(num_workers);
-    }
-
-    ~thread_pool()
-    {
-        join_all__();
-    }
-
-    void resize_worker_pool(size_t n);
+    void resize_worker_pool(size_t new_size);
+    size_t num_workers() const;
+    size_t num_pending_task() const { return tasks_.size(); }
+    size_t task_queue_capacity() const { return tasks_.capacity(); }
 
     template <typename Fn_, typename... Args_>
     decltype(auto) launch_task(Fn_&& f, Args_... args);
 
 private:
     void add_worker__();
-    void pop_worker__();
-    void join_all__();
+    void pop_workers__(size_t count);
 
 public:
     std::chrono::milliseconds launch_timeout_ms{1000};
@@ -65,28 +53,44 @@ public:
 private:
     safe_queue<std::function<void()>> tasks_;
     std::vector<std::pair<std::shared_ptr<std::atomic_bool>, std::thread>> workers_;
-    std::mutex worker_lock_;
+    mutable std::mutex worker_lock_;
 
     std::condition_variable event_wait_;
-    std::mutex event_lock_;
+    mutable std::mutex event_lock_;
 
     std::shared_ptr<std::atomic_size_t> available_workers_;
 };
 
-inline void thread_pool::resize_worker_pool(size_t n)
+inline thread_pool::thread_pool(size_t task_queue_cap_, size_t num_workers) noexcept
+    : tasks_(task_queue_cap_)
+    , available_workers_(std::make_shared<std::atomic_size_t>(0))
+{
+    resize_worker_pool(num_workers);
+}
+
+inline thread_pool::~thread_pool()
+{
+    pop_workers__(workers_.size());
+}
+
+inline void thread_pool::resize_worker_pool(size_t new_size)
 {
     std::lock_guard<std::mutex> lock(worker_lock_);
-    const bool is_popping = n < workers_.size();
-    while (n != workers_.size()) {
-        if (n > workers_.size())
+    const bool is_popping = new_size < workers_.size();
+    if (new_size > workers_.size()) {
+        while (new_size != workers_.size()) {
             add_worker__();
-        else
-            pop_worker__();
+        }
     }
+    else if (new_size < workers_.size()) {
+        pop_workers__(workers_.size() - new_size);
+    }
+}
 
-    if (is_popping) {
-        event_wait_.notify_all();
-    }
+inline size_t thread_pool::num_workers() const
+{
+    std::lock_guard<std::mutex> lock(worker_lock_);
+    return workers_.size();
 }
 
 inline void thread_pool::add_worker__()
@@ -110,20 +114,20 @@ inline void thread_pool::add_worker__()
     workers_.emplace_back(disposer, std::thread(std::move(worker)));
 }
 
-inline void thread_pool::pop_worker__()
+inline void thread_pool::pop_workers__(size_t count)
 {
-    auto& back = workers_.back();
-    back.first->store(true);
-    back.second.detach();
-    workers_.pop_back();
-}
+    auto const begin = workers_.end() - count;
+    auto const end = workers_.end();
 
-inline void thread_pool::join_all__()
-{
-    std::lock_guard<std::mutex> lock(worker_lock_);
-    for (auto& pair : workers_) { pair.first->store(true); }
+    for (auto it = begin; it != end; ++it) {
+        it->first->store(true);
+    }
     event_wait_.notify_all();
-    for (auto& pair : workers_) { pair.second.join(); }
+    for (auto it = begin; it != end; ++it) {
+        it->second.join();
+    }
+
+    workers_.erase(begin, end);
 }
 
 template <typename Fn_, typename... Args_>

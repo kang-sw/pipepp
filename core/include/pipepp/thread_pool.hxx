@@ -10,20 +10,8 @@
 namespace templates {
 class timeout_exception : public std::exception {
 public:
-    timeout_exception() = default;
-
     explicit timeout_exception(char const* _Message)
         : exception(_Message)
-    {
-    }
-
-    timeout_exception(char const* _Message, int i)
-        : exception(_Message, i)
-    {
-    }
-
-    explicit timeout_exception(exception const& _Other)
-        : exception(_Other)
     {
     }
 };
@@ -47,6 +35,7 @@ public:
 private:
     bool try_add_worker__();
     void pop_workers__(size_t count);
+    void check_reserve_worker__(size_t threshold);
 
 public:
     std::chrono::milliseconds launch_timeout_ms{1000};
@@ -119,13 +108,15 @@ decltype(auto) thread_pool::launch_task(Fn_&& f, Args_... args)
     auto elapse_begin = system_clock::now();
     while (!tasks_.try_push(executor{std::move(value_tuple)})) {
         if (system_clock::now() - elapse_begin > launch_timeout_ms) {
-            throw timeout_exception{};
+            throw timeout_exception{""};
         }
 
         std::this_thread::yield();
     }
 
+    check_reserve_worker__(1);
     event_wait_.notify_one();
+
     return return_type(promise->get_future());
 }
 
@@ -170,11 +161,7 @@ inline bool thread_pool::try_add_worker__()
 
         while (workers_[index].disposer.value == false) {
             if (tasks_.try_pop(event)) {
-                if ( // reserve workers if required.
-                  num_available_workers() == 1
-                  && clock::now() - latest_active_.load() > stall_wait_tolerance) {
-                    resize_worker_pool(num_workers() + 2);
-                }
+                check_reserve_worker__(1);
 
                 latest_active_ = std::chrono::system_clock::now();
                 num_working_workers_.fetch_add(1);
@@ -212,5 +199,14 @@ inline void thread_pool::pop_workers__(size_t count)
 
     workers_.erase(begin, end);
     num_workers_cached_ = workers_.size();
+}
+
+inline void thread_pool::check_reserve_worker__(size_t threshold)
+{
+    if ( // reserve workers if required.
+      num_available_workers() <= threshold
+      && clock::now() - latest_active_.load() > stall_wait_tolerance) {
+        resize_worker_pool((num_workers() & ~1) + 2);
+    }
 }
 } // namespace templates

@@ -2,6 +2,7 @@
 #include <any>
 #include <atomic>
 #include <concepts>
+#include <condition_variable>
 #include <kangsw/thread_pool.hxx>
 #include <map>
 #include <memory>
@@ -33,6 +34,14 @@ private:
 class pipe_link_exception : public pipe_exception {
 public:
     explicit pipe_link_exception(const char* msg)
+        : pipe_exception(msg)
+    {
+    }
+};
+
+class pipe_input_exception : public pipe_exception {
+public:
+    explicit pipe_input_exception(const char* msg)
         : pipe_exception(msg)
     {
     }
@@ -91,7 +100,7 @@ class pipe_base : public std::enable_shared_from_this<pipe_base> {
     friend class pipeline_base;
 
 private:
-    inline static templates::thread_pool pipe_workers_{1024, 32, 1024};
+    inline static kangsw::thread_pool pipe_workers_{1024, 32, 1024};
 
 public:
     static void set_num_workers(size_t n) { pipe_workers_.resize_worker_pool(n); }
@@ -111,10 +120,14 @@ public:
 
     public:
         /**
-         * 입력 데이터를 공급하기 위해 잠급니다.
-         * 일반적으로 많은 수의 스레드에서 접근됩니다.
+         * 입력 인덱스 검증하기
          */
-        auto seq1_lock_input() -> std::pair<std::any&, std::lock_guard<std::mutex>>;
+        fence_index_t active_input_fence() const { return active_input_fence_; }
+
+        /**
+         * @return has_value() == false이면 현재 입력을 버려야 합니다.
+         */
+        std::optional<bool> can_submit_input(fence_index_t fence) const;
 
         /**
          * 입력 데이터 공급 완료 후 호출합니다.
@@ -124,24 +137,35 @@ public:
          * 내부적으로는 owner_에게 입력 시퀀스 갱신 요청
          * 입력이 qualified 되면 owner_의 입력 가능 fence index가 1 증가합니다. 새로운 fence index는 활성화된 executor_slot에 할당됩니다. 그러나, 활성화된 executor_slot이 여전히 실행 중이면 active_slot()을 얻을 수 없으며, 따라서 입력 또한 disable 상태가 됩니다.
          *
-         * @param input_index ready_conds에서의 순서를 나타냅니다.
-         * @param execute 최종 condition list에 false 포함 시 현재 fence index 증가. 단, 하나라도 false가 들어오는 경우 입력 불가능 상태로 전환하고, fence_index를 1 증가
-         * @param current_fence 현재 fence index를 전달합니다. execute==false일 때 current_fence를 기준으로 active_input_fence_ 값이 증감합니다.
+         * @returns true 반환시 처리 완료, false 반환 시 retry가 필요합니다.
          */
-        void seq2_submit_input(size_t input_index, bool execute, fence_index_t current_fence);
+        bool submit_input(
+          fence_index_t fence,
+          size_t input_index,
+          std::function<void(std::any&)> const& input_manip,
+          std::shared_ptr<base_fence_shared_object> fence_obj,
+          bool abort_current = false);
 
         /**
-         * 즉시 실행을 시도합니다. 입력 링크가 없는 경우에만 가능.(있으면 예외 던짐)
-         * 외부에서 파이프라인에 직접 입력을 공급하기 위함입니다.
+         * 주어진 입력 데이터로 즉시 실행합니다. 입력 링크가 없는 경우에만 가능.(있으면 예외 던짐)
+         * 외부에서 파이프라인에 직접 입력을 공급할 수 있습니다.
+         *
+         * 단, 이를 위해 적어도 하나의 실행기가 비어 있어야 합니다. 아니면 false를 반환합니다.
          */
-        void seq2o_launch_immediate();
+        bool submit_input_direct__(std::any&& input);
+
+    private:
+        // clang-format off
+        enum class input_link_state { none, valid, discarded };
+        // clang-format on
 
     private:
         pipe_base& owner_;
         bool is_optional_ = false;
         std::pair<std::any, std::mutex> cached_input_;
-        std::vector<std::optional<bool>> ready_conds_;
-        fence_index_t active_input_fence_ = fence_index_t::none;
+        std::vector<input_link_state> ready_conds_;
+        std::atomic<fence_index_t> active_input_fence_ = fence_index_t::none;
+        std::shared_ptr<base_fence_shared_object> active_input_fence_object_;
     };
 
     class executor_slot {
@@ -197,7 +221,7 @@ public:
         std::unique_ptr<executor_base> executor_;
         std::optional<std::future<pipe_error>> execution_;
 
-        execution_context contexts_[2];
+        execution_context contexts_[2] = {};
         bool context_front_ = false;
 
         std::shared_ptr<base_fence_shared_object> fence_object_;

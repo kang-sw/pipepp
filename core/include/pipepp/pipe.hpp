@@ -1,8 +1,8 @@
 #pragma once
-#include "thread_pool.hxx"
 #include <any>
 #include <atomic>
 #include <concepts>
+#include <kangsw/thread_pool.hxx>
 #include <map>
 #include <memory>
 #include <optional>
@@ -91,7 +91,7 @@ class pipe_base : public std::enable_shared_from_this<pipe_base> {
     friend class pipeline_base;
 
 private:
-    inline static templates::thread_pool pipe_workers_{1024, 32};
+    inline static templates::thread_pool pipe_workers_{1024, 32, 1024};
 
 public:
     static void set_num_workers(size_t n) { pipe_workers_.resize_worker_pool(n); }
@@ -112,6 +112,7 @@ public:
     public:
         /**
          * 입력 데이터를 공급하기 위해 잠급니다.
+         * 일반적으로 많은 수의 스레드에서 접근됩니다.
          */
         auto seq1_lock_input() -> std::pair<std::any&, std::lock_guard<std::mutex>>;
 

@@ -50,11 +50,6 @@ void pipepp::impl__::pipe_base::executor_slot::_launch_callback()
     auto exec_res = executor()->invoke__(cached_input_, cached_output_);
     latest_execution_result_ = exec_res;
 
-    auto fence_obj = fence_object_.get();
-    for (auto& fn : owner_.output_handlers_) {
-        fn(exec_res, *fence_obj, cached_output_);
-    }
-
     if (owner_.output_links_.empty() == false) {
         workers().task(&executor_slot::_output_link_callback, this, 0, exec_res > pipe_error::warning);
     }
@@ -67,19 +62,28 @@ void pipepp::impl__::pipe_base::executor_slot::_output_link_callback(size_t outp
     using namespace std::chrono;
     auto delay = 0us;
 
-    if (auto check = slot.can_submit_input(fence_index_); check.has_value()) {
+    if (!is_output_order_.load(std::memory_order_relaxed)) {
+        // 만약 이 실행기의 출력 순서가 아직 오지 않았다면, 단순히 대기합니다.
+        delay = 50us;
+    }
+    else if (auto check = slot.can_submit_input(fence_index_); check.has_value()) {
         auto input_manip = [this, &link](std::any& out) {
             link.handler(*fence_object_, cached_output_, out);
         };
 
-        if (*check && slot.submit_input(fence_index_, owner_.id(), input_manip, fence_object_, aborting)) {
+        // 만약 optional인 경우, 입력이 준비되지 않았다면 abort에 true를 지정해,
+        //현재 입력 fence를 즉시 취소합니다.
+        bool const abort_optional = slot.is_optional_ && !*check;
+        bool const can_try_submit = *check || abort_optional;
+        if (can_try_submit
+            && slot.submit_input(fence_index_, owner_.id(), input_manip, fence_object_, abort_optional)) {
             // no need to retry.
             // go to next index.
             ++output_index;
         }
         else {
             // Retry after short delay.
-            delay = 100us;
+            delay = 200us;
         }
     }
     else { // simply discards current output link
@@ -91,13 +95,116 @@ void pipepp::impl__::pipe_base::executor_slot::_output_link_callback(size_t outp
         workers().timer(delay, &executor_slot::_output_link_callback, this, output_index, aborting);
     }
     else {
-        // 연결된 모든 출력을 처리한 경우로, 현재 실행 슬롯을 idle 상태로 돌립니다.
+        auto constexpr RELAXED = std::memory_order_relaxed;
+        // 연결된 모든 출력을 처리한 경우입니다.
+
+        // 먼저, 연결된 일반 핸들러를 모두 처리합니다.
+        auto fence_obj = fence_object_.get();
+        auto exec_res = latest_execution_result_.load(RELAXED);
+        for (auto& fn : owner_.output_handlers_) {
+            fn(exec_res, *fence_obj, cached_output_);
+        }
+
+        // 실행기의 내부 상태를 정리합니다.
         fence_object_.reset();
+        owner_._rotate_output_order(this); // 출력 순서 회전
+
+        // 실행 문맥 버퍼를 전환합니다.
         _swap_exec_context();
+        owner_.latest_exec_context_.store(&context_read(), RELAXED);
+        owner_.latest_output_fence_.store(fence_index_.load(RELAXED), RELAXED);
 
         // fence_index_는 일종의 lock 역할을 수행하므로, 가장 마지막에 지정합니다.
         fence_index_.store(fence_index_t::none, std::memory_order_seq_cst);
     }
+}
+
+void pipepp::impl__::pipe_base::connect_output_to(pipe_base* other, pipepp::impl__::pipe_base::output_link_adapter_t&& adapter)
+{
+    // 출력을 대상의 입력에 연결합니다.
+    // - 중복되지 않아야 합니다.
+    // - 출력이 입력으로 순환하지 않아야 합니다.
+    // - 출력은 자신을 포함한, 입력은 부모 중 가장 가까운 optional 노드를 공유해야 합니다.
+
+    for (auto& out : output_links_) {
+        if (out.pipe->id() == other->id())
+            throw pipe_link_exception("pipe link duplication");
+    }
+
+    // 재귀적 탐색을 위한 predicate 함수
+    //
+    auto output_recurse = [](pipe_base* ty, auto emplacer) {
+        for (auto& out : ty->output_links_) {
+            emplacer(out.pipe);
+        }
+    };
+    auto input_recurse = [](pipe_base* ty, auto emplacer) {
+        for (auto& in : ty->input_links_) {
+            emplacer(in.pipe);
+        }
+    };
+
+    // 출력 파이프의 순환 여부 검사
+    // other 노드의 출력 노드를 재귀적으로 탐색해, 입력 노드와 순환하는지 검색합니다.
+    if (
+      bool is_met = false;
+      kangsw::recurse_for_each(
+        other, output_recurse,
+        [my_id = id(), &is_met](pipe_base* node) {
+            if (node->id() == my_id) {
+                is_met = true;
+                return kangsw::recurse_return::do_break;
+            }
+            return kangsw::recurse_return::do_continue;
+        }),
+      is_met) {
+        throw pipe_link_exception("cyclic link found");
+    }
+
+    // 각각 가장 가까운 optional node, 가장 먼 essential node를 공유해야 함 (항상 true로 가정)
+    pipe_base *optional_from = nullptr, *optional_to = nullptr;
+    size_t min_depth = -1;
+    kangsw::recurse_for_each(
+      other, input_recurse, // 입력 노드는 자기 자신을 포함하지 않고 계산
+      [my_id = id(), &optional_from, &min_depth](pipe_base* node, size_t depth) {
+          if (node->input_slot_.is_optional_ && depth < min_depth && depth > 0) {
+              optional_from = node;
+              min_depth = depth;
+          }
+      });
+    min_depth = -1;
+    kangsw::recurse_for_each(
+      this, input_recurse, // 입력 노드는 자기 자신을 포함하지 않고 계산
+      [my_id = id(), &optional_to, &min_depth](pipe_base* node, size_t depth) {
+          if (node->input_slot_.is_optional_ && depth < min_depth) {
+              optional_to = node;
+              min_depth = depth;
+          }
+      });
+
+    if (optional_from != optional_to) {
+        throw pipe_input_exception("nearlest optional node does not match");
+    }
+
+    output_links_.push_back({std::move(adapter), other});
+    input_links_.push_back({this});
+}
+
+void pipepp::impl__::pipe_base::_rotate_output_order(executor_slot* ref)
+{
+    auto begin = exec_slots_.data(), end = exec_slots_.data() + exec_slots_.size();
+    if (ref < begin || end <= ref) {
+        throw pipe_exception("invalid argument: out of range");
+    }
+
+    auto constexpr RELAX = std::memory_order_relaxed;
+    if (ref->_is_output_order().load(RELAX) == false) {
+        throw pipe_exception("invalid request for output order rotation");
+    }
+
+    auto next = begin + (ref - begin + 1) % (end - begin);
+    ref->_is_output_order().store(false, RELAX);
+    next->_is_output_order().store(true, RELAX);
 }
 
 bool pipepp::impl__::pipe_base::input_slot_t::submit_input(fence_index_t output_fence, pipepp::pipe_id_t input_pipe, std::function<void(std::any&)> const& input_manip, std::shared_ptr<pipepp::base_fence_shared_object> const& fence_obj, bool abort_current)
@@ -116,7 +223,7 @@ bool pipepp::impl__::pipe_base::input_slot_t::submit_input(fence_index_t output_
         return false;
     }
 
-    if (owner_.active_exec_slot().is_busy()) {
+    if (owner_._active_exec_slot().is_busy()) {
         // 차례가 된 실행 슬롯이 바쁩니다.
         // 재시도를 요청합니다.
         return false;
@@ -140,7 +247,6 @@ bool pipepp::impl__::pipe_base::input_slot_t::submit_input(fence_index_t output_
     }
 
     if (abort_current) {
-
         // 현재 입력 슬롯의 펜스를 invalidate합니다.
         // 펜스는 다음 인덱스로 넘어감
         _prepare_next();
@@ -163,7 +269,7 @@ bool pipepp::impl__::pipe_base::input_slot_t::submit_input(fence_index_t output_
 
     if (is_all_input_link_ready) {
         // 입력이 모두 준비되었으므로, 실행기에 입력을 넘깁니다.
-        auto& exec = owner_.active_exec_slot();
+        auto& exec = owner_._active_exec_slot();
         exec._launch_async({
           std::move(active_input_fence_object_),
           active_fence,
@@ -171,7 +277,8 @@ bool pipepp::impl__::pipe_base::input_slot_t::submit_input(fence_index_t output_
         });
 
         // 다음 입력 받을 준비 완료
-        _prepare_next();
+        owner_._rotate_slot(); // 입력을 받을 실행기 슬롯 회전
+        _prepare_next();       // 입력 슬롯 클리어
     }
     return true;
 }

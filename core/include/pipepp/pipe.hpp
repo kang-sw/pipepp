@@ -103,11 +103,8 @@ struct pipe_id_gen {
 class pipe_base : public std::enable_shared_from_this<pipe_base> {
     friend class pipeline_base;
 
-private:
-    inline static kangsw::thread_pool pipe_workers_{1024, 32, 1024};
-
 public:
-    static void set_num_workers(size_t n) { pipe_workers_.resize_worker_pool(n); }
+    using output_link_adapter_t = std::function<void(base_fence_shared_object&, std::any const& output, std::any& input)>;
 
 public:
     class input_slot_t {
@@ -189,6 +186,8 @@ public:
         fence_index_t fence_index() const { return fence_index_; }
         bool is_busy() const { return fence_index_ != fence_index_t::none; }
 
+        std::atomic_bool& _is_output_order() { return is_output_order_; }
+
     public:
         struct launch_args_t {
             std::shared_ptr<base_fence_shared_object> fence_obj;
@@ -246,33 +245,35 @@ public:
 
         std::any cached_input_;
         std::any cached_output_;
+
+        std::atomic_bool is_output_order_ = false;
     };
 
-public: // accessors
-    executor_slot& active_exec_slot() { return exec_slots_[slot_active()]; }
-    executor_slot const& active_exec_slot() const { return exec_slots_[slot_active()]; }
-    size_t slot_active() const { return active_exec_slot_.load() % exec_slots_.size(); }
+public:
     pipe_id_t id() const { return id_; }
+    bool is_launched() const { return launched_; }
 
     // 저장된 스레드 풀 레퍼런스 획득
     kangsw::timer_thread_pool& thread_pool() const { return *ref_workers_; }
 
+public: // accessors
+    executor_slot& _active_exec_slot() { return exec_slots_[_slot_active()]; }
+    executor_slot const& _active_exec_slot() const { return exec_slots_[_slot_active()]; }
+    size_t _slot_active() const { return active_exec_slot_.load() % exec_slots_.size(); }
+
 public:
-    /** 선택적 입력은 출력 노드가 단일 입력(즉, 자신)일 때만 가능합니다. */
-    bool input_can_be_optional() const;
-
-    /** input_can_be_optional == false면 throw. */
-    void set_optional_input(bool is_optional);
-
     /** this출력->to입력 방향으로 연결합니다. */
-    void connect_output_to(pipe_base* other);
+    void connect_output_to(pipe_base* other, output_link_adapter_t&& adapter);
+
+    /** 파이프라인을 시동합니다. */
+    void launch();
 
     /** 입력을 강제로 공급합니다. */
     // TODO
 
 private:
-    /** on_execution_finished()에서 호출, 해당 슬롯이 출력할 차례인지 검사합니다. */
-    bool _is_valid_output_order(executor_slot* ref);
+    /** 출력이 완료된 슬롯에서 호출합니다. 다음 슬롯을 입력 활성화 */
+    void _rotate_output_order(executor_slot* ref);
 
     /** 다음 입력 슬롯을 활성화. */
     size_t _rotate_slot() { return active_exec_slot_.fetch_add(1); }
@@ -282,12 +283,13 @@ private:
         pipe_base* pipe;
     };
     struct output_link_desc {
-        std::function<void(base_fence_shared_object&, std::any const& output, std::any& input)> handler;
+        output_link_adapter_t handler;
         pipe_base* pipe;
     };
 
 private:
     pipe_id_t const id_ = pipe_id_gen::generate();
+    std::atomic_bool launched_ = false;
 
     /** 모든 파이프 입력을 처리합니다. */
     input_slot_t input_slot_{*this};
@@ -300,6 +302,10 @@ private:
     /** 모든 입출력 링크는 파이프라인 시동 이후 변하지 않아야 합니다. */
     std::vector<input_link_desc> input_links_;
     std::vector<output_link_desc> output_links_;
+
+    // 가장 최근에 실행된 execution 정보
+    std::atomic<execution_context const*> latest_exec_context_;
+    std::atomic<fence_index_t> latest_output_fence_;
 
     std::vector<std::function<void(pipe_error, base_fence_shared_object const&, std::any const&)>> output_handlers_;
 

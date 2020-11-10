@@ -116,7 +116,7 @@ public:
         }
 
         /** ready condition 개수 설정. 초기화 함수 */
-        void num_ready_conditions__(size_t n);
+        void _resize_input_links(size_t n);
 
     public:
         /**
@@ -140,10 +140,10 @@ public:
          * @returns true 반환시 처리 완료, false 반환 시 retry가 필요합니다.
          */
         bool submit_input(
-          fence_index_t fence,
+          fence_index_t output_fence,
           size_t input_index,
           std::function<void(std::any&)> const& input_manip,
-          std::shared_ptr<base_fence_shared_object> fence_obj,
+          std::shared_ptr<base_fence_shared_object> const& fence_obj,
           bool abort_current = false);
 
         /**
@@ -152,7 +152,10 @@ public:
          *
          * 단, 이를 위해 적어도 하나의 실행기가 비어 있어야 합니다. 아니면 false를 반환합니다.
          */
-        bool submit_input_direct__(std::any&& input);
+        bool _submit_input_direct(std::any&& input);
+
+    private:
+        void _prepare_next();
 
     private:
         // clang-format off
@@ -178,13 +181,25 @@ public:
         {
         }
 
-        // 실행 문맥 관련
+    public: // 실행 문맥 관련
         executor_base* executor() const { return executor_.get(); }
         execution_context const& context_read() const { return contexts_[context_front_]; }
         execution_context& context_write() { return contexts_[!context_front_]; }
-        void swap_exec_context() { context_front_ = !context_front_; }
+        fence_index_t fence_index() const { return fence_index_; }
+        bool is_busy() const { return fence_index_ != fence_index_t::none; }
 
-    public: // 단계별로 등록되는 콜백 목록
+    public:
+        struct launch_args_t {
+            std::shared_ptr<base_fence_shared_object> fence_obj;
+            fence_index_t fence_index;
+            std::any input;
+        };
+        void _launch_async(launch_args_t arg);
+
+    private:
+        void _swap_exec_context() { context_front_ = !context_front_; }
+
+    private: // 단계별로 등록되는 콜백 목록
         /**
          * 실행 완료 후 비동기적으로 호출되는 콜백입니다.
          * 연결된 출력 핸들러 각각을 iterate합니다.
@@ -212,8 +227,8 @@ public:
          *  모든 출력을 처리한 후엔, ready_conditions_를 비우고 입력 가능 상태로 전환
          *
          */
-        void on_execution_finished(); // 파라미터는 나중에 추가
-        void wait_target_input_slot();
+        void _launch_callback(); // 파라미터는 나중에 추가
+        void _wait_target_input_slot();
 
     private:
         pipe_base& owner_;
@@ -225,8 +240,9 @@ public:
         bool context_front_ = false;
 
         std::shared_ptr<base_fence_shared_object> fence_object_;
-        fence_index_t current_fence_index_ = fence_index_t::none;
+        std::atomic<fence_index_t> fence_index_ = fence_index_t::none;
 
+        std::any cached_input_;
         std::any cached_output_;
     };
 
@@ -249,10 +265,10 @@ public:
     // TODO
 private:
     /** on_execution_finished()에서 호출, 해당 슬롯이 출력할 차례인지 검사합니다. */
-    bool is_valid_output_order__(executor_slot* ref);
+    bool _is_valid_output_order(executor_slot* ref);
 
     /** 다음 입력 슬롯을 활성화. */
-    size_t rotate_slot__() { return active_exec_slot_.fetch_add(1); }
+    size_t _rotate_slot() { return active_exec_slot_.fetch_add(1); }
 
 private:
     struct input_link_desc {

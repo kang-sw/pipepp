@@ -73,7 +73,8 @@ namespace impl__ {
  * 등의 기능을 제공합니다.
  */
 class execution_context {
-    // TODO
+public:
+    void clear_records() {} // TODO
 };
 
 /** 기본 실행기. */
@@ -82,11 +83,14 @@ public:
     virtual ~executor_base() = default;
     virtual pipe_error invoke__(std::any const& input, std::any& output) = 0;
 
+public:
+    void set_context_ref(execution_context* ref) { context_ = ref, context_->clear_records(); }
+
 private:
     execution_context* context_ = nullptr;
 };
 
-struct pipe_id {
+struct pipe_id_gen {
     inline static size_t gen_ = 0;
     static pipe_id_t generate() { return static_cast<pipe_id_t>(gen_++); }
 };
@@ -141,7 +145,7 @@ public:
          */
         bool submit_input(
           fence_index_t output_fence,
-          size_t input_index,
+          pipe_id_t input_index,
           std::function<void(std::any&)> const& input_manip,
           std::shared_ptr<base_fence_shared_object> const& fence_obj,
           bool abort_current = false);
@@ -173,9 +177,6 @@ public:
 
     class executor_slot {
     public:
-        std::shared_ptr<base_fence_shared_object> fence_object;
-
-    public:
         explicit executor_slot(pipe_base& owner)
             : owner_(owner)
         {
@@ -195,6 +196,7 @@ public:
             std::any input;
         };
         void _launch_async(launch_args_t arg);
+        kangsw::timer_thread_pool& workers();
 
     private:
         void _swap_exec_context() { context_front_ = !context_front_; }
@@ -228,13 +230,13 @@ public:
          *
          */
         void _launch_callback(); // 파라미터는 나중에 추가
-        void _wait_target_input_slot();
+        void _output_link_callback(size_t output_index, bool aborting);
 
     private:
         pipe_base& owner_;
 
         std::unique_ptr<executor_base> executor_;
-        std::optional<std::future<pipe_error>> execution_;
+        std::atomic<pipe_error> latest_execution_result_;
 
         execution_context contexts_[2] = {};
         bool context_front_ = false;
@@ -250,6 +252,10 @@ public: // accessors
     executor_slot& active_exec_slot() { return exec_slots_[slot_active()]; }
     executor_slot const& active_exec_slot() const { return exec_slots_[slot_active()]; }
     size_t slot_active() const { return active_exec_slot_.load() % exec_slots_.size(); }
+    pipe_id_t id() const { return id_; }
+
+    // 저장된 스레드 풀 레퍼런스 획득
+    kangsw::timer_thread_pool& thread_pool() const { return *ref_workers_; }
 
 public:
     /** 선택적 입력은 출력 노드가 단일 입력(즉, 자신)일 때만 가능합니다. */
@@ -263,6 +269,7 @@ public:
 
     /** 입력을 강제로 공급합니다. */
     // TODO
+
 private:
     /** on_execution_finished()에서 호출, 해당 슬롯이 출력할 차례인지 검사합니다. */
     bool _is_valid_output_order(executor_slot* ref);
@@ -275,24 +282,28 @@ private:
         pipe_base* pipe;
     };
     struct output_link_desc {
-        std::function<void(std::any const&, std::any&)> handler;
+        std::function<void(base_fence_shared_object&, std::any const& output, std::any& input)> handler;
         pipe_base* pipe;
     };
 
 private:
-    pipe_id_t const id_ = pipe_id::generate();
+    pipe_id_t const id_ = pipe_id_gen::generate();
 
     /** 모든 파이프 입력을 처리합니다. */
     input_slot_t input_slot_{*this};
 
+    /** 실행기의 개수는 파이프라인 시동 이후 변하지 않아야 합니다. */
     std::vector<executor_slot> exec_slots_;
     std::atomic_size_t active_exec_slot_;         // idle 슬롯 선택(반드시 순차적)
     std::atomic_size_t pending_output_exec_slot_; // 순차적 출력 보장
 
+    /** 모든 입출력 링크는 파이프라인 시동 이후 변하지 않아야 합니다. */
     std::vector<input_link_desc> input_links_;
     std::vector<output_link_desc> output_links_;
 
-    std::vector<std::function<void(pipe_error, std::any const&)>> output_handlers_;
+    std::vector<std::function<void(pipe_error, base_fence_shared_object const&, std::any const&)>> output_handlers_;
+
+    kangsw::timer_thread_pool* ref_workers_;
 }; // namespace pipepp
 
 } // namespace impl__

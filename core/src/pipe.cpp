@@ -212,7 +212,7 @@ void pipepp::impl__::pipe_base::_connect_output_to_impl(pipe_base* other, pipepp
     assert(other->input_links_.size() == other->input_slot_.ready_conds_.size());
 }
 
-void pipepp::impl__::pipe_base::launch(std::function<std::unique_ptr<executor_base>()>&& factory, size_t num_executors)
+void pipepp::impl__::pipe_base::launch(size_t num_executors, std::function<std::unique_ptr<executor_base>()>&& factory)
 {
     if (input_slot_.active_input_fence_.load(std::memory_order_relaxed) != fence_index_t::none) {
         throw pipe_exception("this pipe is already launched!");

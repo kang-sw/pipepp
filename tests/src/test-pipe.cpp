@@ -4,6 +4,7 @@
 #include "pipepp/pipe.hpp"
 
 namespace pipepp::pipe_test {
+
 struct test_exec {
     struct input_type {
         int value = 0;
@@ -11,6 +12,10 @@ struct test_exec {
     struct output_type {
         int value = 0;
     };
+
+    test_exec(std::string pfx)
+        : prefix(pfx)
+    {}
 
     pipe_error invoke(execution_context& exec, input_type const& input, output_type& output)
     {
@@ -46,7 +51,7 @@ TEST_CASE("pipe initialization")
     auto pipe_names = {"pipe 0", "pipe 1", "pipe 2_0", "pipe 2_1", "pipe3_opt", "pipe3_0"};
     // clang-format on
 
-    for (auto& [ref, name] : kangsw::zip(pipes, pipe_names)) {
+    for (auto& [ref, _1] : kangsw::zip(pipes, pipe_names)) {
         ref->set_thread_pool_reference(&workers);
     }
 
@@ -72,5 +77,13 @@ TEST_CASE("pipe initialization")
       pipe2_0->connect_output_to<
         base_fence_shared_object, test_exec::output_type, test_exec::input_type>(
         *pipe0, &test_exec::recursive_adapter));
+
+    auto factory = [](std::string name) {
+        return create_executor<test_exec>(name);
+    };
+
+    for (auto& [pipe, name] : kangsw::zip(pipes, pipe_names)) {
+        pipe->launch_by(2, factory, name);
+    }
 }
 } // namespace pipepp::pipe_test

@@ -72,7 +72,15 @@ public:
 public:
     void set_context_ref(execution_context* ref) { context_ = ref, context_->clear_records(); }
 
+    // 실제 실행기의 레퍼런스를 획득합니다.
+    // 추후, json_option_interface를 상속하는 실행기 등에 사용
+    template <typename Ty_> Ty_ const* actual_executor() const { return dynamic_cast<Ty_ const*>(_get_actual_executor()); }
+    template <typename Ty_> Ty_* actual_executor() { return dynamic_cast<Ty_*>(const_cast<void*>(_get_actual_executor())); }
+
 private:
+    virtual void const* _get_actual_executor() const = 0;
+
+protected:
     execution_context* context_ = nullptr;
 };
 
@@ -84,7 +92,7 @@ struct pipe_id_gen {
 /**
  * 파이프 기본 클래스
  */
-class pipe_base : public std::enable_shared_from_this<pipe_base> {
+class pipe_base final : public std::enable_shared_from_this<pipe_base> {
     friend class pipeline_base;
 
 public:
@@ -260,7 +268,11 @@ public:
     void connect_output_to(pipe_base& other, Fn_&&);
 
     /** 파이프라인을 시동합니다. */
-    void launch(std::function<std::unique_ptr<executor_base>()>&& factory, size_t num_executors);
+    void launch(size_t num_executors, std::function<std::unique_ptr<executor_base>()>&& factory);
+
+    /** launch의 편의성 래퍼입니다. */
+    template <typename Fn_, typename... Args_>
+    void launch_by(size_t num_executors, Fn_&& factory, Args_&&... args);
 
     /** 입력 공급 시도 */
     bool try_submit(std::any&& input, std::shared_ptr<base_fence_shared_object> fence_object) { return input_slot_._submit_input_direct(std::move(input), std::move(fence_object)); }
@@ -331,19 +343,41 @@ void pipe_base::connect_output_to(pipe_base& other, Fn_&& fn)
     _connect_output_to_impl(&other, wrapper);
 }
 
+template <typename Fn_, typename... Args_>
+void pipe_base::launch_by(size_t num_executors, Fn_&& factory, Args_&&... args)
+{
+    launch(
+      num_executors,
+      std::bind<std::unique_ptr<executor_base>>(
+        std::forward<Fn_>(factory),
+        args...)); // Intentionally not forwarded to prevent move assignment
+}
+
 } // namespace impl__
 /**
  * 독립된 알고리즘 실행기 하나를 정의합니다.
  * 파이프에 공급하는 모든 실행기는 이 클래스를 상속해야 합니다.
  */
 template <typename Exec_>
-class base_executor : impl__::executor_base {
+class executor final : public impl__::executor_base {
 public:
     using executor_type = Exec_;
     using input_type = typename executor_type::input_type;
     using output_type = typename executor_type::output_type;
 
     static_assert(std::is_default_constructible_v<output_type>);
+
+public:
+    template <typename... Ty_>
+    executor(Ty_&&... args)
+        : exec_(std::forward<Ty_>(args)...)
+    {
+    }
+
+    executor(executor_type&& ref)
+        : exec_(std::move(ref))
+    {
+    }
 
 public:
     pipe_error invoke__(std::any const& input, std::any& output) final
@@ -356,12 +390,28 @@ public:
         }
 
         return std::invoke(
-          &executor_type::invoke, this,
+          &executor_type::invoke, &exec_,
+          *context_,
           std::any_cast<input_type const&>(input), std::any_cast<output_type&>(output));
     }
 
     // Non-virtual to be overriden by base class
-    pipe_error invoke(execution_context& context, input_type const& i, output_type& o) { return pipe_error::ok; }
+    pipe_error invoke(execution_context& context, input_type const& i, output_type& o) { throw; }
+
+private:
+    void const* _get_actual_executor() const override { return &exec_; }
+
+    template <typename ExecFn_, typename... Args_>
+    friend decltype(auto) create_executor(Args_&&... args);
+
+private:
+    executor_type exec_;
 };
+
+template <typename Exec_, typename... Args_>
+decltype(auto) create_executor(Args_&&... args)
+{
+    return std::make_unique<executor<Exec_>>(std::forward<Args_>(args)...);
+}
 
 } // namespace pipepp

@@ -1,4 +1,5 @@
 #include <bitset>
+#include <cassert>
 #include <kangsw/enum_arithmetic.hxx>
 #include <kangsw/misc.hxx>
 #include <pipepp/pipe.hpp>
@@ -135,6 +136,10 @@ void pipepp::impl__::pipe_base::_connect_output_to_impl(pipe_base* other, pipepp
         throw pipe_link_exception("pipe already launched");
     }
 
+    if (this == other) {
+        throw pipe_link_exception("cannot link with itself");
+    }
+
     // 출력을 대상의 입력에 연결합니다.
     // - 중복되지 않아야 합니다.
     // - 출력이 입력으로 순환하지 않아야 합니다.
@@ -200,8 +205,11 @@ void pipepp::impl__::pipe_base::_connect_output_to_impl(pipe_base* other, pipepp
     }
 
     output_links_.push_back({std::move(adapter), other});
-    input_links_.push_back({this});
-    input_slot_.ready_conds_.push_back(input_slot_t::input_link_state::none);
+    other->input_links_.push_back({this});
+    other->input_slot_.ready_conds_.push_back(input_slot_t::input_link_state::none);
+
+    // If not, somethin's wrong.
+    assert(other->input_links_.size() == other->input_slot_.ready_conds_.size());
 }
 
 void pipepp::impl__::pipe_base::launch(std::function<std::unique_ptr<executor_base>()>&& factory, size_t num_executors)

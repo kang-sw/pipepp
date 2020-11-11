@@ -74,7 +74,7 @@ namespace impl__ {
  */
 class execution_context {
 public:
-    void clear_records() {} // TODO
+    void clear_records() {} // TODO implement
 };
 
 /** 기본 실행기. */
@@ -130,6 +130,7 @@ public:
          */
         std::optional<bool> can_submit_input(fence_index_t fence) const;
 
+        void _supply_input_to_active_executor();
         /**
          * 입력 데이터 공급 완료 후 호출합니다.
          * ready_conds_의 해당 인덱스를 활성화합니다.
@@ -140,7 +141,7 @@ public:
          *
          * @returns true 반환시 처리 완료, false 반환 시 retry가 필요합니다.
          */
-        bool submit_input(
+        bool _submit_input(
           fence_index_t output_fence,
           pipe_id_t input_index,
           std::function<void(std::any&)> const& input_manip,
@@ -153,7 +154,8 @@ public:
          *
          * 단, 이를 위해 적어도 하나의 실행기가 비어 있어야 합니다. 아니면 false를 반환합니다.
          */
-        bool _submit_input_direct(std::any&& input);
+        bool _submit_input_direct(std::any&& input); // TODO implement
+        bool _can_submit_input_direct() const;
 
     private:
         void _prepare_next();
@@ -269,7 +271,7 @@ public:
     void launch();
 
     /** 입력을 강제로 공급합니다. */
-    // TODO
+    // TODO implement
 
 private:
     /** 출력이 완료된 슬롯에서 호출합니다. 다음 슬롯을 입력 활성화 */
@@ -310,6 +312,9 @@ private:
     std::vector<std::function<void(pipe_error, base_fence_shared_object const&, std::any const&)>> output_handlers_;
 
     kangsw::timer_thread_pool* ref_workers_;
+
+    //---GUARD--//
+    kangsw::destruction_guard destruction_guard_;
 }; // namespace pipepp
 
 } // namespace impl__

@@ -27,6 +27,8 @@ void pipepp::impl__::pipe_base::input_slot_t::_prepare_next()
 
 void pipepp::impl__::pipe_base::executor_slot::_launch_async(launch_args_t arg)
 {
+    std::lock_guard destruction_guard{owner_.destruction_guard_};
+
     if (is_busy()) {
         throw pipe_exception("executor is busy!");
     }
@@ -35,7 +37,8 @@ void pipepp::impl__::pipe_base::executor_slot::_launch_async(launch_args_t arg)
     fence_object_ = std::move(arg.fence_obj);
     cached_input_ = std::move(arg.input);
 
-    owner_.thread_pool().task(&executor_slot::_launch_callback, this);
+    owner_.destruction_guard_.lock();
+    owner_.thread_pool().add_task(&executor_slot::_launch_callback, this);
 }
 
 kangsw::timer_thread_pool& pipepp::impl__::pipe_base::executor_slot::workers()
@@ -46,12 +49,17 @@ kangsw::timer_thread_pool& pipepp::impl__::pipe_base::executor_slot::workers()
 void pipepp::impl__::pipe_base::executor_slot::_launch_callback()
 {
     // 실행기 시동
+    std::lock_guard destruction_guard{owner_.destruction_guard_};
+
     executor()->set_context_ref(&context_write());
     auto exec_res = executor()->invoke__(cached_input_, cached_output_);
     latest_execution_result_ = exec_res;
 
     if (owner_.output_links_.empty() == false) {
-        workers().task(&executor_slot::_output_link_callback, this, 0, exec_res > pipe_error::warning);
+        workers().add_task(&executor_slot::_output_link_callback, this, 0, exec_res > pipe_error::warning);
+    }
+    else {
+        owner_.destruction_guard_.unlock();
     }
 }
 
@@ -76,7 +84,7 @@ void pipepp::impl__::pipe_base::executor_slot::_output_link_callback(size_t outp
         bool const abort_optional = slot.is_optional_ && !*check;
         bool const can_try_submit = *check || abort_optional;
         if (can_try_submit
-            && slot.submit_input(fence_index_, owner_.id(), input_manip, fence_object_, abort_optional)) {
+            && slot._submit_input(fence_index_, owner_.id(), input_manip, fence_object_, abort_optional)) {
             // no need to retry.
             // go to next index.
             ++output_index;
@@ -92,7 +100,7 @@ void pipepp::impl__::pipe_base::executor_slot::_output_link_callback(size_t outp
 
     if (output_index < owner_.output_links_.size()) {
         // 다음 출력 콜백을 예약합니다.
-        workers().timer(delay, &executor_slot::_output_link_callback, this, output_index, aborting);
+        workers().add_timer(delay, &executor_slot::_output_link_callback, this, output_index, aborting);
     }
     else {
         auto constexpr RELAXED = std::memory_order_relaxed;
@@ -116,6 +124,8 @@ void pipepp::impl__::pipe_base::executor_slot::_output_link_callback(size_t outp
 
         // fence_index_는 일종의 lock 역할을 수행하므로, 가장 마지막에 지정합니다.
         fence_index_.store(fence_index_t::none, std::memory_order_seq_cst);
+
+        owner_.destruction_guard_.unlock();
     }
 }
 
@@ -125,7 +135,6 @@ void pipepp::impl__::pipe_base::connect_output_to(pipe_base* other, pipepp::impl
     // - 중복되지 않아야 합니다.
     // - 출력이 입력으로 순환하지 않아야 합니다.
     // - 출력은 자신을 포함한, 입력은 부모 중 가장 가까운 optional 노드를 공유해야 합니다.
-
     for (auto& out : output_links_) {
         if (out.pipe->id() == other->id())
             throw pipe_link_exception("pipe link duplication");
@@ -207,9 +216,36 @@ void pipepp::impl__::pipe_base::_rotate_output_order(executor_slot* ref)
     next->_is_output_order().store(true, RELAX);
 }
 
-bool pipepp::impl__::pipe_base::input_slot_t::submit_input(fence_index_t output_fence, pipepp::pipe_id_t input_pipe, std::function<void(std::any&)> const& input_manip, std::shared_ptr<pipepp::base_fence_shared_object> const& fence_obj, bool abort_current)
+void pipepp::impl__::pipe_base::input_slot_t::_supply_input_to_active_executor()
 {
-    std::lock_guard<std::mutex> lock{cached_input_.second};
+    if (owner_._active_exec_slot().is_busy()) {
+        // 차례가 된 실행 슬롯이 여전히 바쁩니다.
+        // 재시도를 요청합니다.
+        using namespace std::chrono_literals;
+        owner_.thread_pool().add_timer(200us, &input_slot_t::_supply_input_to_active_executor, this);
+        return;
+    }
+
+    // 입력이 모두 준비되었으므로, 실행기에 입력을 넘깁니다.
+    auto& exec = owner_._active_exec_slot();
+    exec._launch_async({
+      std::move(active_input_fence_object_),
+      active_input_fence(),
+      std::move(cached_input_.first),
+    });
+
+    // 다음 입력 받을 준비 완료
+    owner_._rotate_slot(); // 입력을 받을 실행기 슬롯 회전
+    _prepare_next();       // 입력 슬롯 클리어
+
+    owner_.destruction_guard_.unlock();
+}
+
+bool pipepp::impl__::pipe_base::input_slot_t::_submit_input(fence_index_t output_fence, pipepp::pipe_id_t input_pipe, std::function<void(std::any&)> const& input_manip, std::shared_ptr<pipepp::base_fence_shared_object> const& fence_obj, bool abort_current)
+{
+    std::lock_guard lock{cached_input_.second};
+    std::lock_guard destruction_guard{owner_.destruction_guard_};
+
     auto active_fence = active_input_fence();
     if (output_fence < active_fence) {
         // 여러 가지 이유에 의해, 입력 fence가 격상된 경우입니다.
@@ -220,12 +256,6 @@ bool pipepp::impl__::pipe_base::input_slot_t::submit_input(fence_index_t output_
     if (active_fence < output_fence) {
         // 입력 슬롯이 아직 준비되지 않았습니다.
         // false를 반환해 재시도를 요청합니다.
-        return false;
-    }
-
-    if (owner_._active_exec_slot().is_busy()) {
-        // 차례가 된 실행 슬롯이 바쁩니다.
-        // 재시도를 요청합니다.
         return false;
     }
 
@@ -268,17 +298,23 @@ bool pipepp::impl__::pipe_base::input_slot_t::submit_input(fence_index_t output_
         == ready_conds_.size();
 
     if (is_all_input_link_ready) {
-        // 입력이 모두 준비되었으므로, 실행기에 입력을 넘깁니다.
-        auto& exec = owner_._active_exec_slot();
-        exec._launch_async({
-          std::move(active_input_fence_object_),
-          active_fence,
-          std::move(cached_input_.first),
-        });
-
-        // 다음 입력 받을 준비 완료
-        owner_._rotate_slot(); // 입력을 받을 실행기 슬롯 회전
-        _prepare_next();       // 입력 슬롯 클리어
+        owner_.destruction_guard_.lock();
+        _supply_input_to_active_executor();
     }
     return true;
+}
+
+bool pipepp::impl__::pipe_base::input_slot_t::_submit_input_direct(std::any&& input)
+{
+    std::lock_guard destruction_guard{owner_.destruction_guard_};
+
+    if (owner_.input_links_.empty() == false) {
+        throw pipe_exception("input cannot directly fed when there's any input link existing");
+    }
+
+    if (owner_._active_exec_slot().is_busy()) {
+        return false;
+    }
+
+
 }

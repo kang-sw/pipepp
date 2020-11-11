@@ -1,3 +1,6 @@
 [submodule "core/third/templates"]
 	path = core/third/templates
 	url = https://github.com/kang-sw/templates.git
+[submodule "core/third/fmt"]
+	path = core/third/fmt
+	url = https://github.com/fmtlib/fmt.git

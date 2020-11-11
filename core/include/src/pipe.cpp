@@ -216,13 +216,17 @@ void pipepp::impl__::pipe_base::_rotate_output_order(executor_slot* ref)
     next->_is_output_order().store(true, RELAX);
 }
 
-void pipepp::impl__::pipe_base::input_slot_t::_supply_input_to_active_executor()
+void pipepp::impl__::pipe_base::input_slot_t::_supply_input_to_active_executor(bool is_initial_call)
 {
+    if (is_initial_call) {
+        owner_.destruction_guard_.lock();
+    }
+
     if (owner_._active_exec_slot().is_busy()) {
         // 차례가 된 실행 슬롯이 여전히 바쁩니다.
         // 재시도를 요청합니다.
         using namespace std::chrono_literals;
-        owner_.thread_pool().add_timer(200us, &input_slot_t::_supply_input_to_active_executor, this);
+        owner_.thread_pool().add_timer(200us, &input_slot_t::_supply_input_to_active_executor, this, false);
         return;
     }
 
@@ -298,13 +302,12 @@ bool pipepp::impl__::pipe_base::input_slot_t::_submit_input(fence_index_t output
         == ready_conds_.size();
 
     if (is_all_input_link_ready) {
-        owner_.destruction_guard_.lock();
         _supply_input_to_active_executor();
     }
     return true;
 }
 
-bool pipepp::impl__::pipe_base::input_slot_t::_submit_input_direct(std::any&& input)
+bool pipepp::impl__::pipe_base::input_slot_t::_submit_input_direct(std::any&& input, std::shared_ptr<pipepp::base_fence_shared_object> fence_object)
 {
     std::lock_guard destruction_guard{owner_.destruction_guard_};
 
@@ -316,5 +319,15 @@ bool pipepp::impl__::pipe_base::input_slot_t::_submit_input_direct(std::any&& in
         return false;
     }
 
+    active_input_fence_object_ = std::move(fence_object);
+    cached_input_.first = std::move(input);
 
+    _supply_input_to_active_executor();
+
+    return true;
+}
+
+bool pipepp::impl__::pipe_base::input_slot_t::_can_submit_input_direct() const
+{
+    return owner_._active_exec_slot().is_busy() == false;
 }

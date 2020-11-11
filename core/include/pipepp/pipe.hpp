@@ -130,7 +130,7 @@ public:
          */
         std::optional<bool> can_submit_input(fence_index_t fence) const;
 
-        void _supply_input_to_active_executor();
+        void _supply_input_to_active_executor(bool is_initial_call = true);
         /**
          * 입력 데이터 공급 완료 후 호출합니다.
          * ready_conds_의 해당 인덱스를 활성화합니다.
@@ -154,7 +154,7 @@ public:
          *
          * 단, 이를 위해 적어도 하나의 실행기가 비어 있어야 합니다. 아니면 false를 반환합니다.
          */
-        bool _submit_input_direct(std::any&& input); // TODO implement
+        bool _submit_input_direct(std::any&& input, std::shared_ptr<base_fence_shared_object> fence_object);
         bool _can_submit_input_direct() const;
 
     private:

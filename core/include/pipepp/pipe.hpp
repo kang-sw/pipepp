@@ -1,14 +1,12 @@
 #pragma once
 #include <any>
 #include <atomic>
-#include <concepts>
-#include <condition_variable>
-#include <kangsw/thread_pool.hxx>
-#include <map>
 #include <memory>
 #include <optional>
 #include <type_traits>
 #include <vector>
+#include "kangsw/thread_pool.hxx"
+#include "pipepp/internal/execution_context.hpp"
 
 namespace pipepp {
 /** 파이프 에러 형식 */
@@ -61,21 +59,6 @@ struct base_fence_shared_object {
 };
 
 namespace impl__ {
-/**
- * 실행 문맥 클래스.
- * 디버깅 및 모니터링을 위한 클래스로,
- *
- * 1) 디버그 플래그 제어
- * 2) 디버그 데이터 저장
- * 3) 구간별 계층적 실행 시간 계측
- * 4) 옵션에 대한 접근 제어(옵션 인스턴스는 pipe에 존재, 실행 문맥은 파라미터만 빌려옴)
- *
- * 등의 기능을 제공합니다.
- */
-class execution_context {
-public:
-    void clear_records() {} // TODO implement
-};
 
 /** 기본 실행기. */
 class executor_base {
@@ -97,8 +80,6 @@ struct pipe_id_gen {
 
 /**
  * 파이프 기본 클래스
- *
- *
  */
 class pipe_base : public std::enable_shared_from_this<pipe_base> {
     friend class pipeline_base;
@@ -117,7 +98,7 @@ public:
         }
 
         /** ready condition 개수 설정. 초기화 함수 */
-        void _resize_input_links(size_t n);
+        void _supply_input_to_active_executor(bool is_initial_call = true);
 
     public:
         /**
@@ -129,8 +110,6 @@ public:
          * @return has_value() == false이면 현재 입력을 버려야 합니다.
          */
         std::optional<bool> can_submit_input(fence_index_t fence) const;
-
-        void _supply_input_to_active_executor(bool is_initial_call = true);
         /**
          * 입력 데이터 공급 완료 후 호출합니다.
          * ready_conds_의 해당 인덱스를 활성화합니다.
@@ -176,8 +155,12 @@ public:
 
     class executor_slot {
     public:
-        explicit executor_slot(pipe_base& owner)
+        explicit executor_slot(pipe_base& owner,
+                               std::unique_ptr<executor_base>&& exec,
+                               bool initial_output_order)
             : owner_(owner)
+            , executor_(std::move(exec))
+            , is_output_order_(initial_output_order)
         {
         }
 
@@ -259,19 +242,16 @@ public:
     kangsw::timer_thread_pool& thread_pool() const { return *ref_workers_; }
 
 public: // accessors
-    executor_slot& _active_exec_slot() { return exec_slots_[_slot_active()]; }
-    executor_slot const& _active_exec_slot() const { return exec_slots_[_slot_active()]; }
-    size_t _slot_active() const { return active_exec_slot_.load() % exec_slots_.size(); }
+    executor_slot& _active_exec_slot() { return executor_slots_[_slot_active()]; }
+    executor_slot const& _active_exec_slot() const { return executor_slots_[_slot_active()]; }
+    size_t _slot_active() const { return active_exec_slot_.load() % executor_slots_.size(); }
 
 public:
     /** this출력->to입력 방향으로 연결합니다. */
     void connect_output_to(pipe_base* other, output_link_adapter_t&& adapter);
 
     /** 파이프라인을 시동합니다. */
-    void launch();
-
-    /** 입력을 강제로 공급합니다. */
-    // TODO implement
+    void launch(std::function<std::unique_ptr<executor_base>()>&& factory, size_t num_executors);
 
 private:
     /** 출력이 완료된 슬롯에서 호출합니다. 다음 슬롯을 입력 활성화 */
@@ -297,9 +277,8 @@ private:
     input_slot_t input_slot_{*this};
 
     /** 실행기의 개수는 파이프라인 시동 이후 변하지 않아야 합니다. */
-    std::vector<executor_slot> exec_slots_;
+    std::vector<executor_slot> executor_slots_;
     std::atomic_size_t active_exec_slot_;         // idle 슬롯 선택(반드시 순차적)
-    std::atomic_size_t pending_output_exec_slot_; // 순차적 출력 보장
 
     /** 모든 입출력 링크는 파이프라인 시동 이후 변하지 않아야 합니다. */
     std::vector<input_link_desc> input_links_;

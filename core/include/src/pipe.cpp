@@ -131,6 +131,10 @@ void pipepp::impl__::pipe_base::executor_slot::_output_link_callback(size_t outp
 
 void pipepp::impl__::pipe_base::connect_output_to(pipe_base* other, pipepp::impl__::pipe_base::output_link_adapter_t&& adapter)
 {
+    if (input_slot_.active_input_fence() != fence_index_t::none) {
+        throw pipe_link_exception("pipe already launched");
+    }
+
     // 출력을 대상의 입력에 연결합니다.
     // - 중복되지 않아야 합니다.
     // - 출력이 입력으로 순환하지 않아야 합니다.
@@ -197,11 +201,29 @@ void pipepp::impl__::pipe_base::connect_output_to(pipe_base* other, pipepp::impl
 
     output_links_.push_back({std::move(adapter), other});
     input_links_.push_back({this});
+    input_slot_.ready_conds_.push_back(input_slot_t::input_link_state::none);
+}
+
+void pipepp::impl__::pipe_base::launch(std::function<std::unique_ptr<executor_base>()>&& factory, size_t num_executors)
+{
+    if (input_slot_.active_input_fence_.load(std::memory_order_relaxed) != fence_index_t::none) {
+        throw pipe_exception("this pipe is already launched!");
+    }
+
+    if (num_executors == 0) {
+        throw std::invalid_argument("invalid number of executors");
+    }
+
+    for (bool initial = true; num_executors; initial = false) {
+        executor_slots_.emplace_back(*this, factory(), initial);
+    }
+
+    input_slot_.active_input_fence_.store((fence_index_t)1, std::memory_order_relaxed);
 }
 
 void pipepp::impl__::pipe_base::_rotate_output_order(executor_slot* ref)
 {
-    auto begin = exec_slots_.data(), end = exec_slots_.data() + exec_slots_.size();
+    auto begin = executor_slots_.data(), end = executor_slots_.data() + executor_slots_.size();
     if (ref < begin || end <= ref) {
         throw pipe_exception("invalid argument: out of range");
     }

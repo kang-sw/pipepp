@@ -227,10 +227,8 @@ void pipepp::impl__::pipe_base::launch(size_t num_executors, std::function<std::
     // 먼저 num_executors에 대응되는 byte buffer를 할당하고, RAII를 충족하기 위해
     //element_slot[] 형식의 unique_ptr에 지정합니다. 이후 각 메모리에 대해 명시적으로
     //생성자를 호출하여 고정 배열을 생성합니다.
-    executor_buffer_.reset(reinterpret_cast<executor_slot*>(new char[sizeof(executor_slot) * num_executors]));
-    executor_slots_ = std::span<executor_slot>(executor_buffer_.get(), num_executors);
-    for (size_t index = 0; auto& exec : executor_slots_) {
-        new (&exec) executor_slot(*this, factory(), index++ == 0);
+    for (auto index : kangsw::counter_range(num_executors)) {
+        executor_slot(*this, factory(), index == 0);
     }
 
     input_slot_.active_input_fence_.store((fence_index_t)1, std::memory_order_relaxed);
@@ -238,19 +236,20 @@ void pipepp::impl__::pipe_base::launch(size_t num_executors, std::function<std::
 
 void pipepp::impl__::pipe_base::_rotate_output_order(executor_slot* ref)
 {
-    auto begin = executor_slots_.data(), end = executor_slots_.data() + executor_slots_.size();
-    if (ref < begin || end <= ref) {
-        throw pipe_exception("invalid argument: out of range");
-    }
-
     auto constexpr RELAX = std::memory_order_relaxed;
-    if (ref->_is_output_order().load(RELAX) == false) {
-        throw pipe_exception("invalid request for output order rotation");
+    for (auto index : kangsw::counter_range(executor_slots_.size())) {
+        auto& slot = executor_slots_[index];
+
+        if (slot->_is_output_order().exchange(false, RELAX)) {
+            assert(slot.get() == ref);
+            auto next_index = (index + 1) % executor_slots_.size();
+            auto& next = executor_slots_[next_index];
+            next->_is_output_order().store(true, RELAX);
+        }
     }
 
-    auto next = begin + (ref - begin + 1) % (end - begin);
-    ref->_is_output_order().store(false, RELAX);
-    next->_is_output_order().store(true, RELAX);
+    // ref->_is_output_order().store(false, RELAX);
+    // next->_is_output_order().store(true, RELAX);
 }
 
 void pipepp::impl__::pipe_base::input_slot_t::_supply_input_to_active_executor(bool is_initial_call)

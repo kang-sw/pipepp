@@ -258,8 +258,8 @@ public:
     kangsw::timer_thread_pool& thread_pool() const { return *ref_workers_; }
 
 public: // accessors
-    executor_slot& _active_exec_slot() { return executor_slots_[_slot_active()]; }
-    executor_slot const& _active_exec_slot() const { return executor_slots_[_slot_active()]; }
+    executor_slot& _active_exec_slot() { return *executor_slots_[_slot_active()]; }
+    executor_slot const& _active_exec_slot() const { return *executor_slots_[_slot_active()]; }
     size_t _slot_active() const { return active_exec_slot_.load() % executor_slots_.size(); }
 
 public:
@@ -307,8 +307,7 @@ private:
     input_slot_t input_slot_{*this};
 
     /** 실행기의 개수는 파이프라인 시동 이후 변하지 않아야 합니다. */
-    std::span<executor_slot> executor_slots_;
-    std::unique_ptr<executor_slot[]> executor_buffer_;
+    std::vector<std::unique_ptr<executor_slot>> executor_slots_;
     std::atomic_size_t active_exec_slot_; // idle 슬롯 선택(반드시 순차적)
 
     /** 모든 입출력 링크는 파이프라인 시동 이후 변하지 않아야 합니다. */

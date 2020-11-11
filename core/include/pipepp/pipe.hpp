@@ -90,6 +90,11 @@ class pipe_base : public std::enable_shared_from_this<pipe_base> {
 public:
     using output_link_adapter_t = std::function<void(base_fence_shared_object&, std::any const& output, std::any& input)>;
 
+    explicit pipe_base(bool optional_pipe = false)
+    {
+        input_slot_.is_optional_ = optional_pipe;
+    }
+
 public:
     class input_slot_t {
         friend class pipe_base;

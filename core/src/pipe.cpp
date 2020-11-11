@@ -129,7 +129,7 @@ void pipepp::impl__::pipe_base::executor_slot::_output_link_callback(size_t outp
     }
 }
 
-void pipepp::impl__::pipe_base::connect_output_to(pipe_base* other, pipepp::impl__::pipe_base::output_link_adapter_t&& adapter)
+void pipepp::impl__::pipe_base::_connect_output_to_impl(pipe_base* other, pipepp::impl__::pipe_base::output_link_adapter_t adapter)
 {
     if (input_slot_.active_input_fence() != fence_index_t::none) {
         throw pipe_link_exception("pipe already launched");
@@ -214,8 +214,15 @@ void pipepp::impl__::pipe_base::launch(std::function<std::unique_ptr<executor_ba
         throw std::invalid_argument("invalid number of executors");
     }
 
-    for (bool initial = true; num_executors; initial = false) {
-        executor_slots_.emplace_back(*this, factory(), initial);
+    // executor_slot 형식이 이동 및 복사 불가능 형식이기 때문에, 배열을 구성하기 위해
+    //다소 복잡한 방법을 사용합니다.
+    // 먼저 num_executors에 대응되는 byte buffer를 할당하고, RAII를 충족하기 위해
+    //element_slot[] 형식의 unique_ptr에 지정합니다. 이후 각 메모리에 대해 명시적으로
+    //생성자를 호출하여 고정 배열을 생성합니다.
+    executor_buffer_.reset(reinterpret_cast<executor_slot*>(new char[sizeof(executor_slot) * num_executors]));
+    executor_slots_ = std::span<executor_slot>(executor_buffer_.get(), num_executors);
+    for (size_t index = 0; auto& exec : executor_slots_) {
+        new (&exec) executor_slot(*this, factory(), index++ == 0);
     }
 
     input_slot_.active_input_fence_.store((fence_index_t)1, std::memory_order_relaxed);

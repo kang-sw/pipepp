@@ -3,9 +3,12 @@
 #include <atomic>
 #include <memory>
 #include <optional>
+#include <span>
 #include <type_traits>
 #include <vector>
+#include "kangsw/misc.hxx"
 #include "kangsw/thread_pool.hxx"
+#include "kangsw/thread_utility.hxx"
 #include "pipepp/internal/execution_context.hpp"
 
 namespace pipepp {
@@ -153,7 +156,7 @@ public:
         std::shared_ptr<base_fence_shared_object> active_input_fence_object_;
     };
 
-    class executor_slot {
+    class alignas(64) executor_slot {
     public:
         explicit executor_slot(pipe_base& owner,
                                std::unique_ptr<executor_base>&& exec,
@@ -247,18 +250,28 @@ public: // accessors
     size_t _slot_active() const { return active_exec_slot_.load() % executor_slots_.size(); }
 
 public:
-    /** this출력->to입력 방향으로 연결합니다. */
-    void connect_output_to(pipe_base* other, output_link_adapter_t&& adapter);
+    /** 입력 연결자 */
+    template <typename Shared_, typename PrevOut_, typename NextIn_, typename Fn_>
+    void connect_output_to(pipe_base& other, Fn_&&);
 
     /** 파이프라인을 시동합니다. */
     void launch(std::function<std::unique_ptr<executor_base>()>&& factory, size_t num_executors);
 
+    /** 입력 공급 시도 */
+    bool try_submit(std::any&& input, std::shared_ptr<base_fence_shared_object> fence_object) { return input_slot_._submit_input_direct(std::move(input), std::move(fence_object)); }
+
 private:
+    /** this출력->to입력 방향으로 연결합니다. */
+    void _connect_output_to_impl(pipe_base* other, output_link_adapter_t adapter);
+
     /** 출력이 완료된 슬롯에서 호출합니다. 다음 슬롯을 입력 활성화 */
     void _rotate_output_order(executor_slot* ref);
 
     /** 다음 입력 슬롯을 활성화. */
     size_t _rotate_slot() { return active_exec_slot_.fetch_add(1); }
+
+public:
+    void set_thread_pool_reference(kangsw::timer_thread_pool* ref) { ref_workers_ = ref; }
 
 private:
     struct input_link_desc {
@@ -277,8 +290,9 @@ private:
     input_slot_t input_slot_{*this};
 
     /** 실행기의 개수는 파이프라인 시동 이후 변하지 않아야 합니다. */
-    std::vector<executor_slot> executor_slots_;
-    std::atomic_size_t active_exec_slot_;         // idle 슬롯 선택(반드시 순차적)
+    std::span<executor_slot> executor_slots_;
+    std::unique_ptr<executor_slot[]> executor_buffer_;
+    std::atomic_size_t active_exec_slot_; // idle 슬롯 선택(반드시 순차적)
 
     /** 모든 입출력 링크는 파이프라인 시동 이후 변하지 않아야 합니다. */
     std::vector<input_link_desc> input_links_;
@@ -296,26 +310,53 @@ private:
     kangsw::destruction_guard destruction_guard_;
 }; // namespace pipepp
 
+template <typename Shared_, typename PrevOut_, typename NextIn_, typename Fn_>
+void pipe_base::connect_output_to(pipe_base& other, Fn_&& fn)
+{
+    auto wrapper = [fn_ = std::move(fn)](Shared_& shared, std::any const& prev_out, std::any& next_in) {
+        if (next_in.type() != typeid(NextIn_)) {
+            next_in.emplace<NextIn_>();
+        }
+        if (prev_out.type() != typeid(PrevOut_)) {
+            throw pipe_input_exception("argument type does not match");
+        }
+        fn_(shared, std::any_cast<PrevOut_ const&>(prev_out), std::any_cast<NextIn_&>(next_in));
+    };
+
+    _connect_output_to_impl(&other, wrapper);
+}
+
 } // namespace impl__
 /**
  * 독립된 알고리즘 실행기 하나를 정의합니다.
  * 파이프에 공급하는 모든 실행기는 이 클래스를 상속해야 합니다.
  */
-template <typename Input_, typename Output_>
+template <typename Exec_>
 class base_executor : impl__::executor_base {
 public:
-    using input_type = Input_;
-    using output_type = Output_;
+    using executor_type = Exec_;
+    using input_type = typename executor_type::input_type;
+    using output_type = typename executor_type::output_type;
+
+    static_assert(std::is_default_constructible_v<output_type>);
 
 public:
     pipe_error invoke__(std::any const& input, std::any& output) final
     {
-        return invoke(
-          std::any_cast<input_type const&>(input),
-          std::any_cast<output_type&>(output));
+        if (input.type() != typeid(input_type)) {
+            throw pipe_input_exception("input type not match");
+        }
+        if (output.type() != typeid(output_type)) {
+            output.emplace<output_type>();
+        }
+
+        return std::invoke(
+          &executor_type::invoke, this,
+          std::any_cast<input_type const&>(input), std::any_cast<output_type&>(output));
     }
 
-    virtual pipe_error invoke(input_type const& i, output_type& o) = 0;
+    // Non-virtual to be overriden by base class
+    pipe_error invoke(execution_context& context, input_type const& i, output_type& o) { return pipe_error::ok; }
 };
 
 } // namespace pipepp

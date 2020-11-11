@@ -1,6 +1,6 @@
 #pragma once
 
-namespace pipepp::impl__ {
+namespace pipepp {
 
 /**
  * 실행 문맥 클래스.
@@ -21,4 +21,4 @@ public:
     // TODO: 디버그 데이터 저장(variant<bool, long, double, string, any> [])
     // TODO: 실행 시간 계측기
 };
-} // namespace pipepp::impl__
+} // namespace pipepp

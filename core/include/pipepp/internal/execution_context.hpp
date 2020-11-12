@@ -1,4 +1,5 @@
 #pragma once
+#include "pipepp/executor_options.hpp"
 
 namespace pipepp {
 
@@ -20,5 +21,7 @@ public:
     // TODO: 디버그 플래그 제어
     // TODO: 디버그 데이터 저장(variant<bool, long, double, string, any> [])
     // TODO: 실행 시간 계측기
+
+    impl__::executor_option_base* options_;
 };
 } // namespace pipepp

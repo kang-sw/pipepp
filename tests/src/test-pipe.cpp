@@ -7,6 +7,8 @@
 
 namespace pipepp::pipe_test {
 
+static std::stringstream logger;
+
 struct test_exec {
     struct input_type {
         int value = 0;
@@ -25,22 +27,22 @@ struct test_exec {
     {
         using namespace std::chrono_literals;
         if (prefix.ends_with("opt")) {
-            std::this_thread::sleep_for(1000ms);
+            std::this_thread::sleep_for(100ms);
         }
-        std::this_thread::sleep_for(1000ms + 10ms * (rand() % 30));
+        std::this_thread::sleep_for(100ms + 1ms * (rand() % 30));
 
         output.value = input.value + 1;
 
         std::stringstream pref;
-        for (auto& str : input.contributes) { pref << std::setw(8) << str << "  "; }
-        pref << ":: " << prefix;
+        for (auto& str : input.contributes) { pref << std::setw(10) << str << " "; }
+        pref << ":: " << std::setw(10) << prefix;
 
-        auto to_print = fmt::format("{:>35}: {} -> {}\n", pref.str(), input.value, output.value);
-        printf(to_print.c_str());
+        auto to_print = fmt::format("{:>50}: {} -> {}\n", pref.str(), input.value, output.value);
+        logger << (to_print.c_str());
 
         input.contributes.clear();
         output.contrib = prefix;
-        return pipe_error::error;
+        return pipe_error::warning;
     }
 
     static void recursive_adapter(base_fence_shared_object&, output_type const& result, input_type& next_input)
@@ -53,7 +55,7 @@ public:
     std::string prefix;
 };
 
-TEST_CASE("pipe initialization")
+TEST_CASE("pipe initialization", "[.]")
 {
     using namespace impl__;
     using namespace std::chrono_literals;
@@ -69,7 +71,7 @@ TEST_CASE("pipe initialization")
 
     // clang-format off
     auto pipes = {pipe0, pipe1, pipe2_0, pipe2_1, pipe3_opt, pipe3_0, pipe4_0};
-    auto pipe_names = {"pipe 0", "pipe 1", "pipe 2_0", "pipe 2_1", "pipe3_opt", "pipe3_0", "pipe4_0"};
+    auto pipe_names = {"pipe 0", "pipe 1", "pipe 2_0", "pipe 2_1", "pipe 3_opt", "pipe 3_0", "pipe 4_0"};
     // clang-format on
 
     for (auto& [ref, _1] : kangsw::zip(pipes, pipe_names)) {
@@ -91,6 +93,12 @@ TEST_CASE("pipe initialization")
     pipe2_1->connect_output_to<
       base_fence_shared_object, test_exec::output_type, test_exec::input_type>(
       *pipe3_opt, &test_exec::recursive_adapter);
+    pipe2_0->connect_output_to<
+      base_fence_shared_object, test_exec::output_type, test_exec::input_type>(
+      *pipe3_0, &test_exec::recursive_adapter);
+    pipe2_1->connect_output_to<
+      base_fence_shared_object, test_exec::output_type, test_exec::input_type>(
+      *pipe3_0, &test_exec::recursive_adapter);
 
     pipe3_opt->connect_output_to<
       base_fence_shared_object, test_exec::output_type, test_exec::input_type>(
@@ -116,7 +124,7 @@ TEST_CASE("pipe initialization")
     auto factory = [](std::string name) { return make_executor<test_exec>(name); };
 
     for (auto& [pipe, name] : kangsw::zip(pipes, pipe_names)) {
-        pipe->launch_by(1, factory, name);
+        pipe->launch_by(5, factory, name);
     }
 
     REQUIRE_THROWS( // ALREADY LAUNCHED ERROR
@@ -124,24 +132,26 @@ TEST_CASE("pipe initialization")
         base_fence_shared_object, test_exec::output_type, test_exec::input_type>(
         *pipe3_0, &test_exec::recursive_adapter));
 
-    fmt::print("{:->60}\n", ' ');
-    pipe0->try_submit(test_exec::input_type{100}, std::make_shared<base_fence_shared_object>());
+    logger << (fmt::format("{:->60}\n", ' '));
+    pipe0->try_submit(test_exec::input_type{10}, std::make_shared<base_fence_shared_object>());
     while (pipe0->is_async_operation_running()) { std::this_thread::sleep_for(1us); }
 
-    fmt::print("{:->60}\n", ' ');
-    pipe0->try_submit(test_exec::input_type{200}, std::make_shared<base_fence_shared_object>());
+    logger << (fmt::format("{:->60}\n", ' '));
+    pipe0->try_submit(test_exec::input_type{20}, std::make_shared<base_fence_shared_object>());
     while (pipe0->is_async_operation_running()) { std::this_thread::sleep_for(1us); }
 
-    fmt::print("{:->60}\n", ' ');
-    pipe0->try_submit(test_exec::input_type{300}, std::make_shared<base_fence_shared_object>());
+    logger << (fmt::format("{:->60}\n", ' '));
+    pipe0->try_submit(test_exec::input_type{30}, std::make_shared<base_fence_shared_object>());
     while (pipe0->is_async_operation_running()) { std::this_thread::sleep_for(1us); }
 
     for (auto& [pipe, name] : kangsw::zip(pipes, pipe_names)) {
         using namespace std::literals;
 
         while (pipe->is_async_operation_running()) { std::this_thread::sleep_for(1us); }
-        fmt::print("{:-^60}\n", name + " synched"s);
+        logger << (fmt::format("{:-^60}\n", name + " synched"s));
     }
+
+    WARN(logger.str());
 }
 
 } // namespace pipepp::pipe_test

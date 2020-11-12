@@ -7,6 +7,7 @@
 
 namespace pipepp::pipe_test {
 
+std::mutex lock;
 static std::stringstream logger;
 
 struct test_exec {
@@ -27,9 +28,9 @@ struct test_exec {
     {
         using namespace std::chrono_literals;
         if (prefix.ends_with("opt")) {
-            std::this_thread::sleep_for(100ms);
+            std::this_thread::sleep_for(10ms);
         }
-        std::this_thread::sleep_for(100ms + 1ms * (rand() % 30));
+        std::this_thread::sleep_for(10ms + 1ms * (rand() % 3));
 
         output.value = input.value + 1;
 
@@ -38,7 +39,9 @@ struct test_exec {
         pref << ":: " << std::setw(10) << prefix;
 
         auto to_print = fmt::format("{:>50}: {} -> {}\n", pref.str(), input.value, output.value);
+        lock.lock();
         logger << (to_print.c_str());
+        lock.unlock();
 
         input.contributes.clear();
         output.contrib = prefix;
@@ -55,103 +58,106 @@ public:
     std::string prefix;
 };
 
-TEST_CASE("pipe initialization", "[.]")
+TEST_CASE("pipe initialization", "[]")
 {
-    using namespace impl__;
-    using namespace std::chrono_literals;
-    kangsw::timer_thread_pool workers{1024, 2};
+    for (auto ITER = 0; ITER < 5; ++ITER) {
+        using namespace impl__;
+        using namespace std::chrono_literals;
+        kangsw::timer_thread_pool workers{1024, 2};
 
-    auto pipe0 = std::make_shared<pipe_base>("");
-    auto pipe1 = std::make_shared<pipe_base>("");
-    auto pipe2_0 = std::make_shared<pipe_base>("");
-    auto pipe2_1 = std::make_shared<pipe_base>("");
-    auto pipe3_opt = std::make_shared<pipe_base>("", true);
-    auto pipe3_0 = std::make_shared<pipe_base>("");
-    auto pipe4_0 = std::make_shared<pipe_base>("");
+        auto pipe0 = std::make_shared<pipe_base>("");
+        auto pipe1 = std::make_shared<pipe_base>("");
+        auto pipe2_0 = std::make_shared<pipe_base>("");
+        auto pipe2_1 = std::make_shared<pipe_base>("");
+        auto pipe3_opt = std::make_shared<pipe_base>("", true);
+        auto pipe3_0 = std::make_shared<pipe_base>("");
+        auto pipe4_0 = std::make_shared<pipe_base>("");
 
-    // clang-format off
+        // clang-format off
     auto pipes = {pipe0, pipe1, pipe2_0, pipe2_1, pipe3_opt, pipe3_0, pipe4_0};
     auto pipe_names = {"pipe 0", "pipe 1", "pipe 2_0", "pipe 2_1", "pipe 3_opt", "pipe 3_0", "pipe 4_0"};
-    // clang-format on
+        // clang-format on
 
-    for (auto& [ref, _1] : kangsw::zip(pipes, pipe_names)) {
-        ref->set_thread_pool_reference(&workers);
+        for (auto& [ref, _1] : kangsw::zip(pipes, pipe_names)) {
+            ref->_set_thread_pool_reference(&workers);
+        }
+
+        pipe0->connect_output_to<
+          base_fence_shared_object, test_exec::output_type, test_exec::input_type>(
+          *pipe1, &test_exec::recursive_adapter);
+        pipe1->connect_output_to<
+          base_fence_shared_object, test_exec::output_type, test_exec::input_type>(
+          *pipe2_0, &test_exec::recursive_adapter);
+        pipe1->connect_output_to<
+          base_fence_shared_object, test_exec::output_type, test_exec::input_type>(
+          *pipe2_1, &test_exec::recursive_adapter);
+        pipe2_0->connect_output_to<
+          base_fence_shared_object, test_exec::output_type, test_exec::input_type>(
+          *pipe3_opt, &test_exec::recursive_adapter);
+        pipe2_1->connect_output_to<
+          base_fence_shared_object, test_exec::output_type, test_exec::input_type>(
+          *pipe3_opt, &test_exec::recursive_adapter);
+        pipe2_0->connect_output_to<
+          base_fence_shared_object, test_exec::output_type, test_exec::input_type>(
+          *pipe3_0, &test_exec::recursive_adapter);
+        pipe2_1->connect_output_to<
+          base_fence_shared_object, test_exec::output_type, test_exec::input_type>(
+          *pipe3_0, &test_exec::recursive_adapter);
+
+        pipe3_opt->connect_output_to<
+          base_fence_shared_object, test_exec::output_type, test_exec::input_type>(
+          *pipe4_0, &test_exec::recursive_adapter);
+
+        REQUIRE_THROWS( // SELF ERROR
+          pipe1->connect_output_to<
+            base_fence_shared_object, test_exec::output_type, test_exec::input_type>(
+            *pipe1, &test_exec::recursive_adapter));
+        REQUIRE_THROWS( // CIRCULAR ERROR
+          pipe1->connect_output_to<
+            base_fence_shared_object, test_exec::output_type, test_exec::input_type>(
+            *pipe0, &test_exec::recursive_adapter));
+        REQUIRE_THROWS( // CIRCULAR ERROR
+          pipe2_0->connect_output_to<
+            base_fence_shared_object, test_exec::output_type, test_exec::input_type>(
+            *pipe0, &test_exec::recursive_adapter));
+        REQUIRE_THROWS( // OPTIONAL PARENT NOT EQUAL ERROR
+          pipe0->connect_output_to<
+            base_fence_shared_object, test_exec::output_type, test_exec::input_type>(
+            *pipe4_0, &test_exec::recursive_adapter));
+
+        auto factory = [](std::string name) { return make_executor<test_exec>(name); };
+
+        for (auto& [pipe, name] : kangsw::zip(pipes, pipe_names)) {
+            pipe->launch_by(5, factory, name);
+        }
+
+        REQUIRE_THROWS( // ALREADY LAUNCHED ERROR
+          pipe3_opt->connect_output_to<
+            base_fence_shared_object, test_exec::output_type, test_exec::input_type>(
+            *pipe3_0, &test_exec::recursive_adapter));
+
+        lock.lock(), logger << (fmt::format("{:->60}\n", ' ')), lock.unlock();
+        pipe0->try_submit(test_exec::input_type{10}, std::make_shared<base_fence_shared_object>());
+        while (pipe0->is_async_operation_running()) { std::this_thread::sleep_for(1us); }
+
+        lock.lock(), logger << (fmt::format("{:->60}\n", ' ')), lock.unlock();
+        pipe0->try_submit(test_exec::input_type{20}, std::make_shared<base_fence_shared_object>());
+        while (pipe0->is_async_operation_running()) { std::this_thread::sleep_for(1us); }
+
+        lock.lock(), logger << (fmt::format("{:->60}\n", ' ')), lock.unlock();
+        pipe0->try_submit(test_exec::input_type{30}, std::make_shared<base_fence_shared_object>());
+        while (pipe0->is_async_operation_running()) { std::this_thread::sleep_for(1us); }
+
+        for (auto& [pipe, name] : kangsw::zip(pipes, pipe_names)) {
+            using namespace std::literals;
+
+            while (pipe->is_async_operation_running()) { std::this_thread::sleep_for(1us); }
+            lock.lock(), logger << (fmt::format("{:-^60}\n", name + " synched"s)), lock.unlock();
+        }
+
+        WARN(logger.str());
+        logger = {};
     }
-
-    pipe0->connect_output_to<
-      base_fence_shared_object, test_exec::output_type, test_exec::input_type>(
-      *pipe1, &test_exec::recursive_adapter);
-    pipe1->connect_output_to<
-      base_fence_shared_object, test_exec::output_type, test_exec::input_type>(
-      *pipe2_0, &test_exec::recursive_adapter);
-    pipe1->connect_output_to<
-      base_fence_shared_object, test_exec::output_type, test_exec::input_type>(
-      *pipe2_1, &test_exec::recursive_adapter);
-    pipe2_0->connect_output_to<
-      base_fence_shared_object, test_exec::output_type, test_exec::input_type>(
-      *pipe3_opt, &test_exec::recursive_adapter);
-    pipe2_1->connect_output_to<
-      base_fence_shared_object, test_exec::output_type, test_exec::input_type>(
-      *pipe3_opt, &test_exec::recursive_adapter);
-    pipe2_0->connect_output_to<
-      base_fence_shared_object, test_exec::output_type, test_exec::input_type>(
-      *pipe3_0, &test_exec::recursive_adapter);
-    pipe2_1->connect_output_to<
-      base_fence_shared_object, test_exec::output_type, test_exec::input_type>(
-      *pipe3_0, &test_exec::recursive_adapter);
-
-    pipe3_opt->connect_output_to<
-      base_fence_shared_object, test_exec::output_type, test_exec::input_type>(
-      *pipe4_0, &test_exec::recursive_adapter);
-
-    REQUIRE_THROWS( // SELF ERROR
-      pipe1->connect_output_to<
-        base_fence_shared_object, test_exec::output_type, test_exec::input_type>(
-        *pipe1, &test_exec::recursive_adapter));
-    REQUIRE_THROWS( // CIRCULAR ERROR
-      pipe1->connect_output_to<
-        base_fence_shared_object, test_exec::output_type, test_exec::input_type>(
-        *pipe0, &test_exec::recursive_adapter));
-    REQUIRE_THROWS( // CIRCULAR ERROR
-      pipe2_0->connect_output_to<
-        base_fence_shared_object, test_exec::output_type, test_exec::input_type>(
-        *pipe0, &test_exec::recursive_adapter));
-    REQUIRE_THROWS( // OPTIONAL PARENT NOT EQUAL ERROR
-      pipe0->connect_output_to<
-        base_fence_shared_object, test_exec::output_type, test_exec::input_type>(
-        *pipe4_0, &test_exec::recursive_adapter));
-
-    auto factory = [](std::string name) { return make_executor<test_exec>(name); };
-
-    for (auto& [pipe, name] : kangsw::zip(pipes, pipe_names)) {
-        pipe->launch_by(5, factory, name);
-    }
-
-    REQUIRE_THROWS( // ALREADY LAUNCHED ERROR
-      pipe3_opt->connect_output_to<
-        base_fence_shared_object, test_exec::output_type, test_exec::input_type>(
-        *pipe3_0, &test_exec::recursive_adapter));
-
-    logger << (fmt::format("{:->60}\n", ' '));
-    pipe0->try_submit(test_exec::input_type{10}, std::make_shared<base_fence_shared_object>());
-    while (pipe0->is_async_operation_running()) { std::this_thread::sleep_for(1us); }
-
-    logger << (fmt::format("{:->60}\n", ' '));
-    pipe0->try_submit(test_exec::input_type{20}, std::make_shared<base_fence_shared_object>());
-    while (pipe0->is_async_operation_running()) { std::this_thread::sleep_for(1us); }
-
-    logger << (fmt::format("{:->60}\n", ' '));
-    pipe0->try_submit(test_exec::input_type{30}, std::make_shared<base_fence_shared_object>());
-    while (pipe0->is_async_operation_running()) { std::this_thread::sleep_for(1us); }
-
-    for (auto& [pipe, name] : kangsw::zip(pipes, pipe_names)) {
-        using namespace std::literals;
-
-        while (pipe->is_async_operation_running()) { std::this_thread::sleep_for(1us); }
-        logger << (fmt::format("{:-^60}\n", name + " synched"s));
-    }
-
-    WARN(logger.str());
 }
 
 } // namespace pipepp::pipe_test

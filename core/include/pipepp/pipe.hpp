@@ -173,11 +173,11 @@ public:
     public:
         explicit executor_slot(pipe_base& owner,
                                std::unique_ptr<executor_base>&& exec,
-                               bool initial_output_order,
+                               size_t index,
                                executor_option_base* options)
             : owner_(owner)
             , executor_(std::move(exec))
-            , is_output_order_(initial_output_order)
+            , index_(index)
         {
             contexts_[0].options_ = options;
             contexts_[1].options_ = options;
@@ -189,8 +189,7 @@ public:
         execution_context& context_write() { return contexts_[!context_front_]; }
         fence_index_t fence_index() const { return fence_index_; }
         bool _is_executor_busy() const { return fence_index_ != fence_index_t::none; }
-
-        std::atomic_bool& _is_output_order() { return is_output_order_; }
+        bool _is_output_order() const { return index_ == owner_._pending_output_slot_index(); }
 
     public:
         struct launch_args_t {
@@ -251,7 +250,7 @@ public:
         std::any cached_input_;
         std::any cached_output_;
 
-        std::atomic_bool is_output_order_ = false;
+        size_t index_;
     };
 
 public:
@@ -265,15 +264,16 @@ public:
 
 public:
     pipe_id_t id() const { return id_; }
+
+    /** launch()의 호출 여부 반환 */
     bool is_launched() const { return input_slot_.active_input_fence_.load(std::memory_order_relaxed) > fence_index_t::none; }
 
-    // 저장된 스레드 풀 레퍼런스 획득
-    kangsw::timer_thread_pool& thread_pool() const { return *ref_workers_; }
+    /** 입출력 노드 반환 */
+    auto& input_links() const { return input_links_; }
+    auto& output_links() const { return output_links_; }
 
-public: // accessors
-    executor_slot& _active_exec_slot() { return *executor_slots_[_slot_active()]; }
-    executor_slot const& _active_exec_slot() const { return *executor_slots_[_slot_active()]; }
-    size_t _slot_active() const { return active_exec_slot_.load() % executor_slots_.size(); }
+    /** 파이프 옵션 반환 */
+    executor_option_base* options() const { return executor_options_.get(); }
 
 public:
     /** 입력 연결자 */
@@ -296,13 +296,6 @@ public:
     /** context 읽어들이기 */
     execution_context const& latest_execution_context() const { return *latest_exec_context_.load(std::memory_order_relaxed); }
 
-    /** 입출력 노드 반환 */
-    auto& input_links() const { return input_links_; }
-    auto& output_links() const { return output_links_; }
-
-    /** 파이프 옵션 반환 */
-    executor_option_base* options() const { return executor_options_.get(); }
-
 private:
     /** this출력->to입력 방향으로 연결합니다. */
     void _connect_output_to_impl(pipe_base* other, output_link_adapter_t adapter);
@@ -313,8 +306,17 @@ private:
     /** 다음 입력 슬롯을 활성화. */
     size_t _rotate_slot() { return active_exec_slot_.fetch_add(1); }
 
+    /** 출력할 차례가 된 실행 슬롯 반환 */
+    size_t _pending_output_slot_index() const { return output_exec_slot_.load(std::memory_order_relaxed) % executor_slots_.size(); }
+
 public:
-    void set_thread_pool_reference(kangsw::timer_thread_pool* ref) { ref_workers_ = ref; }
+    void _set_thread_pool_reference(kangsw::timer_thread_pool* ref) { ref_workers_ = ref; }
+    executor_slot const& _active_exec_slot() const { return *executor_slots_[_slot_active()]; }
+    size_t _slot_active() const { return active_exec_slot_.load() % executor_slots_.size(); }
+
+private:
+    kangsw::timer_thread_pool& _thread_pool() const { return *ref_workers_; }
+    executor_slot& _active_exec_slot() { return *executor_slots_[_slot_active()]; }
 
 private:
     pipe_id_t const id_ = pipe_id_gen::generate();
@@ -326,6 +328,7 @@ private:
     /** 실행기의 개수는 파이프라인 시동 이후 변하지 않아야 합니다. */
     std::vector<std::unique_ptr<executor_slot>> executor_slots_;
     std::atomic_size_t active_exec_slot_; // idle 슬롯 선택(반드시 순차적)
+    std::atomic_size_t output_exec_slot_; // 출력 슬롯 선택
 
     /** 모든 입출력 링크는 파이프라인 시동 이후 변하지 않아야 합니다. */
     std::vector<input_link_desc> input_links_;

@@ -50,7 +50,7 @@ void pipepp::impl__::pipe_base::input_slot_t::_propagate_fence_abortion(fence_in
     }
 
     if (output_link_index < owner_.output_links_.size()) {
-        owner_.thread_pool().add_timer(
+        owner_._thread_pool().add_timer(
           delay, &input_slot_t::_propagate_fence_abortion, this, pending_fence, output_link_index);
     }
     else {
@@ -70,12 +70,12 @@ void pipepp::impl__::pipe_base::executor_slot::_launch_async(launch_args_t arg)
     cached_input_ = std::move(arg.input);
 
     owner_.destruction_guard_.lock();
-    owner_.thread_pool().add_task(&executor_slot::_launch_callback, this);
+    owner_._thread_pool().add_task(&executor_slot::_launch_callback, this);
 }
 
 kangsw::timer_thread_pool& pipepp::impl__::pipe_base::executor_slot::workers()
 {
-    return owner_.thread_pool();
+    return owner_._thread_pool();
 }
 
 void pipepp::impl__::pipe_base::executor_slot::_launch_callback()
@@ -130,7 +130,11 @@ void pipepp::impl__::pipe_base::executor_slot::_output_link_callback(size_t outp
     using namespace std::chrono;
     auto delay = 0us;
 
-    if (!is_output_order_.load(std::memory_order_relaxed)) {
+    if (link.pipe->is_launched() == false) {
+        throw pipe_exception("linked pipe is not launched yet!");
+    }
+
+    if (!_is_output_order()) {
         // 만약 이 실행기의 출력 순서가 아직 오지 않았다면, 단순히 대기합니다.
         delay = 50us;
     }
@@ -168,7 +172,7 @@ void pipepp::impl__::pipe_base::executor_slot::_output_link_callback(size_t outp
 
 void pipepp::impl__::pipe_base::_connect_output_to_impl(pipe_base* other, pipepp::impl__::pipe_base::output_link_adapter_t adapter)
 {
-    if (is_launched()) {
+    if (is_launched() || other->is_launched()) {
         throw pipe_link_exception("pipe already launched");
     }
 
@@ -260,7 +264,7 @@ void pipepp::impl__::pipe_base::launch(size_t num_executors, std::function<std::
 
     // 각 슬롯 인스턴스는 동일한 실행기를 가져야 하므로, 팩토리 함수를 받아와서 생성합니다.
     for (auto index : kangsw::counter_range(num_executors)) {
-        executor_slots_.emplace_back(std::make_unique<executor_slot>(*this, factory(), index == 0, executor_options_.get()));
+        executor_slots_.emplace_back(std::make_unique<executor_slot>(*this, factory(), index, executor_options_.get()));
     }
 
     input_slot_.active_input_fence_.store((fence_index_t)1, std::memory_order_relaxed);
@@ -268,21 +272,8 @@ void pipepp::impl__::pipe_base::launch(size_t num_executors, std::function<std::
 
 void pipepp::impl__::pipe_base::_rotate_output_order(executor_slot* ref)
 {
-    auto constexpr RELAX = std::memory_order_relaxed;
-    for (auto index : kangsw::counter_range(executor_slots_.size())) {
-        auto& slot = executor_slots_[index];
-
-        if (slot->_is_output_order().exchange(false)) {
-            assert(slot.get() == ref);
-            auto next_index = (index + 1) % executor_slots_.size();
-            auto& next = executor_slots_[next_index];
-            next->_is_output_order().store(true);
-            break;
-        }
-    }
-
-    // ref->_is_output_order().store(false, RELAX);
-    // next->_is_output_order().store(true, RELAX);
+    assert(ref == executor_slots_[_pending_output_slot_index()].get());
+    output_exec_slot_.fetch_add(1);
 }
 
 void pipepp::impl__::pipe_base::input_slot_t::_supply_input_to_active_executor(bool is_initial_call)
@@ -295,7 +286,7 @@ void pipepp::impl__::pipe_base::input_slot_t::_supply_input_to_active_executor(b
         // 차례가 된 실행 슬롯이 여전히 바쁩니다.
         // 재시도를 요청합니다.
         using namespace std::chrono_literals;
-        owner_.thread_pool().add_timer(200us, &input_slot_t::_supply_input_to_active_executor, this, false);
+        owner_._thread_pool().add_timer(200us, &input_slot_t::_supply_input_to_active_executor, this, false);
         return;
     }
 
@@ -357,7 +348,7 @@ bool pipepp::impl__::pipe_base::input_slot_t::_submit_input(fence_index_t output
         //현재 입력 펜스 인덱스를 캡쳐해 전달합니다.
         if (owner_.output_links_.empty() == false) {
             owner_.destruction_guard_.lock();
-            owner_.thread_pool().add_task(&input_slot_t::_propagate_fence_abortion, this, active_input_fence(), 0);
+            owner_._thread_pool().add_task(&input_slot_t::_propagate_fence_abortion, this, active_input_fence(), 0);
         }
 
         // 다음 인덱스로 넘어갑니다.

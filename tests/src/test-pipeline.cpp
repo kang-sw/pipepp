@@ -63,7 +63,7 @@ static void link_1_0(my_shared_data&, exec_1::output_type const& i, exec_0::inpu
 
 TEST_CASE("pipeline compilation")
 {
-    constexpr int NUM_CASE = 4096;
+    constexpr int NUM_CASE = 1024;
     std::vector<char> cases(NUM_CASE);
     std::vector<int> order(NUM_CASE);
     std::atomic_int ordering = 0;

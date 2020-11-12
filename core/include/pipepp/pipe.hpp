@@ -9,7 +9,8 @@
 #include "kangsw/misc.hxx"
 #include "kangsw/thread_pool.hxx"
 #include "kangsw/thread_utility.hxx"
-#include "pipepp/internal/execution_context.hpp"
+#include "pipepp/execution_context.hpp"
+#include "pipepp/executor_options.hpp"
 
 namespace pipepp {
 /** 파이프 에러 형식 */
@@ -97,8 +98,7 @@ public:
     using output_link_adapter_type = std::function<void(base_shared_context&, std::any const& output, std::any& input)>;
     using output_handler_type = std::function<void(pipe_error, base_shared_context const&, std::any const&)>;
 
-    explicit pipe_base(std::string name, bool optional_pipe = false, std::unique_ptr<executor_option_base> opts = nullptr)
-        : executor_options_(std::move(opts))
+    explicit pipe_base(std::string name, bool optional_pipe = false)
     {
         input_slot_.is_optional_ = optional_pipe;
     }
@@ -274,7 +274,8 @@ public:
     auto& output_links() const { return output_links_; }
 
     /** 파이프 옵션 반환 */
-    executor_option_base* options() const { return executor_options_.get(); }
+    auto& options() { return executor_options_; }
+    auto& options() const { return executor_options_; }
 
     /** 입력 가능 상태인지 확인 */
     bool can_submit_input_direct() const { return !_active_exec_slot()._is_executor_busy(); }
@@ -348,7 +349,7 @@ private:
     std::vector<output_handler_type> output_handlers_;
 
     kangsw::timer_thread_pool* ref_workers_ = nullptr;
-    std::unique_ptr<executor_option_base> executor_options_ = nullptr;
+    executor_option_base executor_options_;
 
     //---GUARD--//
     kangsw::destruction_guard destruction_guard_;

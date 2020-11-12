@@ -1,7 +1,9 @@
 #pragma once
-#include "pipepp/executor_options.hpp"
 
 namespace pipepp {
+namespace impl__ {
+class executor_option_base;
+}
 
 /**
  * 실행 문맥 클래스.
@@ -22,6 +24,6 @@ public:
     // TODO: 디버그 데이터 저장(variant<bool, long, double, string, any> [])
     // TODO: 실행 시간 계측기
 
-    impl__::executor_option_base* options_;
+    class impl__::executor_option_base* options_;
 };
 } // namespace pipepp

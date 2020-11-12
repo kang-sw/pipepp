@@ -85,7 +85,7 @@ inline decltype(auto) pipeline_base::get_first()
 
 template <typename SharedData_, typename Exec_>
 class pipe_proxy final : public impl__::pipe_proxy_base {
-    template <typename SharedData_, typename InitialExec_>
+    template <typename, typename>
     friend class pipeline;
     template <typename, typename>
     friend class pipe_proxy;
@@ -177,9 +177,9 @@ private:
 
         pipes_.emplace_back(
           std::make_unique<impl__::pipe_base>(
-            std::move(initial_pipe_name), is_optional,
-            std::make_unique<executor_option<Exec_>>()));
+            std::move(initial_pipe_name), is_optional));
         pipes_.back()->_set_thread_pool_reference(&workers_);
+        pipes_.back()->options().reset_as_default<Exec_>();
 
         adapters_.emplace_back(
           num_execs,
@@ -267,7 +267,7 @@ pipe_proxy<SharedData_, Exec_>::create_and_link_output(std::string name, bool op
     using destination_type = typename executor_type::executor_type;
 
     auto pl = _lock();
-    auto& ref = pl->_create_pipe<destination_type>(
+    auto& ref = pl->template _create_pipe<destination_type>(
       std::move(name), optional_input, num_executors,
       std::forward<FactoryFn_>(factory), std::forward<FactoryArgs_>(args)...);
 

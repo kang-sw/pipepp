@@ -4,6 +4,7 @@
 #include <memory>
 #include <typeinfo>
 #include "kangsw/misc.hxx"
+#include "kangsw/thread_pool.hxx"
 #include "pipepp/pipe.hpp"
 
 namespace pipepp {
@@ -12,16 +13,23 @@ namespace impl__ {
 class pipeline_base : public std::enable_shared_from_this<pipeline_base> {
 protected:
     pipeline_base() = default;
+    virtual ~pipeline_base() = default;
+
+public:
+    decltype(auto) get_first();
+    auto& _thread_pool() { return workers_; }
+    void sync();
 
 protected:
     // shared data object allocator
     std::shared_ptr<base_shared_context> _fetch_shared();
-    decltype(auto) get_first();
+    virtual std::shared_ptr<base_shared_context> _new_shared_object() = 0;
 
 protected:
     std::vector<std::unique_ptr<pipe_base>> pipes_;
     std::vector<std::shared_ptr<base_shared_context>> fence_objects_;
     std::mutex fence_object_pool_lock_;
+    inline static kangsw::timer_thread_pool workers_;
 };
 
 class pipe_proxy_base {
@@ -140,8 +148,8 @@ template <typename Fn_>
 pipe_proxy<SharedData_, Exec_>&
 pipe_proxy<SharedData_, Exec_>::add_output_handler(Fn_&& handler)
 {
-    auto wrapper = [fn_ = std::move(handler)](pipe_error e, base_shared_context& s, std::any const& o) {
-        fn_(e, static_cast<SharedData_&>(s), std::any_cast<output_type&>(o));
+    auto wrapper = [fn_ = std::move(handler)](pipe_error e, base_shared_context const& s, std::any const& o) {
+        fn_(e, static_cast<SharedData_ const&>(s), std::any_cast<output_type const&>(o));
     };
     pipe_.add_output_handler(std::move(wrapper));
     return *this;
@@ -159,6 +167,7 @@ public:
     using initial_proxy_type = pipe_proxy<shared_data_type, initial_executor_type>;
 
     using factory_return_type = std::unique_ptr<impl__::executor_base>;
+    ~pipeline() { sync(); }
 
 private:
     template <typename Exec_, typename Fn_, typename... Args_>
@@ -170,6 +179,8 @@ private:
           std::make_unique<impl__::pipe_base>(
             std::move(initial_pipe_name), is_optional,
             std::make_unique<executor_option<Exec_>>()));
+        pipes_.back()->_set_thread_pool_reference(&workers_);
+
         adapters_.emplace_back(
           num_execs,
           std::bind<factory_return_type>(
@@ -212,15 +223,15 @@ public:
 
 public:
     // check if suppliable
-    bool is_idle() const { return pipes_.front()->can_submit_input_direct(); }
+    bool can_suply() const { return pipes_.front()->can_submit_input_direct(); }
 
     // supply input (trigger)
     template <typename Fn_>
-    void supply(input_type input, Fn_&& shared_data_init_func)
+    bool suply(input_type input, Fn_&& shared_data_init_func)
     {
         auto shared = _fetch_shared();
-        shared_data_init_func(static_cast<shared_data_type>(*shared));
-        pipes_.front()->try_submit(std::move(input), std::move(shared));
+        shared_data_init_func(static_cast<shared_data_type&>(*shared));
+        return pipes_.front()->try_submit(std::move(input), std::move(shared));
     }
 
     // launcher
@@ -234,7 +245,13 @@ public:
         adapters_.clear();
     }
 
-public:
+protected:
+    std::shared_ptr<base_shared_context> _new_shared_object() override
+    {
+        return std::make_shared<shared_data_type>();
+    }
+
+private:
     std::vector<std::tuple<
       size_t, std::function<factory_return_type()>>>
       adapters_;

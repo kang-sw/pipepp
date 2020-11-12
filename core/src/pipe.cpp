@@ -30,9 +30,7 @@ void pipepp::impl__::pipe_base::executor_slot::_launch_async(launch_args_t arg)
 {
     std::lock_guard destruction_guard{owner_.destruction_guard_};
 
-    if (is_busy()) {
-        throw pipe_exception("executor is busy!");
-    }
+    assert(!_is_executor_busy());
 
     fence_index_.store(arg.fence_index);
     fence_object_ = std::move(arg.fence_obj);
@@ -60,8 +58,36 @@ void pipepp::impl__::pipe_base::executor_slot::_launch_callback()
         workers().add_task(&executor_slot::_output_link_callback, this, 0, exec_res > pipe_error::warning);
     }
     else {
-        owner_.destruction_guard_.unlock();
+        // owner_.destruction_guard_.unlock();
+        _perform_post_output();
     }
+}
+
+void pipepp::impl__::pipe_base::executor_slot::_perform_post_output()
+{
+    auto constexpr RELAXED = std::memory_order_relaxed;
+    // 연결된 모든 출력을 처리한 경우입니다.
+
+    // 먼저, 연결된 일반 핸들러를 모두 처리합니다.
+    auto fence_obj = fence_object_.get();
+    auto exec_res = latest_execution_result_.load(RELAXED);
+    for (auto& fn : owner_.output_handlers_) {
+        fn(exec_res, *fence_obj, cached_output_);
+    }
+
+    // 실행기의 내부 상태를 정리합니다.
+    fence_object_.reset();
+    owner_._rotate_output_order(this); // 출력 순서 회전
+
+    // 실행 문맥 버퍼를 전환합니다.
+    _swap_exec_context();
+    owner_.latest_exec_context_.store(&context_read(), RELAXED);
+    owner_.latest_output_fence_.store(fence_index_.load(RELAXED), RELAXED);
+
+    // fence_index_는 일종의 lock 역할을 수행하므로, 가장 마지막에 지정합니다.
+    fence_index_.store(fence_index_t::none, std::memory_order_seq_cst);
+
+    owner_.destruction_guard_.unlock();
 }
 
 void pipepp::impl__::pipe_base::executor_slot::_output_link_callback(size_t output_index, bool aborting)
@@ -104,29 +130,7 @@ void pipepp::impl__::pipe_base::executor_slot::_output_link_callback(size_t outp
         workers().add_timer(delay, &executor_slot::_output_link_callback, this, output_index, aborting);
     }
     else {
-        auto constexpr RELAXED = std::memory_order_relaxed;
-        // 연결된 모든 출력을 처리한 경우입니다.
-
-        // 먼저, 연결된 일반 핸들러를 모두 처리합니다.
-        auto fence_obj = fence_object_.get();
-        auto exec_res = latest_execution_result_.load(RELAXED);
-        for (auto& fn : owner_.output_handlers_) {
-            fn(exec_res, *fence_obj, cached_output_);
-        }
-
-        // 실행기의 내부 상태를 정리합니다.
-        fence_object_.reset();
-        owner_._rotate_output_order(this); // 출력 순서 회전
-
-        // 실행 문맥 버퍼를 전환합니다.
-        _swap_exec_context();
-        owner_.latest_exec_context_.store(&context_read(), RELAXED);
-        owner_.latest_output_fence_.store(fence_index_.load(RELAXED), RELAXED);
-
-        // fence_index_는 일종의 lock 역할을 수행하므로, 가장 마지막에 지정합니다.
-        fence_index_.store(fence_index_t::none, std::memory_order_seq_cst);
-
-        owner_.destruction_guard_.unlock();
+        _perform_post_output();
     }
 }
 
@@ -222,13 +226,9 @@ void pipepp::impl__::pipe_base::launch(size_t num_executors, std::function<std::
         throw std::invalid_argument("invalid number of executors");
     }
 
-    // executor_slot 형식이 이동 및 복사 불가능 형식이기 때문에, 배열을 구성하기 위해
-    //다소 복잡한 방법을 사용합니다.
-    // 먼저 num_executors에 대응되는 byte buffer를 할당하고, RAII를 충족하기 위해
-    //element_slot[] 형식의 unique_ptr에 지정합니다. 이후 각 메모리에 대해 명시적으로
-    //생성자를 호출하여 고정 배열을 생성합니다.
+    // 각 슬롯 인스턴스는 동일한 실행기를 가져야 하므로, 팩토리 함수를 받아와서 생성합니다.
     for (auto index : kangsw::counter_range(num_executors)) {
-        executor_slot(*this, factory(), index == 0);
+        executor_slots_.emplace_back(std::make_unique<executor_slot>(*this, factory(), index == 0));
     }
 
     input_slot_.active_input_fence_.store((fence_index_t)1, std::memory_order_relaxed);
@@ -240,11 +240,12 @@ void pipepp::impl__::pipe_base::_rotate_output_order(executor_slot* ref)
     for (auto index : kangsw::counter_range(executor_slots_.size())) {
         auto& slot = executor_slots_[index];
 
-        if (slot->_is_output_order().exchange(false, RELAX)) {
+        if (slot->_is_output_order().exchange(false)) {
             assert(slot.get() == ref);
             auto next_index = (index + 1) % executor_slots_.size();
             auto& next = executor_slots_[next_index];
-            next->_is_output_order().store(true, RELAX);
+            next->_is_output_order().store(true);
+            break;
         }
     }
 
@@ -258,7 +259,7 @@ void pipepp::impl__::pipe_base::input_slot_t::_supply_input_to_active_executor(b
         owner_.destruction_guard_.lock();
     }
 
-    if (owner_._active_exec_slot().is_busy()) {
+    if (owner_._active_exec_slot()._is_executor_busy()) {
         // 차례가 된 실행 슬롯이 여전히 바쁩니다.
         // 재시도를 요청합니다.
         using namespace std::chrono_literals;
@@ -351,7 +352,7 @@ bool pipepp::impl__::pipe_base::input_slot_t::_submit_input_direct(std::any&& in
         throw pipe_exception("input cannot directly fed when there's any input link existing");
     }
 
-    if (owner_._active_exec_slot().is_busy()) {
+    if (owner_._active_exec_slot()._is_executor_busy()) {
         return false;
     }
 
@@ -365,5 +366,5 @@ bool pipepp::impl__::pipe_base::input_slot_t::_submit_input_direct(std::any&& in
 
 bool pipepp::impl__::pipe_base::input_slot_t::_can_submit_input_direct() const
 {
-    return owner_._active_exec_slot().is_busy() == false;
+    return owner_._active_exec_slot()._is_executor_busy() == false;
 }

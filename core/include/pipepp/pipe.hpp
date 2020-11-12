@@ -58,7 +58,7 @@ enum class pipe_id_t : size_t { none = -1 };
 
 /** fence shared data의 기본 상속형입니다. */
 struct base_fence_shared_object {
-    virtual ~base_fence_shared_object();
+    virtual ~base_fence_shared_object() = default;
 };
 
 namespace impl__ {
@@ -67,7 +67,7 @@ namespace impl__ {
 class executor_base {
 public:
     virtual ~executor_base() = default;
-    virtual pipe_error invoke__(std::any const& input, std::any& output) = 0;
+    virtual pipe_error invoke__(std::any& input, std::any& output) = 0;
 
 public:
     void set_context_ref(execution_context* ref) { context_ = ref, context_->clear_records(); }
@@ -185,7 +185,7 @@ public:
         execution_context const& context_read() const { return contexts_[context_front_]; }
         execution_context& context_write() { return contexts_[!context_front_]; }
         fence_index_t fence_index() const { return fence_index_; }
-        bool is_busy() const { return fence_index_ != fence_index_t::none; }
+        bool _is_executor_busy() const { return fence_index_ != fence_index_t::none; }
 
         std::atomic_bool& _is_output_order() { return is_output_order_; }
 
@@ -230,6 +230,7 @@ public:
          *
          */
         void _launch_callback(); // 파라미터는 나중에 추가
+        void _perform_post_output();
         void _output_link_callback(size_t output_index, bool aborting);
 
     private:
@@ -276,6 +277,9 @@ public:
 
     /** 입력 공급 시도 */
     bool try_submit(std::any&& input, std::shared_ptr<base_fence_shared_object> fence_object) { return input_slot_._submit_input_direct(std::move(input), std::move(fence_object)); }
+
+    /** 가동 중인 파이프 있는지 확인 */
+    bool is_async_operation_running() const { return destruction_guard_.is_locked(); }
 
 private:
     /** this출력->to입력 방향으로 연결합니다. */
@@ -379,7 +383,7 @@ public:
     }
 
 public:
-    pipe_error invoke__(std::any const& input, std::any& output) final
+    pipe_error invoke__(std::any& input, std::any& output) override
     {
         if (input.type() != typeid(input_type)) {
             throw pipe_input_exception("input type not match");
@@ -391,7 +395,7 @@ public:
         return std::invoke(
           &executor_type::invoke, &exec_,
           *context_,
-          std::any_cast<input_type const&>(input), std::any_cast<output_type&>(output));
+          std::any_cast<input_type&>(input), std::any_cast<output_type&>(output));
     }
 
     // Non-virtual to be overriden by base class

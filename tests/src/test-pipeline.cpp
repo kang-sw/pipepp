@@ -41,9 +41,12 @@ struct exec_1 {
 TEST_CASE("pipeline compilation")
 {
     using pipeline_type = pipeline<my_shared_data, exec_0>;
-    auto pl = pipeline_type::create("Hell", &exec_0::factory);
+    auto pl = pipeline_type::create("Hell", 1, &exec_0::factory);
     auto front = pl->front();
     auto second = front.create_and_link_output(
-      "World", false, [](my_shared_data&, exec_0::output_type const&, exec_1::input_type&) {}, &exec_1::factory);
+      "World", false, 1,
+      [](my_shared_data&, exec_0::output_type const&, exec_1::input_type&) {}, &exec_1::factory);
+
+    pl->launch();
 }
 } // namespace pipepp::pipeline_test

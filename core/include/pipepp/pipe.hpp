@@ -265,7 +265,7 @@ public:
 
 public:
     pipe_id_t id() const { return id_; }
-
+    auto& name() const { return name_; }
     /** launch()의 호출 여부 반환 */
     bool is_launched() const { return input_slot_.active_input_fence_.load(std::memory_order_relaxed) > fence_index_t::none; }
 

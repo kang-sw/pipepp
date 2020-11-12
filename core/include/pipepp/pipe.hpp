@@ -58,7 +58,7 @@ enum class pipe_id_t : size_t { none = -1 };
 
 /** fence shared data의 기본 상속형입니다. */
 struct base_fence_shared_data {
-    virtual ~base_fence_shared_object() = default;
+    virtual ~base_fence_shared_data() = default;
 };
 
 namespace impl__ {
@@ -357,14 +357,14 @@ private:
 template <typename Shared_, typename PrevOut_, typename NextIn_, typename Fn_>
 void pipe_base::connect_output_to(pipe_base& other, Fn_&& fn)
 {
-    auto wrapper = [fn_ = std::move(fn)](Shared_& shared, std::any const& prev_out, std::any& next_in) {
+    auto wrapper = [fn_ = std::move(fn)](base_fence_shared_data& shared, std::any const& prev_out, std::any& next_in) -> void {
         if (next_in.type() != typeid(NextIn_)) {
             next_in.emplace<NextIn_>();
         }
         if (prev_out.type() != typeid(PrevOut_)) {
             throw pipe_input_exception("argument type does not match");
         }
-        fn_(shared, std::any_cast<PrevOut_ const&>(prev_out), std::any_cast<NextIn_&>(next_in));
+        fn_(static_cast<Shared_&>(shared), std::any_cast<PrevOut_ const&>(prev_out), std::any_cast<NextIn_&>(next_in));
     };
 
     _connect_output_to_impl(&other, wrapper);

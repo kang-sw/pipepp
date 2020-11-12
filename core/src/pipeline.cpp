@@ -1,7 +1,7 @@
 #include "pipepp/pipeline.hpp"
 #include <mutex>
 
-std::shared_ptr<pipepp::base_fence_shared_data> pipepp::impl__::pipeline_base::_fetch_shared()
+std::shared_ptr<pipepp::base_shared_context> pipepp::impl__::pipeline_base::_fetch_shared()
 {
     std::lock_guard lock(fence_object_pool_lock_);
 
@@ -12,5 +12,5 @@ std::shared_ptr<pipepp::base_fence_shared_data> pipepp::impl__::pipeline_base::_
         }
     }
 
-    return fence_objects_.emplace_back(std::make_shared<base_fence_shared_data>());
+    return fence_objects_.emplace_back(std::make_shared<base_shared_context>());
 }

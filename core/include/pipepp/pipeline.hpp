@@ -15,12 +15,12 @@ protected:
 
 protected:
     // shared data object allocator
-    std::shared_ptr<base_fence_shared_data> _fetch_shared();
+    std::shared_ptr<base_shared_context> _fetch_shared();
     decltype(auto) get_first();
 
 protected:
     std::vector<std::unique_ptr<pipe_base>> pipes_;
-    std::vector<std::shared_ptr<base_fence_shared_data>> fence_objects_;
+    std::vector<std::shared_ptr<base_shared_context>> fence_objects_;
     std::mutex fence_object_pool_lock_;
 };
 
@@ -99,12 +99,17 @@ public:
     // link to
     // 1. creation
     template <typename LnkFn_, typename FactoryFn_, typename... FactoryArgs_>
-    decltype(auto) create_and_link_output(
+    pipe_proxy<SharedData_, typename std::invoke_result_t<FactoryFn_, FactoryArgs_...>::element_type::executor_type>
+    create_and_link_output(
       std::string name, bool optional_input, size_t num_executors, LnkFn_&& linker, FactoryFn_&& factory, FactoryArgs_&&... args);
 
     // 2. simple linkage
     template <typename Dest_, typename LnkFn_>
     pipe_proxy<shared_data_type, Dest_> link_output(pipe_proxy<shared_data_type, Dest_> dest, LnkFn_&& linker);
+
+    // simple output handler
+    template <typename Fn_>
+    pipe_proxy& add_output_handler(Fn_&& handler);
 
 private:
     std::shared_ptr<pipeline_type> _lock() const
@@ -128,6 +133,18 @@ pipe_proxy<SharedData_, Exec_>::link_output(pipe_proxy<shared_data_type, Dest_> 
       dest.pipe_, std::forward<LnkFn_>(linker));
 
     return dest;
+}
+
+template <typename SharedData_, typename Exec_>
+template <typename Fn_>
+pipe_proxy<SharedData_, Exec_>&
+pipe_proxy<SharedData_, Exec_>::add_output_handler(Fn_&& handler)
+{
+    auto wrapper = [fn_ = std::move(handler)](pipe_error e, base_shared_context& s, std::any const& o) {
+        fn_(e, static_cast<SharedData_&>(s), std::any_cast<output_type&>(o));
+    };
+    pipe_.add_output_handler(std::move(wrapper));
+    return *this;
 }
 
 template <typename SharedData_, typename InitialExec_>
@@ -225,7 +242,7 @@ public:
 
 template <typename SharedData_, typename Exec_>
 template <typename LnkFn_, typename FactoryFn_, typename... FactoryArgs_>
-decltype(auto)
+pipe_proxy<SharedData_, typename std::invoke_result_t<FactoryFn_, FactoryArgs_...>::element_type::executor_type>
 pipe_proxy<SharedData_, Exec_>::create_and_link_output(std::string name, bool optional_input, size_t num_executors, LnkFn_&& linker, FactoryFn_&& factory, FactoryArgs_&&... args)
 {
     using factory_invoke_type = std::invoke_result_t<FactoryFn_, FactoryArgs_...>;
@@ -240,5 +257,7 @@ pipe_proxy<SharedData_, Exec_>::create_and_link_output(std::string name, bool op
     pipe_proxy<shared_data_type, destination_type> dest(pipeline_, ref);
     return link_output(dest, std::forward<LnkFn_>(linker));
 }
+
+static constexpr auto link_as_is = [](auto, auto& prev_out, auto& next_in) { next_in = prev_out; };
 
 } // namespace pipepp

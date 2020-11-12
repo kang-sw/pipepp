@@ -57,8 +57,8 @@ enum class fence_index_t : size_t { none = 0 };
 enum class pipe_id_t : size_t { none = -1 };
 
 /** fence shared data의 기본 상속형입니다. */
-struct base_fence_shared_data {
-    virtual ~base_fence_shared_data() = default;
+struct base_shared_context {
+    virtual ~base_shared_context() = default;
 };
 
 namespace impl__ {
@@ -94,8 +94,8 @@ struct pipe_id_gen {
  */
 class pipe_base final : public std::enable_shared_from_this<pipe_base> {
 public:
-    using output_link_adapter_type = std::function<void(base_fence_shared_data&, std::any const& output, std::any& input)>;
-    using output_handler_type = std::function<void(pipe_error, base_fence_shared_data const&, std::any const&)>;
+    using output_link_adapter_type = std::function<void(base_shared_context&, std::any const& output, std::any& input)>;
+    using output_handler_type = std::function<void(pipe_error, base_shared_context const&, std::any const&)>;
 
     explicit pipe_base(std::string name, bool optional_pipe = false, std::unique_ptr<executor_option_base> opts = nullptr)
         : executor_options_(std::move(opts))
@@ -140,7 +140,7 @@ public:
           fence_index_t output_fence,
           pipe_id_t input_index,
           std::function<void(std::any&)> const& input_manip,
-          std::shared_ptr<base_fence_shared_data> const& fence_obj,
+          std::shared_ptr<base_shared_context> const& fence_obj,
           bool abort_current = false);
 
         /**
@@ -149,7 +149,7 @@ public:
          *
          * 단, 이를 위해 적어도 하나의 실행기가 비어 있어야 합니다. 아니면 false를 반환합니다.
          */
-        bool _submit_input_direct(std::any&& input, std::shared_ptr<base_fence_shared_data> fence_object);
+        bool _submit_input_direct(std::any&& input, std::shared_ptr<base_shared_context> fence_object);
         bool _can_submit_input_direct() const;
 
     private:
@@ -167,7 +167,7 @@ public:
         std::pair<std::any, std::mutex> cached_input_;
         std::vector<input_link_state> ready_conds_;
         std::atomic<fence_index_t> active_input_fence_ = fence_index_t::none;
-        std::shared_ptr<base_fence_shared_data> active_input_fence_object_;
+        std::shared_ptr<base_shared_context> active_input_fence_object_;
     };
 
     class alignas(64) executor_slot {
@@ -194,7 +194,7 @@ public:
 
     public:
         struct launch_args_t {
-            std::shared_ptr<base_fence_shared_data> fence_obj;
+            std::shared_ptr<base_shared_context> fence_obj;
             fence_index_t fence_index;
             std::any input;
         };
@@ -245,7 +245,7 @@ public:
         execution_context contexts_[2] = {};
         bool context_front_ = false;
 
-        std::shared_ptr<base_fence_shared_data> fence_object_;
+        std::shared_ptr<base_shared_context> fence_object_;
         std::atomic<fence_index_t> fence_index_ = fence_index_t::none;
 
         std::any cached_input_;
@@ -292,7 +292,7 @@ public:
     void launch_by(size_t num_executors, Fn_&& factory, Args_&&... args);
 
     /** 입력 공급 시도 */
-    bool try_submit(std::any&& input, std::shared_ptr<base_fence_shared_data> fence_object) { return input_slot_._submit_input_direct(std::move(input), std::move(fence_object)); }
+    bool try_submit(std::any&& input, std::shared_ptr<base_shared_context> fence_object) { return input_slot_._submit_input_direct(std::move(input), std::move(fence_object)); }
 
     /** 가동 중인 파이프 있는지 확인 */
     bool is_async_operation_running() const { return destruction_guard_.is_locked(); }
@@ -357,7 +357,7 @@ private:
 template <typename Shared_, typename PrevOut_, typename NextIn_, typename Fn_>
 void pipe_base::connect_output_to(pipe_base& other, Fn_&& fn)
 {
-    auto wrapper = [fn_ = std::move(fn)](base_fence_shared_data& shared, std::any const& prev_out, std::any& next_in) -> void {
+    auto wrapper = [fn_ = std::move(fn)](base_shared_context& shared, std::any const& prev_out, std::any& next_in) -> void {
         if (next_in.type() != typeid(NextIn_)) {
             next_in.emplace<NextIn_>();
         }

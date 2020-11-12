@@ -91,13 +91,18 @@ void pipepp::impl__::pipe_base::executor_slot::_launch_callback()
         workers().add_task(&executor_slot::_output_link_callback, this, 0, exec_res > pipe_error::warning);
     }
     else {
-        // owner_.destruction_guard_.unlock();
         _perform_post_output();
     }
 }
 
 void pipepp::impl__::pipe_base::executor_slot::_perform_post_output()
 {
+    if (!_is_output_order()) {
+        using namespace std::literals;
+        owner_._thread_pool().add_timer(100us, &executor_slot::_perform_post_output, this);
+        return;
+    }
+
     auto constexpr RELAXED = std::memory_order_relaxed;
     // 연결된 모든 출력을 처리한 경우입니다.
 

@@ -28,9 +28,9 @@ struct test_exec {
     {
         using namespace std::chrono_literals;
         if (prefix.ends_with("opt")) {
-            std::this_thread::sleep_for(10ms);
+            // std::this_thread::sleep_for(10ms);
         }
-        std::this_thread::sleep_for(10ms + 1ms * (rand() % 3));
+        // std::this_thread::sleep_for(10ms + 1ms * (rand() % 3));
 
         output.value = input.value + 1;
 
@@ -136,17 +136,13 @@ TEST_CASE("pipe initialization", "[.]")
             base_shared_context, test_exec::output_type, test_exec::input_type>(
             *pipe3_0, &test_exec::recursive_adapter));
 
-        lock.lock(), logger << (fmt::format("{:->60}\n", ' ')), lock.unlock();
-        pipe0->try_submit(test_exec::input_type{10}, std::make_shared<base_shared_context>());
-        while (pipe0->is_async_operation_running()) { std::this_thread::sleep_for(1us); }
-
-        lock.lock(), logger << (fmt::format("{:->60}\n", ' ')), lock.unlock();
-        pipe0->try_submit(test_exec::input_type{20}, std::make_shared<base_shared_context>());
-        while (pipe0->is_async_operation_running()) { std::this_thread::sleep_for(1us); }
-
-        lock.lock(), logger << (fmt::format("{:->60}\n", ' ')), lock.unlock();
-        pipe0->try_submit(test_exec::input_type{30}, std::make_shared<base_shared_context>());
-        while (pipe0->is_async_operation_running()) { std::this_thread::sleep_for(1us); }
+        static constexpr size_t NUM_CASES = 1024;
+        for (int i = 0; i < NUM_CASES; i++) {
+            lock.lock(), logger << (fmt::format("{:->60}\n", ' ')), lock.unlock();
+            while (!pipe0->try_submit(test_exec::input_type{i * 100}, std::make_shared<base_shared_context>())) {
+                std::this_thread::sleep_for(0.1ms);
+            }
+        }
 
         for (auto& [pipe, name] : kangsw::zip(pipes, pipe_names)) {
             using namespace std::literals;

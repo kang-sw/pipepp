@@ -305,7 +305,7 @@ void pipepp::impl__::pipe_base::input_slot_t::_supply_input_to_active_executor(b
     owner_.destruction_guard_.unlock();
 }
 
-bool pipepp::impl__::pipe_base::input_slot_t::_submit_input(fence_index_t output_fence, pipepp::pipe_id_t input_pipe, std::function<void(std::any&)> const& input_manip, std::shared_ptr<pipepp::base_fence_shared_object> const& fence_obj, bool abort_current)
+bool pipepp::impl__::pipe_base::input_slot_t::_submit_input(fence_index_t output_fence, pipepp::pipe_id_t input_pipe, std::function<void(std::any&)> const& input_manip, std::shared_ptr<pipepp::base_fence_shared_data> const& fence_obj, bool abort_current)
 {
     std::lock_guard lock{cached_input_.second};
     std::lock_guard destruction_guard{owner_.destruction_guard_};
@@ -376,7 +376,7 @@ bool pipepp::impl__::pipe_base::input_slot_t::_submit_input(fence_index_t output
     return true;
 }
 
-bool pipepp::impl__::pipe_base::input_slot_t::_submit_input_direct(std::any&& input, std::shared_ptr<pipepp::base_fence_shared_object> fence_object)
+bool pipepp::impl__::pipe_base::input_slot_t::_submit_input_direct(std::any&& input, std::shared_ptr<pipepp::base_fence_shared_data> fence_object)
 {
     std::lock_guard lock{cached_input_.second};
     std::lock_guard destruction_guard{owner_.destruction_guard_};

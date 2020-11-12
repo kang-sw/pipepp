@@ -276,6 +276,9 @@ public:
     /** 파이프 옵션 반환 */
     executor_option_base* options() const { return executor_options_.get(); }
 
+    /** 입력 가능 상태인지 확인 */
+    bool can_submit_input_direct() const { return _active_exec_slot()._is_executor_busy(); }
+
 public:
     /** 입력 연결자 */
     template <typename Shared_, typename PrevOut_, typename NextIn_, typename Fn_>

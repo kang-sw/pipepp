@@ -29,6 +29,36 @@ void pipepp::impl__::pipe_base::input_slot_t::_prepare_next()
     this->active_input_fence_object_.reset();
 }
 
+void pipepp::impl__::pipe_base::input_slot_t::_propagate_fence_abortion(fence_index_t pending_fence, size_t output_link_index)
+{
+    using namespace std::chrono_literals;
+
+    auto& output_link = *owner_.output_links_[output_link_index].pipe;
+    auto& link_input = output_link.input_slot_;
+    auto delay = 0us;
+
+    if (auto query_result = link_input.can_submit_input(pending_fence); query_result.has_value()) {
+        if (query_result.value() && link_input._submit_input(pending_fence, owner_.id(), {}, {}, true)) {
+            ++output_link_index;
+        }
+        else {
+            delay = 100us;
+        }
+    }
+    else {
+        ++output_link_index;
+    }
+
+    if (output_link_index < owner_.output_links_.size()) {
+        owner_.thread_pool().add_timer(
+          delay, &input_slot_t::_propagate_fence_abortion, this, pending_fence, output_link_index);
+    }
+    else {
+        // 탈출 조건 ... 전파 완료함
+        owner_.destruction_guard_.unlock();
+    }
+}
+
 void pipepp::impl__::pipe_base::executor_slot::_launch_async(launch_args_t arg)
 {
     std::lock_guard destruction_guard{owner_.destruction_guard_};
@@ -321,7 +351,16 @@ bool pipepp::impl__::pipe_base::input_slot_t::_submit_input(fence_index_t output
 
     if (abort_current) {
         // 현재 입력 슬롯의 펜스를 invalidate합니다.
-        // 펜스는 다음 인덱스로 넘어감
+
+        // 연결된 각각의 출력 링크에 새로운 인덱스를 전파합니다.
+        // 기본 개념은, 현재 인덱스를 기다리고 있는 출력 링크의 입력 인덱스를 넘기는 것이므로,
+        //현재 입력 펜스 인덱스를 캡쳐해 전달합니다.
+        if (owner_.output_links_.empty() == false) {
+            owner_.destruction_guard_.lock();
+            owner_.thread_pool().add_task(&input_slot_t::_propagate_fence_abortion, this, active_input_fence(), 0);
+        }
+
+        // 다음 인덱스로 넘어갑니다.
         _prepare_next();
         return true;
     }

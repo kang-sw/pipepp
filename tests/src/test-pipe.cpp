@@ -32,8 +32,8 @@ struct test_exec {
         output.value = input.value + 1;
 
         std::stringstream pref;
-        for (auto& str : input.contributes) { pref << std::setw(8) << str << ", "; }
-        pref << prefix;
+        for (auto& str : input.contributes) { pref << std::setw(8) << str << "  "; }
+        pref << ":: " << prefix;
 
         auto to_print = fmt::format("{:>35}: {} -> {}\n", pref.str(), input.value, output.value);
         printf(to_print.c_str());

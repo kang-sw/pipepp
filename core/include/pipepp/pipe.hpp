@@ -154,6 +154,7 @@ public:
 
     private:
         void _prepare_next();
+        void _propagate_fence_abortion(fence_index_t pending_fence, size_t output_link_index);
 
     private:
         // clang-format off

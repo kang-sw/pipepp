@@ -65,10 +65,11 @@ TEST_CASE("pipe initialization")
     auto pipe2_1 = std::make_shared<pipe_base>();
     auto pipe3_opt = std::make_shared<pipe_base>(true);
     auto pipe3_0 = std::make_shared<pipe_base>();
+    auto pipe4_0 = std::make_shared<pipe_base>();
 
     // clang-format off
-    auto pipes = {pipe0, pipe1, pipe2_0, pipe2_1, pipe3_opt, pipe3_0};
-    auto pipe_names = {"pipe 0", "pipe 1", "pipe 2_0", "pipe 2_1", "pipe3_opt", "pipe3_0"};
+    auto pipes = {pipe0, pipe1, pipe2_0, pipe2_1, pipe3_opt, pipe3_0, pipe4_0};
+    auto pipe_names = {"pipe 0", "pipe 1", "pipe 2_0", "pipe 2_1", "pipe3_opt", "pipe3_0", "pipe4_0"};
     // clang-format on
 
     for (auto& [ref, _1] : kangsw::zip(pipes, pipe_names)) {
@@ -91,18 +92,26 @@ TEST_CASE("pipe initialization")
       base_fence_shared_object, test_exec::output_type, test_exec::input_type>(
       *pipe3_opt, &test_exec::recursive_adapter);
 
-    REQUIRE_THROWS(
+    pipe3_opt->connect_output_to<
+      base_fence_shared_object, test_exec::output_type, test_exec::input_type>(
+      *pipe4_0, &test_exec::recursive_adapter);
+
+    REQUIRE_THROWS( // SELF ERROR
       pipe1->connect_output_to<
         base_fence_shared_object, test_exec::output_type, test_exec::input_type>(
         *pipe1, &test_exec::recursive_adapter));
-    REQUIRE_THROWS(
+    REQUIRE_THROWS( // CIRCULAR ERROR
       pipe1->connect_output_to<
         base_fence_shared_object, test_exec::output_type, test_exec::input_type>(
         *pipe0, &test_exec::recursive_adapter));
-    REQUIRE_THROWS(
+    REQUIRE_THROWS( // CIRCULAR ERROR
       pipe2_0->connect_output_to<
         base_fence_shared_object, test_exec::output_type, test_exec::input_type>(
         *pipe0, &test_exec::recursive_adapter));
+    REQUIRE_THROWS( // OPTIONAL PARENT NOT EQUAL ERROR
+      pipe0->connect_output_to<
+        base_fence_shared_object, test_exec::output_type, test_exec::input_type>(
+        *pipe4_0, &test_exec::recursive_adapter));
 
     auto factory = [](std::string name) { return create_executor<test_exec>(name); };
 
@@ -110,7 +119,7 @@ TEST_CASE("pipe initialization")
         pipe->launch_by(1, factory, name);
     }
 
-    REQUIRE_THROWS(
+    REQUIRE_THROWS( // ALREADY LAUNCHED ERROR
       pipe3_opt->connect_output_to<
         base_fence_shared_object, test_exec::output_type, test_exec::input_type>(
         *pipe3_0, &test_exec::recursive_adapter));

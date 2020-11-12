@@ -4,10 +4,10 @@
 #include <kangsw/misc.hxx>
 #include <pipepp/pipe.hpp>
 
-std::optional<bool> pipepp::impl__::pipe_base::input_slot_t::can_submit_input(fence_index_t fence) const
+std::optional<bool> pipepp::impl__::pipe_base::input_slot_t::can_submit_input(fence_index_t output_fence) const
 {
     auto active = active_input_fence();
-    if (fence < active) {
+    if (output_fence < active) {
         // 여러 가지 이유에 의해, 입력 fence가 격상된 경우입니다.
         // non-opt 반환 --> 호출자는 재시도하지 않으며, 이전 단계의 출력은 버려집니다.
         return {};
@@ -18,7 +18,7 @@ std::optional<bool> pipepp::impl__::pipe_base::input_slot_t::can_submit_input(fe
 
     // fence == active : 입력 슬롯이 준비되었습니다.
     //       >         : 아직 파이프가 처리중으로, 입력 슬롯이 준비되지 않았습니다.
-    return is_idle && fence == active;
+    return is_idle && output_fence == active;
 }
 
 void pipepp::impl__::pipe_base::input_slot_t::_prepare_next()
@@ -186,27 +186,27 @@ void pipepp::impl__::pipe_base::_connect_output_to_impl(pipe_base* other, pipepp
     }
 
     // 각각 가장 가까운 optional node, 가장 먼 essential node를 공유해야 함 (항상 true로 가정)
-    pipe_base *optional_from = nullptr, *optional_to = nullptr;
+    pipe_base *optional_to = nullptr, *optional_from = nullptr;
     size_t min_depth = -1;
     kangsw::recurse_for_each(
       other, input_recurse, // 입력 노드는 자기 자신을 포함하지 않고 계산
-      [my_id = id(), &optional_from, &min_depth](pipe_base* node, size_t depth) {
+      [my_id = id(), &optional_to, &min_depth](pipe_base* node, size_t depth) {
           if (node->input_slot_.is_optional_ && depth < min_depth && depth > 0) {
-              optional_from = node;
+              optional_to = node;
               min_depth = depth;
           }
       });
     min_depth = -1;
     kangsw::recurse_for_each(
       this, input_recurse, // 입력 노드는 자기 자신을 포함하지 않고 계산
-      [my_id = id(), &optional_to, &min_depth](pipe_base* node, size_t depth) {
+      [my_id = id(), &optional_from, &min_depth](pipe_base* node, size_t depth) {
           if (node->input_slot_.is_optional_ && depth < min_depth) {
-              optional_to = node;
+              optional_from = node;
               min_depth = depth;
           }
       });
 
-    if (optional_from != optional_to) {
+    if (other->input_links_.empty() == false && optional_to != optional_from) {
         throw pipe_input_exception("nearlest optional node does not match");
     }
 
@@ -297,7 +297,7 @@ bool pipepp::impl__::pipe_base::input_slot_t::_submit_input(fence_index_t output
     }
 
     if (active_fence < output_fence) {
-        // 입력 슬롯이 아직 준비되지 않았습니다.
+        // 실행 슬롯이 준비중입니다.
         // false를 반환해 재시도를 요청합니다.
         return false;
     }

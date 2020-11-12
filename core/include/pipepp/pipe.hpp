@@ -125,7 +125,7 @@ public:
         /**
          * @return has_value() == false이면 현재 입력을 버려야 합니다.
          */
-        std::optional<bool> can_submit_input(fence_index_t fence) const;
+        std::optional<bool> can_submit_input(fence_index_t output_fence) const;
         /**
          * 입력 데이터 공급 완료 후 호출합니다.
          * ready_conds_의 해당 인덱스를 활성화합니다.

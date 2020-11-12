@@ -96,8 +96,8 @@ class pipe_base final : public std::enable_shared_from_this<pipe_base> {
 public:
     using output_link_adapter_t = std::function<void(base_fence_shared_object&, std::any const& output, std::any& input)>;
 
-    explicit pipe_base(bool optional_pipe = false, executor_option_base* opts = nullptr)
-        : executor_options_(opts)
+    explicit pipe_base(bool optional_pipe = false, std::unique_ptr<executor_option_base> opts = nullptr)
+        : executor_options_(std::move(opts))
     {
         input_slot_.is_optional_ = optional_pipe;
     }
@@ -255,6 +255,15 @@ public:
     };
 
 public:
+    struct input_link_desc {
+        pipe_base* pipe;
+    };
+    struct output_link_desc {
+        output_link_adapter_t handler;
+        pipe_base* pipe;
+    };
+
+public:
     pipe_id_t id() const { return id_; }
     bool is_launched() const { return launched_; }
 
@@ -287,6 +296,10 @@ public:
     /** context 읽어들이기 */
     execution_context const& latest_execution_context() const { return *latest_exec_context_.load(std::memory_order_relaxed); }
 
+    /** 입출력 노드 반환 */
+    auto& input_links() const { return input_links_; }
+    auto& output_links() const { return output_links_; }
+
 private:
     /** this출력->to입력 방향으로 연결합니다. */
     void _connect_output_to_impl(pipe_base* other, output_link_adapter_t adapter);
@@ -299,15 +312,6 @@ private:
 
 public:
     void set_thread_pool_reference(kangsw::timer_thread_pool* ref) { ref_workers_ = ref; }
-
-private:
-    struct input_link_desc {
-        pipe_base* pipe;
-    };
-    struct output_link_desc {
-        output_link_adapter_t handler;
-        pipe_base* pipe;
-    };
 
 private:
     pipe_id_t const id_ = pipe_id_gen::generate();
@@ -331,7 +335,7 @@ private:
     std::vector<std::function<void(pipe_error, base_fence_shared_object const&, std::any const&)>> output_handlers_;
 
     kangsw::timer_thread_pool* ref_workers_ = nullptr;
-    executor_option_base* executor_options_ = nullptr;
+    std::unique_ptr<executor_option_base> executor_options_ = nullptr;
 
     //---GUARD--//
     kangsw::destruction_guard destruction_guard_;

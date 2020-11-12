@@ -406,14 +406,14 @@ private:
     void const* _get_actual_executor() const override { return &exec_; }
 
     template <typename ExecFn_, typename... Args_>
-    friend decltype(auto) create_executor(Args_&&... args);
+    friend decltype(auto) make_executor(Args_&&... args);
 
 private:
     executor_type exec_;
 };
 
 template <typename Exec_, typename... Args_>
-decltype(auto) create_executor(Args_&&... args)
+decltype(auto) make_executor(Args_&&... args)
 {
     return std::make_unique<executor<Exec_>>(std::forward<Args_>(args)...);
 }

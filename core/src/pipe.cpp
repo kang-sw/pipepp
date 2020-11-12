@@ -141,7 +141,7 @@ void pipepp::impl__::pipe_base::executor_slot::_output_link_callback(size_t outp
 
         // 만약 optional인 경우, 입력이 준비되지 않았다면 abort에 true를 지정해,
         //현재 입력 fence를 즉시 취소합니다.
-        bool const abort_optional = slot.is_optional_ && !*check;
+        bool const abort_optional = aborting || (slot.is_optional_ && !*check);
         bool const can_try_submit = *check || abort_optional;
         if (can_try_submit && slot._submit_input(fence_index_, owner_.id(), input_manip, fence_object_, abort_optional)) {
             // no need to retry.

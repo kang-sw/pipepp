@@ -40,7 +40,7 @@ struct test_exec {
 
         input.contributes.clear();
         output.contrib = prefix;
-        return pipe_error::ok;
+        return pipe_error::error;
     }
 
     static void recursive_adapter(base_fence_shared_object&, output_type const& result, input_type& next_input)
@@ -113,7 +113,7 @@ TEST_CASE("pipe initialization")
         base_fence_shared_object, test_exec::output_type, test_exec::input_type>(
         *pipe4_0, &test_exec::recursive_adapter));
 
-    auto factory = [](std::string name) { return create_executor<test_exec>(name); };
+    auto factory = [](std::string name) { return make_executor<test_exec>(name); };
 
     for (auto& [pipe, name] : kangsw::zip(pipes, pipe_names)) {
         pipe->launch_by(1, factory, name);

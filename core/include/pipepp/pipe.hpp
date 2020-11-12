@@ -94,7 +94,8 @@ struct pipe_id_gen {
  */
 class pipe_base final : public std::enable_shared_from_this<pipe_base> {
 public:
-    using output_link_adapter_t = std::function<void(base_fence_shared_object&, std::any const& output, std::any& input)>;
+    using output_link_adapter_type = std::function<void(base_fence_shared_object&, std::any const& output, std::any& input)>;
+    using output_handler_type = std::function<void(pipe_error, base_fence_shared_object const&, std::any const&)>;
 
     explicit pipe_base(std::string name, bool optional_pipe = false, std::unique_ptr<executor_option_base> opts = nullptr)
         : executor_options_(std::move(opts))
@@ -258,7 +259,7 @@ public:
         pipe_base* pipe;
     };
     struct output_link_desc {
-        output_link_adapter_t handler;
+        output_link_adapter_type handler;
         pipe_base* pipe;
     };
 
@@ -296,9 +297,12 @@ public:
     /** context 읽어들이기 */
     execution_context const& latest_execution_context() const { return *latest_exec_context_.load(std::memory_order_relaxed); }
 
+    /** 출력 핸들러 추가 */
+    void add_output_handler(output_handler_type handler) { output_handlers_.emplace_back(std::move(handler)); };
+
 private:
     /** this출력->to입력 방향으로 연결합니다. */
-    void _connect_output_to_impl(pipe_base* other, output_link_adapter_t adapter);
+    void _connect_output_to_impl(pipe_base* other, output_link_adapter_type adapter);
 
     /** 출력이 완료된 슬롯에서 호출합니다. 다음 슬롯을 입력 활성화 */
     void _rotate_output_order(executor_slot* ref);
@@ -338,7 +342,7 @@ private:
     std::atomic<execution_context const*> latest_exec_context_;
     std::atomic<fence_index_t> latest_output_fence_;
 
-    std::vector<std::function<void(pipe_error, base_fence_shared_object const&, std::any const&)>> output_handlers_;
+    std::vector<output_handler_type> output_handlers_;
 
     kangsw::timer_thread_pool* ref_workers_ = nullptr;
     std::unique_ptr<executor_option_base> executor_options_ = nullptr;

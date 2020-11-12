@@ -58,7 +58,7 @@ public:
     std::string prefix;
 };
 
-TEST_CASE("pipe initialization", "[]")
+TEST_CASE("pipe initialization", "[.]")
 {
     for (auto ITER = 0; ITER < 5; ++ITER) {
         using namespace impl__;

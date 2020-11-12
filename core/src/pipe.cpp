@@ -170,7 +170,7 @@ void pipepp::impl__::pipe_base::executor_slot::_output_link_callback(size_t outp
     }
 }
 
-void pipepp::impl__::pipe_base::_connect_output_to_impl(pipe_base* other, pipepp::impl__::pipe_base::output_link_adapter_t adapter)
+void pipepp::impl__::pipe_base::_connect_output_to_impl(pipe_base* other, pipepp::impl__::pipe_base::output_link_adapter_type adapter)
 {
     if (is_launched() || other->is_launched()) {
         throw pipe_link_exception("pipe already launched");

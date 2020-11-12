@@ -61,13 +61,13 @@ TEST_CASE("pipe initialization", "[.]")
     using namespace std::chrono_literals;
     kangsw::timer_thread_pool workers{1024, 2};
 
-    auto pipe0 = std::make_shared<pipe_base>();
-    auto pipe1 = std::make_shared<pipe_base>();
-    auto pipe2_0 = std::make_shared<pipe_base>();
-    auto pipe2_1 = std::make_shared<pipe_base>();
-    auto pipe3_opt = std::make_shared<pipe_base>(true);
-    auto pipe3_0 = std::make_shared<pipe_base>();
-    auto pipe4_0 = std::make_shared<pipe_base>();
+    auto pipe0 = std::make_shared<pipe_base>("");
+    auto pipe1 = std::make_shared<pipe_base>("");
+    auto pipe2_0 = std::make_shared<pipe_base>("");
+    auto pipe2_1 = std::make_shared<pipe_base>("");
+    auto pipe3_opt = std::make_shared<pipe_base>("", true);
+    auto pipe3_0 = std::make_shared<pipe_base>("");
+    auto pipe4_0 = std::make_shared<pipe_base>("");
 
     // clang-format off
     auto pipes = {pipe0, pipe1, pipe2_0, pipe2_1, pipe3_opt, pipe3_0, pipe4_0};

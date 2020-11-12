@@ -168,7 +168,7 @@ void pipepp::impl__::pipe_base::executor_slot::_output_link_callback(size_t outp
 
 void pipepp::impl__::pipe_base::_connect_output_to_impl(pipe_base* other, pipepp::impl__::pipe_base::output_link_adapter_t adapter)
 {
-    if (input_slot_.active_input_fence() != fence_index_t::none) {
+    if (is_launched()) {
         throw pipe_link_exception("pipe already launched");
     }
 
@@ -250,7 +250,7 @@ void pipepp::impl__::pipe_base::_connect_output_to_impl(pipe_base* other, pipepp
 
 void pipepp::impl__::pipe_base::launch(size_t num_executors, std::function<std::unique_ptr<executor_base>()>&& factory)
 {
-    if (input_slot_.active_input_fence_.load(std::memory_order_relaxed) != fence_index_t::none) {
+    if (is_launched()) {
         throw pipe_exception("this pipe is already launched!");
     }
 

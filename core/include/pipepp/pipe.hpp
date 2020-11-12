@@ -96,7 +96,7 @@ class pipe_base final : public std::enable_shared_from_this<pipe_base> {
 public:
     using output_link_adapter_t = std::function<void(base_fence_shared_object&, std::any const& output, std::any& input)>;
 
-    explicit pipe_base(bool optional_pipe = false, std::unique_ptr<executor_option_base> opts = nullptr)
+    explicit pipe_base(std::string name, bool optional_pipe = false, std::unique_ptr<executor_option_base> opts = nullptr)
         : executor_options_(std::move(opts))
     {
         input_slot_.is_optional_ = optional_pipe;
@@ -265,7 +265,7 @@ public:
 
 public:
     pipe_id_t id() const { return id_; }
-    bool is_launched() const { return launched_; }
+    bool is_launched() const { return input_slot_.active_input_fence_.load(std::memory_order_relaxed) > fence_index_t::none; }
 
     // 저장된 스레드 풀 레퍼런스 획득
     kangsw::timer_thread_pool& thread_pool() const { return *ref_workers_; }
@@ -300,6 +300,9 @@ public:
     auto& input_links() const { return input_links_; }
     auto& output_links() const { return output_links_; }
 
+    /** 파이프 옵션 반환 */
+    executor_option_base* options() const { return executor_options_.get(); }
+
 private:
     /** this출력->to입력 방향으로 연결합니다. */
     void _connect_output_to_impl(pipe_base* other, output_link_adapter_t adapter);
@@ -315,7 +318,7 @@ public:
 
 private:
     pipe_id_t const id_ = pipe_id_gen::generate();
-    std::atomic_bool launched_ = false;
+    std::string name_;
 
     /** 모든 파이프 입력을 처리합니다. */
     input_slot_t input_slot_{*this};

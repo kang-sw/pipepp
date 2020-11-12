@@ -13,9 +13,12 @@ std::optional<bool> pipepp::impl__::pipe_base::input_slot_t::can_submit_input(fe
         return {};
     }
 
+    // 또한, 이용 가능한 입력 슬롯이 있어야 합니다.
+    bool is_idle = owner_._active_exec_slot()._is_executor_busy() == false;
+
     // fence == active : 입력 슬롯이 준비되었습니다.
     //       >         : 아직 파이프가 처리중으로, 입력 슬롯이 준비되지 않았습니다.
-    return fence == active;
+    return is_idle && fence == active;
 }
 
 void pipepp::impl__::pipe_base::input_slot_t::_prepare_next()
@@ -110,8 +113,7 @@ void pipepp::impl__::pipe_base::executor_slot::_output_link_callback(size_t outp
         //현재 입력 fence를 즉시 취소합니다.
         bool const abort_optional = slot.is_optional_ && !*check;
         bool const can_try_submit = *check || abort_optional;
-        if (can_try_submit
-            && slot._submit_input(fence_index_, owner_.id(), input_manip, fence_object_, abort_optional)) {
+        if (can_try_submit && slot._submit_input(fence_index_, owner_.id(), input_manip, fence_object_, abort_optional)) {
             // no need to retry.
             // go to next index.
             ++output_index;

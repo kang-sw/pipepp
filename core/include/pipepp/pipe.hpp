@@ -80,7 +80,7 @@ public:
     virtual pipe_error invoke__(std::any& input, std::any& output) = 0;
 
 public:
-    void set_context_ref(execution_context* ref) { context_ = ref, context_->clear_records(); }
+    void set_context_ref(execution_context* ref) { context_ = ref, context_->_clear_records(); }
 
     // 실제 실행기의 레퍼런스를 획득합니다.
     // 추후, json_option_interface를 상속하는 실행기 등에 사용
@@ -210,7 +210,7 @@ public:
         kangsw::timer_thread_pool& workers();
 
     private:
-        void _swap_exec_context() {}
+        void _swap_exec_context() { context_._swap_data_buff(); }
 
     private: // 단계별로 등록되는 콜백 목록
         /**

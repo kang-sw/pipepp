@@ -1,12 +1,57 @@
 #pragma once
 #include <any>
+#include <array>
+#include <map>
 #include <shared_mutex>
 #include <string>
 #include <variant>
+#include <winbase.h>
+
+#include "kangsw/hash_index.hxx"
+#include "kangsw/spinlock.hxx"
+
 namespace pipepp {
 namespace impl__ {
 class option_base;
 } // namespace impl__
+
+/**
+ * 실행 문맥 데이터 형식
+ *
+ * 계층적 타이머 정보
+ * 계층적 데이터 정보
+ *
+ * 를 저장하고 있습니다.
+ */
+struct execution_context_data {
+    using clock = std::chrono::system_clock;
+    using debug_variant = std::variant<bool, long, double, std::string, std::any>;
+    friend class execution_context;
+
+public:
+    struct timer_entity {
+        char const* name;
+        size_t category_level;
+        clock::duration elapsed;
+    };
+
+    struct debug_flag_entity {
+        kangsw::hash_index index;
+        size_t category_level;
+        size_t order;
+    };
+
+    struct debug_data_entity {
+        char const* name;
+        size_t category_level;
+        debug_variant data;
+    };
+
+public:
+    std::vector<timer_entity> timers;
+    std::map<kangsw::hash_index, debug_flag_entity> flags;
+    std::vector<debug_data_entity> debug_data;
+};
 
 /**
  * 실행 문맥 클래스.
@@ -19,29 +64,50 @@ class option_base;
  *
  * 등의 기능을 제공합니다.
  *
- * 내부에 두 개의 데이터 버퍼를 갖고 있으며,
+ * 내부에 두 개의 데이터 버퍼를 갖고 있으며, 기본적으로 clear_records가 호출될 때마다 두 개의 버퍼를 스왑합니다.
+ * 이를 통해 메모리 재할당을 방지할 수 있는데, 만약 외부에서 context를 요청한 경우 백 버퍼의 오브젝트를 넘기고 재생성합니다.
  */
 class execution_context {
 public:
-    using debug_data_element_type = std::variant<bool, long, double, std::string, std::any>;
     template <typename Ty_> using lock_type = std::unique_lock<Ty_>;
-
-public:
-    //
-    void clear_records() {}
 
     // TODO: 디버그 플래그 제어
     // TODO: 디버그 데이터 저장(variant<bool, long, double, string, any> [])
     // TODO: 실행 시간 계측기
 
 public:
+    execution_context()
+    {
+        for (auto& pt : context_data_) { pt = std::make_shared<execution_context_data>(); }
+    }
+
+public: // accessor
     auto const& option() const { return *options_; }
     operator impl__::option_base const &() const { return *options_; }
 
-public:
+public: // methods
+    /**
+     * 읽기 버퍼를 추출합니다.
+     * 다음 _clear_records() 호출 전까지 데이터를 추출할 수 없는 상태가 됩니다.
+     */
+    std::shared_ptr<execution_context_data> consume_read_buffer();
+
+public:                    // internal public methods
+    void _clear_records(); // invoke() 이전 호출
     void _internal__set_option(impl__::option_base const* opt) { options_ = opt; }
+    void _swap_data_buff(); // invoke() 이후 호출
+
+private: // private methods
+    auto& _rd() { return context_data_[!front_data_buffer_]; }
+    auto& _wr() { return context_data_[front_data_buffer_]; }
 
 private:
     class impl__::option_base const* options_ = {};
+    std::map<kangsw::hash_index, execution_context_data::debug_flag_entity> flags;
+    std::array<std::shared_ptr<execution_context_data>, 2> context_data_;
+    bool front_data_buffer_ = false;
+    kangsw::spinlock swap_lock_;
+    std::atomic_flag rd_buf_valid;
 };
+
 } // namespace pipepp

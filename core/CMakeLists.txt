@@ -8,8 +8,8 @@ file(GLOB_RECURSE PIPEPP_CORE_SOURCE "include/*" "src/*")
 add_library(pipepp_core STATIC ${PIPEPP_CORE_SOURCE})
 
 add_dependencies(pipepp_core fmt)
-target_link_libraries(pipepp_core PUBLIC fmt)
+target_link_libraries(pipepp_core PUBLIC fmt kangsw_templates)
 
 target_include_directories(pipepp_core PUBLIC "include/")
-target_include_directories(pipepp_core PUBLIC "third/templates/include/" "third/json/include/")
+target_include_directories(pipepp_core PUBLIC "third/json/include/")
 target_compile_features(pipepp_core PUBLIC cxx_std_20)

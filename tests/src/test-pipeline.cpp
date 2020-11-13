@@ -7,7 +7,9 @@
 #include "fmt/format.h"
 #include "pipepp/pipeline.hpp"
 
-namespace pipepp::pipeline_test {
+namespace pipepp_test::pipelines {
+using namespace pipepp;
+
 struct my_shared_data : public base_shared_context {
     int level = 0;
 };
@@ -69,8 +71,7 @@ TEST_CASE("pipeline compilation")
     std::atomic_int ordering = 0;
 
     using pipeline_type = pipeline<my_shared_data, exec_0>;
-    auto pl
-      = pipeline_type::create("0.0", 64, &exec_0::factory);
+    auto pl = pipeline_type::create("0.0", 64, &exec_0::factory);
     auto _0 = pl->front();
     auto _1_0
       = _0.create_and_link_output(
@@ -100,4 +101,4 @@ TEST_CASE("pipeline compilation")
     REQUIRE(std::ranges::count(cases, 1) == cases.size());
     REQUIRE(std::is_sorted(cases.begin(), cases.end()));
 }
-} // namespace pipepp::pipeline_test
+} // namespace pipepp_test::pipelines

@@ -5,7 +5,8 @@
 #include "catch.hpp"
 #include "pipepp/pipe.hpp"
 
-namespace pipepp::pipe_test {
+namespace pipepp_test::pipes {
+using namespace pipepp;
 
 std::mutex lock;
 static std::stringstream logger;
@@ -156,4 +157,4 @@ TEST_CASE("pipe initialization", "[.]")
     }
 }
 
-} // namespace pipepp::pipe_test
+} // namespace pipepp_test::pipes

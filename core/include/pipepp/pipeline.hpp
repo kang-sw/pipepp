@@ -56,7 +56,7 @@ public:
     auto& execution_result() const { return pipe_.latest_execution_context(); }
 
     // get options
-    auto options() const { return pipe_.options(); }
+    auto& options() const { return pipe_.options(); }
 
     // get id
     auto id() const { return pipe_.id(); }

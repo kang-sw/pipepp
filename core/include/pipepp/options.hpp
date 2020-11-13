@@ -22,16 +22,24 @@ public:
     template <typename Exec_>
     void reset_as_default();
 
-    auto lock_read(bool trial = false) const { return trial ? std::shared_lock{lock_, std::try_to_lock} : std::shared_lock{lock_}; }
-    auto lock_write(bool trial = false) const { return trial ? std::unique_lock{lock_, std::try_to_lock} : std::unique_lock{lock_}; }
+    auto lock_read(bool trial = false) const
+    {
+        return trial ? std::shared_lock{lock_, std::try_to_lock} : std::shared_lock{lock_};
+    }
+    auto lock_write(bool trial = false) const
+    {
+        return trial ? std::unique_lock{lock_, std::try_to_lock} : std::unique_lock{lock_};
+    }
+
     auto& option() const { return options_; }
     auto& option() { return options_; }
     auto& description() const { return descriptions_; }
-    auto& description() { return descriptions_; }
+    auto& categories() const { return categories_; }
 
 private:
     nlohmann::json options_;
     nlohmann::json descriptions_;
+    std::map<std::string, std::string> categories_;
     mutable std::shared_mutex lock_;
 };
 
@@ -39,11 +47,10 @@ template <typename Exec_>
 class option_specification {
     friend class option_base;
 
-    // static variable container ~~
-    // execution class 내에서 template 특수화를 통해 static option table을 initialize
 public:
     nlohmann::json init_values_;
     nlohmann::json init_descs_;
+    std::map<std::string, std::string> init_categories_;
 };
 
 template <typename Exec_>
@@ -57,6 +64,7 @@ template <typename Exec_>
 void option_base::reset_as_default()
 {
     options_ = _opt_spec<Exec_>().init_values_;
+    categories_ = _opt_spec<Exec_>().init_categories_;
     descriptions_ = _opt_spec<Exec_>().init_descs_;
 }
 
@@ -64,10 +72,11 @@ template <typename Exec_, typename Ty_, size_t>
 struct _option_instance {
     using spec_type = option_specification<Exec_>;
 
-    _option_instance(Ty_&& init_value, char const* name, char const* desc)
+    _option_instance(Ty_&& init_value, char const* name, char const* category = {}, char const* desc = {})
         : name_(name)
     {
         _opt_spec<Exec_>().init_values_[name] = std::forward<Ty_>(init_value);
+        _opt_spec<Exec_>().init_categories_[name] = std::string(category);
         _opt_spec<Exec_>().init_descs_[name] = std::string(desc);
     }
 
@@ -81,9 +90,12 @@ struct _option_instance {
 } // namespace impl__
 } // namespace pipepp
 
-#define PIPEPP_DEFINE_OPTION(TYPE, NAME, DEFAULT_VALUE, DESCRIPTION) \
-    inline static const ::pipepp::impl__::_option_instance<          \
-      ___executor_type___, TYPE, kangsw::fnv1a(#NAME)>               \
-      NAME{DEFAULT_VALUE, #NAME, DESCRIPTION};
+/**
+ * PIPEPP_DEFINE_OPTION(TYPE, NAME, DEFAULT_VALUE [, CATEGORY[, DESCRIPTION]])
+ */
+#define PIPEPP_DEFINE_OPTION(TYPE, NAME, DEFAULT_VALUE, ...) \
+    inline static const ::pipepp::impl__::_option_instance<  \
+      ___executor_type___, TYPE, kangsw::fnv1a(#NAME)>       \
+      NAME{DEFAULT_VALUE, #NAME, ##__VA_ARGS__};
 
 #define PIPEPP_INIT_OPTION(EXECUTOR) using ___executor_type___ = EXECUTOR;

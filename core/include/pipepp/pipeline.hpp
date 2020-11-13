@@ -238,7 +238,7 @@ public:
     // launcher
     void launch()
     {
-        for (auto& [pipe, tuple] : kangsw::zip(pipes_, adapters_)) {
+        for (auto [pipe, tuple] : kangsw::zip(pipes_, adapters_)) {
             auto& [n_ex, handler] = tuple;
             pipe->launch(n_ex, std::move(handler));
         }

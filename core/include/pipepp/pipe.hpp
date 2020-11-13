@@ -105,7 +105,7 @@ struct pipe_id_gen {
 class pipe_base final : public std::enable_shared_from_this<pipe_base> {
 public:
     using output_link_adapter_type = std::function<void(base_shared_context&, std::any const& output, std::any& input)>;
-    using output_handler_type = std::function<void(pipe_error, base_shared_context const&, std::any const&)>;
+    using output_handler_type = std::function<void(pipe_error, base_shared_context&, std::any const&)>;
 
     explicit pipe_base(std::string name, bool optional_pipe = false)
     {

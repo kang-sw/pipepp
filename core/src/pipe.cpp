@@ -87,6 +87,12 @@ void pipepp::impl__::pipe_base::executor_slot::_launch_callback()
     auto exec_res = executor()->invoke__(cached_input_, cached_output_);
     latest_execution_result_ = exec_res;
 
+    // 먼저, 연결된 일반 핸들러를 모두 처리합니다.
+    auto fence_obj = fence_object_.get();
+    for (auto& fn : owner_.output_handlers_) {
+        fn(exec_res, *fence_obj, cached_output_);
+    }
+
     if (owner_.output_links_.empty() == false) {
         workers().add_task(&executor_slot::_output_link_callback, this, 0, exec_res > pipe_error::warning);
     }
@@ -105,13 +111,6 @@ void pipepp::impl__::pipe_base::executor_slot::_perform_post_output()
 
     auto constexpr RELAXED = std::memory_order_relaxed;
     // 연결된 모든 출력을 처리한 경우입니다.
-
-    // 먼저, 연결된 일반 핸들러를 모두 처리합니다.
-    auto fence_obj = fence_object_.get();
-    auto exec_res = latest_execution_result_.load(RELAXED);
-    for (auto& fn : owner_.output_handlers_) {
-        fn(exec_res, *fence_obj, cached_output_);
-    }
 
     // 실행기의 내부 상태를 정리합니다.
     fence_object_.reset();

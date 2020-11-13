@@ -79,7 +79,7 @@ TEST_CASE("pipe initialization", "[.]")
     auto pipe_names = {"pipe 0", "pipe 1", "pipe 2_0", "pipe 2_1", "pipe 3_opt", "pipe 3_0", "pipe 4_0"};
         // clang-format on
 
-        for (auto& [ref, _1] : kangsw::zip(pipes, pipe_names)) {
+        for (auto [ref, _1] : kangsw::zip(pipes, pipe_names)) {
             ref->_set_thread_pool_reference(&workers);
         }
 
@@ -128,7 +128,7 @@ TEST_CASE("pipe initialization", "[.]")
 
         auto factory = [](std::string name) { return make_executor<test_exec>(name); };
 
-        for (auto& [pipe, name] : kangsw::zip(pipes, pipe_names)) {
+        for (auto [pipe, name] : kangsw::zip(pipes, pipe_names)) {
             pipe->launch_by(5, factory, name);
         }
 
@@ -145,7 +145,7 @@ TEST_CASE("pipe initialization", "[.]")
             }
         }
 
-        for (auto& [pipe, name] : kangsw::zip(pipes, pipe_names)) {
+        for (auto [pipe, name] : kangsw::zip(pipes, pipe_names)) {
             using namespace std::literals;
 
             while (pipe->is_async_operation_running()) { std::this_thread::sleep_for(1us); }

@@ -2,7 +2,7 @@
 
 namespace pipepp {
 namespace impl__ {
-class executor_option_base;
+class option_base;
 }
 
 /**
@@ -24,6 +24,6 @@ public:
     // TODO: 디버그 데이터 저장(variant<bool, long, double, string, any> [])
     // TODO: 실행 시간 계측기
 
-    class impl__::executor_option_base* options_;
+    class impl__::option_base* options_;
 };
 } // namespace pipepp

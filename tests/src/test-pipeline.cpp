@@ -15,12 +15,16 @@ struct my_shared_data : public base_shared_context {
 };
 
 struct exec_0 {
+    PIPEPP_INIT_OPTION(exec_0);
+    PIPEPP_DEFINE_OPTION(bool, is_first, false, "");
+
     using input_type = std::tuple<double>;
     using output_type = std::tuple<double, double>;
 
     pipe_error invoke(execution_context& so, input_type& i, output_type& o)
     {
         using namespace std::literals;
+        fmt::print("is_first? {}\n", is_first(*so.options_));
         //std::this_thread::sleep_for(1ms);
         auto [val] = i;
         auto& [a, b] = o;
@@ -65,7 +69,7 @@ static void link_1_0(my_shared_data&, exec_1::output_type const& i, exec_0::inpu
 
 TEST_CASE("pipeline compilation")
 {
-    constexpr int NUM_CASE = 1024;
+    constexpr int NUM_CASE = 1;
     std::vector<char> cases(NUM_CASE);
     std::vector<int> order(NUM_CASE);
     std::atomic_int ordering = 0;
@@ -89,6 +93,7 @@ TEST_CASE("pipeline compilation")
               cases[so.level] += 1;
           });
 
+    exec_0::is_first(_0.options(), true);
     pl->launch();
 
     using namespace std::literals;

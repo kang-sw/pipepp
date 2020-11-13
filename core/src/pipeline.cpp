@@ -1,5 +1,5 @@
-#include "pipepp/pipeline.hpp"
 #include <mutex>
+#include "pipepp/pipeline.hpp"
 
 void pipepp::impl__::pipeline_base::sync()
 {

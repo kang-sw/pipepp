@@ -175,7 +175,7 @@ public:
         explicit executor_slot(pipe_base& owner,
                                std::unique_ptr<executor_base>&& exec,
                                size_t index,
-                               executor_option_base* options)
+                               option_base* options)
             : owner_(owner)
             , executor_(std::move(exec))
             , index_(index)
@@ -349,7 +349,7 @@ private:
     std::vector<output_handler_type> output_handlers_;
 
     kangsw::timer_thread_pool* ref_workers_ = nullptr;
-    executor_option_base executor_options_;
+    option_base executor_options_;
 
     //---GUARD--//
     kangsw::destruction_guard destruction_guard_;

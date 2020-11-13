@@ -1,8 +1,8 @@
 #include <bitset>
 #include <cassert>
-#include <kangsw/enum_arithmetic.hxx>
-#include <kangsw/misc.hxx>
-#include <pipepp/pipe.hpp>
+#include "kangsw/enum_arithmetic.hxx"
+#include "kangsw/misc.hxx"
+#include "pipepp/pipe.hpp"
 
 std::optional<bool> pipepp::impl__::pipe_base::input_slot_t::can_submit_input(fence_index_t output_fence) const
 {

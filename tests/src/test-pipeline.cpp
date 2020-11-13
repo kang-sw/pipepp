@@ -11,6 +11,7 @@ namespace pipepp_test::pipelines {
 using namespace pipepp;
 
 struct my_shared_data : public base_shared_context {
+    PIPEPP_INIT_OPTION(my_shared_data);
     int level = 0;
 };
 
@@ -67,9 +68,9 @@ static void link_1_0(my_shared_data&, exec_1::output_type const& i, exec_0::inpu
     a = val;
 }
 
-TEST_CASE("pipeline compilation")
+TEST_CASE("pipeline compilation", "[.]")
 {
-    constexpr int NUM_CASE = 1;
+    constexpr int NUM_CASE = 128;
     std::vector<char> cases(NUM_CASE);
     std::vector<int> order(NUM_CASE);
     std::atomic_int ordering = 0;

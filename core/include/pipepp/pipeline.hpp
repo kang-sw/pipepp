@@ -29,7 +29,8 @@ protected:
     std::vector<std::unique_ptr<pipe_base>> pipes_;
     std::vector<std::shared_ptr<base_shared_context>> fence_objects_;
     std::mutex fence_object_pool_lock_;
-    inline static kangsw::timer_thread_pool workers_;
+    option_base global_options_;
+    kangsw::timer_thread_pool workers_;
 };
 
 class pipe_proxy_base {

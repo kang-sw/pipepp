@@ -31,5 +31,6 @@ std::shared_ptr<pipepp::base_shared_context> pipepp::impl__::pipeline_base::_fet
         }
     }
 
-    return fence_objects_.emplace_back(_new_shared_object());
+    auto& gen = fence_objects_.emplace_back(_new_shared_object());
+    return gen->global_options_ = &global_options_, gen;
 }

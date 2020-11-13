@@ -13,6 +13,10 @@
 #include "pipepp/executor_options.hpp"
 
 namespace pipepp {
+namespace impl__ {
+class pipeline_base;
+}
+
 /** 파이프 에러 형식 */
 enum class pipe_error {
     ok,
@@ -59,7 +63,12 @@ enum class pipe_id_t : size_t { none = -1 };
 
 /** fence shared data의 기본 상속형입니다. */
 struct base_shared_context {
+    friend class impl__::pipeline_base;
     virtual ~base_shared_context() = default;
+    auto& option() const noexcept { return global_options_; }
+
+private:
+    impl__::option_base const* global_options_;
 };
 
 namespace impl__ {

@@ -25,7 +25,7 @@ struct exec_0 {
     pipe_error invoke(execution_context& so, input_type& i, output_type& o)
     {
         using namespace std::literals;
-        fmt::print("is_first? {}\n", is_first(*so.options_));
+        fmt::print("is_first? {}\n", is_first(so));
         //std::this_thread::sleep_for(1ms);
         auto [val] = i;
         auto& [a, b] = o;

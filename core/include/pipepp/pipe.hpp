@@ -10,7 +10,7 @@
 #include "kangsw/thread_pool.hxx"
 #include "kangsw/thread_utility.hxx"
 #include "pipepp/execution_context.hpp"
-#include "pipepp/executor_options.hpp"
+#include "pipepp/options.hpp"
 
 namespace pipepp {
 namespace impl__ {
@@ -189,14 +189,13 @@ public:
             , executor_(std::move(exec))
             , index_(index)
         {
-            contexts_[0].options_ = options;
-            contexts_[1].options_ = options;
+            context_._internal__set_option(options);
         }
 
     public: // 실행 문맥 관련
         executor_base* executor() const { return executor_.get(); }
-        execution_context const& context_read() const { return contexts_[context_front_]; }
-        execution_context& context_write() { return contexts_[!context_front_]; }
+        execution_context const& context_read() const { return context_; }
+        execution_context& context_write() { return context_; }
         fence_index_t fence_index() const { return fence_index_; }
         bool _is_executor_busy() const { return fence_index_ != fence_index_t::none; }
         bool _is_output_order() const { return index_ == owner_._pending_output_slot_index(); }
@@ -211,7 +210,7 @@ public:
         kangsw::timer_thread_pool& workers();
 
     private:
-        void _swap_exec_context() { context_front_ = !context_front_; }
+        void _swap_exec_context() {}
 
     private: // 단계별로 등록되는 콜백 목록
         /**
@@ -251,8 +250,7 @@ public:
         std::unique_ptr<executor_base> executor_;
         std::atomic<pipe_error> latest_execution_result_;
 
-        execution_context contexts_[2] = {};
-        bool context_front_ = false;
+        execution_context context_;
 
         std::shared_ptr<base_shared_context> fence_object_;
         std::atomic<fence_index_t> fence_index_ = fence_index_t::none;

@@ -1,5 +1,6 @@
 #pragma once
 #include <memory>
+#include <shared_mutex>
 #include <span>
 #include <variant>
 #include "kangsw/misc.hxx"
@@ -21,12 +22,17 @@ public:
     template <typename Exec_>
     void reset_as_default();
 
+    auto lock_read(bool trial = false) const { return trial ? std::shared_lock{lock_, std::try_to_lock} : std::shared_lock{lock_}; }
+    auto lock_write(bool trial = false) const { return trial ? std::unique_lock{lock_, std::try_to_lock} : std::unique_lock{lock_}; }
     auto& option() const { return options_; }
+    auto& option() { return options_; }
     auto& description() const { return descriptions_; }
+    auto& description() { return descriptions_; }
 
 private:
     nlohmann::json options_;
     nlohmann::json descriptions_;
+    mutable std::shared_mutex lock_;
 };
 
 template <typename Exec_>
@@ -65,12 +71,9 @@ struct _option_instance {
         _opt_spec<Exec_>().init_descs_[name] = std::string(desc);
     }
 
-    auto& operator[](option_base& o) const { return o.options_[name_]; }
-    auto& operator[](option_base const& o) const { return o.options_[name_]; }
-    Ty_ operator()(option_base const& o) const { return o.options_[name_]; }
-
     template <typename RTy_>
-    void operator()(option_base& o, RTy_&& r) const { o.options_[name_] = Ty_(std::forward<RTy_>(r)); }
+    void operator()(option_base& o, RTy_&& r) const { o.lock_write(), o.options_[name_] = Ty_(std::forward<RTy_>(r)); }
+    Ty_ operator()(option_base const& o) const { return o.lock_read(), o.options_[name_].get<Ty_>(); }
 
     std::string const name_;
 };

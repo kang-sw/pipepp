@@ -2,10 +2,8 @@
 #include <any>
 #include <array>
 #include <chrono>
-#include <map>
 #include <shared_mutex>
 #include <string>
-#include <unordered_map>
 #include <variant>
 
 #include "kangsw/hash_index.hxx"
@@ -15,6 +13,11 @@ namespace pipepp {
 namespace impl__ {
 class option_base;
 } // namespace impl__
+
+/**
+ * 전역 string table을 얻어옵니다. 모든 execution_context는 이 함수를 사용.
+ */
+kangsw::safe_string_table& string_table();
 
 /**
  * 실행 문맥 데이터 형식

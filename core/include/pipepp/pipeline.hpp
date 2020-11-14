@@ -54,7 +54,8 @@ public:
     pipe_proxy_base get_output_node(size_t index) { return {pipeline_, *pipe_.output_links().at(index).pipe}; }
 
     // get previous execution context
-    auto& execution_result() const { return pipe_.latest_execution_context(); }
+    std::shared_ptr<execution_context_data> consume_execution_result();
+    bool execution_result_available() const;
 
     // get options
     auto& options() const { return pipe_.options(); }
@@ -67,6 +68,9 @@ public:
 
     // check validity
     bool is_valid() const { return pipeline_.expired() == false; }
+
+    // TODO: report currently active output executor
+    // TODO: report execution results of each executors
 
 protected:
     std::weak_ptr<pipeline_base> pipeline_;

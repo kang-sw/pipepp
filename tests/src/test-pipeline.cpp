@@ -103,9 +103,13 @@ TEST_CASE("pipeline compilation", "")
     using namespace std::literals;
     for (int iter = 0; iter < cases.size(); ++iter) {
         while (!pl->can_suply()) { std::this_thread::sleep_for(100us); }
+        if (auto exec_result = _0.consume_execution_result()) {
+            CHECK(exec_result->debug_data.size() == 1);
+            CHECK(exec_result->timers.size() == 2);
+        }
+
         pl->suply({iter * 0.1}, [iter](my_shared_data& so) { so.level = iter; });
     }
-
     pl->sync();
     REQUIRE(std::ranges::count(cases, 1) == cases.size());
     REQUIRE(std::is_sorted(cases.begin(), cases.end()));

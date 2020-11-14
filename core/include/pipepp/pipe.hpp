@@ -306,7 +306,7 @@ public:
     bool is_async_operation_running() const { return destruction_guard_.is_locked(); }
 
     /** context 읽어들이기 */
-    execution_context const& latest_execution_context() const { return *latest_exec_context_.load(std::memory_order_relaxed); }
+    execution_context const* latest_execution_context() const { return latest_exec_context_.load(std::memory_order_relaxed); }
 
     /** 출력 핸들러 추가 */
     void add_output_handler(output_handler_type handler) { output_handlers_.emplace_back(std::move(handler)); };

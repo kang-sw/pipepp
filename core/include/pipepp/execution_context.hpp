@@ -7,6 +7,7 @@
 #include <variant>
 
 #include "kangsw/hash_index.hxx"
+#include "kangsw/misc.hxx"
 #include "kangsw/spinlock.hxx"
 
 namespace pipepp {
@@ -17,7 +18,7 @@ class option_base;
 /**
  * 전역 string table을 얻어옵니다. 모든 execution_context는 이 함수를 사용.
  */
-kangsw::safe_string_table& string_table();
+kangsw::safe_string_table& string_pool();
 
 /**
  * 실행 문맥 데이터 형식
@@ -34,13 +35,13 @@ struct execution_context_data {
 
 public:
     struct timer_entity {
-        kangsw::hash_index id;
+        std::string_view name;
         size_t category_level;
         clock::duration elapsed;
     };
 
     struct debug_data_entity {
-        kangsw::hash_index id;
+        std::string_view name;
         size_t category_level;
         debug_variant data;
     };
@@ -75,14 +76,17 @@ public:
 
 public:
     struct timer_scope_indicator {
-        void try_lock() const { throw; }
-        void lock();
-        void unlock();
+        ~timer_scope_indicator();
+        timer_scope_indicator() = default;
+        timer_scope_indicator(timer_scope_indicator&&) = default;
+        timer_scope_indicator& operator=(timer_scope_indicator&&) = default;
 
     private:
-        execution_context* self_ = {};
-        size_t index = {};
+        friend class execution_context;
+        execution_context* self_;
+        size_t index_ = {};
         clock::time_point issue_;
+        kangsw::ownership owning_;
     };
 
 public:
@@ -103,13 +107,13 @@ public: // methods
      * 현재 범위에 유효한 타이머를 생성합니다.
      * 카테고리를 하나 증가시킵니다. 
      */
-    std::unique_lock<timer_scope_indicator> timer_scope(char const* name);
+    timer_scope_indicator timer_scope(kangsw::hash_pack name);
 
     /**
      * 디버그 변수를 새롭게 저장합니다.
      */
-    template <size_t N, typename Ty_>
-    void store_debug_data(char const (&name)[N], Ty_&& value);
+    template <typename Ty_>
+    void store_debug_data(kangsw::hash_pack, Ty_&& value);
 
 public:                    // internal public methods
     void _clear_records(); // invoke() 이전 호출

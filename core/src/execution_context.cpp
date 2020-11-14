@@ -1,5 +1,22 @@
-#include "pipepp/execution_context.hpp"
 #include <mutex>
+
+#include "kangsw/hash_index.hxx"
+#include "pipepp/execution_context.hpp"
+
+kangsw::safe_string_table& pipepp::string_pool()
+{
+    static kangsw::safe_string_table stable_;
+    return stable_;
+}
+
+pipepp::execution_context::timer_scope_indicator::~timer_scope_indicator()
+{
+    if (owning_) {
+        auto& timer = self_->_wr()->timers;
+        timer[index_].elapsed = clock::now() - issue_;
+        self_->category_level_--;
+    }
+}
 
 pipepp::execution_context::execution_context()
 {
@@ -22,6 +39,21 @@ std::shared_ptr<pipepp::execution_context_data> pipepp::execution_context::_cons
 
     rd_buf_valid_.clear();
     return std::move(rd);
+}
+
+pipepp::execution_context::timer_scope_indicator pipepp::execution_context::timer_scope(kangsw::hash_pack name)
+{
+    timer_scope_indicator s;
+    s.self_ = this;
+    s.index_ = _wr()->timers.size();
+    s.issue_ = clock::now();
+
+    auto& elem = _wr()->timers.emplace_back();
+    elem.category_level = category_level_;
+    elem.name = string_pool()(name).second;
+
+    category_level_++;
+    return s;
 }
 
 void pipepp::execution_context::_clear_records()

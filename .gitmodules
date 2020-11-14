@@ -4,3 +4,6 @@
 [submodule "core/third/fmt"]
 	path = third/fmt
 	url = https://github.com/fmtlib/fmt.git
+[submodule "third/nana"]
+	path = third/nana
+	url = https://github.com/kang-sw/nana.git

@@ -6,7 +6,8 @@ set(PIPEPP_CORE_ROOT "${CMAKE_SOURCE_DIR}/core")
 add_subdirectory(third/templates)
 add_subdirectory(third/fmt)
 add_subdirectory(third/json)
+add_subdirectory(third/nana)
 
 add_subdirectory(core)
-
+add_subdirectory(gui)
 add_subdirectory(tests)

@@ -101,7 +101,7 @@ public: // methods
 
     /**
      * 현재 범위에 유효한 타이머를 생성합니다.
-     * 카테고리를 하나 증가시킵니다. constexpr string literal만 인자로 받을 수 있습니다.
+     * 카테고리를 하나 증가시킵니다. 
      */
     std::unique_lock<timer_scope_indicator> timer_scope(char const* name);
 

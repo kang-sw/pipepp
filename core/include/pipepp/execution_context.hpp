@@ -5,6 +5,7 @@
 #include <map>
 #include <shared_mutex>
 #include <string>
+#include <unordered_map>
 #include <variant>
 
 #include "kangsw/hash_index.hxx"
@@ -30,13 +31,13 @@ struct execution_context_data {
 
 public:
     struct timer_entity {
-        char const* name;
+        kangsw::hash_index id;
         size_t category_level;
         clock::duration elapsed;
     };
 
     struct debug_data_entity {
-        char const* name;
+        kangsw::hash_index id;
         size_t category_level;
         debug_variant data;
     };
@@ -97,10 +98,9 @@ public: // methods
 
     /**
      * 현재 범위에 유효한 타이머를 생성합니다.
-     * 카테고리를 하나 증가시킵니다.
+     * 카테고리를 하나 증가시킵니다. constexpr string literal만 인자로 받을 수 있습니다.
      */
-    template <size_t N>
-    std::unique_lock<timer_scope_indicator> timer_scope(char const (&name)[N]);
+    std::unique_lock<timer_scope_indicator> timer_scope(char const* name);
 
     /**
      * 디버그 변수를 새롭게 저장합니다.

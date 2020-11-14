@@ -80,12 +80,19 @@ kangsw::timer_thread_pool& pipepp::impl__::pipe_base::executor_slot::workers()
 
 void pipepp::impl__::pipe_base::executor_slot::_launch_callback()
 {
+    using namespace kangsw::literals;
+
     // 실행기 시동
     std::lock_guard destruction_guard{owner_.destruction_guard_};
 
     executor()->set_context_ref(&context_write());
-    auto exec_res = executor()->invoke__(cached_input_, cached_output_);
-    latest_execution_result_ = exec_res;
+    constexpr auto EXEC_TIMER = "total execution time"_hp;
+    pipe_error exec_res;
+
+    context_write().timer_scope(EXEC_TIMER), // 항상 전체 시간을 계측합니다.
+      latest_execution_result_.store(
+        exec_res = executor()->invoke__(cached_input_, cached_output_),
+        std::memory_order_relaxed);
 
     // 먼저, 연결된 일반 핸들러를 모두 처리합니다.
     auto fence_obj = fence_object_.get();

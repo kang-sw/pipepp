@@ -30,7 +30,7 @@ kangsw::safe_string_table& string_pool();
  */
 struct execution_context_data {
     using clock = std::chrono::system_clock;
-    using debug_variant = std::variant<bool, long, double, std::string, std::any>;
+    using debug_variant = std::variant<bool, int64_t, double, std::string, std::any>;
     friend class execution_context;
 
 public:
@@ -141,4 +141,28 @@ private:
     size_t category_level_ = 0;
 };
 
+template <typename Ty_>
+void execution_context::store_debug_data(kangsw::hash_pack hp, Ty_&& value)
+{
+    auto& entity = _wr()->debug_data.emplace_back();
+    entity.category_level = category_level_;
+    entity.name = string_pool()(hp).second;
+    auto& data = entity.data;
+
+    if constexpr (std::is_same_v<bool, Ty_>) {
+        data = value;
+    }
+    else if constexpr (std::is_integral_v<Ty_>) {
+        data.emplace<int64_t>(std::forward<Ty_>(value));
+    }
+    else if constexpr (std::is_floating_point_v<Ty_>) {
+        data.emplace<double>(std::forward<Ty_>(value));
+    }
+    else if constexpr (std::is_convertible_v<Ty_, std::string>) {
+        data.emplace<std::string>(std::forward<Ty_>(value));
+    }
+    else {
+        data.emplace<std::any>(std::forward<Ty_>(value));
+    }
+}
 } // namespace pipepp

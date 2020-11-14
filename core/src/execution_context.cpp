@@ -60,6 +60,8 @@ void pipepp::execution_context::_clear_records()
 {
     _wr()->debug_data.clear();
     _wr()->timers.clear();
+
+    category_level_ = 0;
 }
 
 void pipepp::execution_context::_swap_data_buff()

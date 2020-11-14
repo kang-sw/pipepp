@@ -11,12 +11,12 @@ namespace pipepp_test::pipelines {
 using namespace pipepp;
 
 struct my_shared_data : public base_shared_context {
-    PIPEPP_INIT_OPTION(my_shared_data);
+    PIPEPP_DEFINE_OPTION_CLASS(my_shared_data);
     int level = 0;
 };
 
 struct exec_0 {
-    PIPEPP_INIT_OPTION(exec_0);
+    PIPEPP_DEFINE_OPTION_CLASS(exec_0);
     PIPEPP_DEFINE_OPTION(bool, is_first, false, "debug.show");
 
     using input_type = std::tuple<double>;
@@ -25,12 +25,15 @@ struct exec_0 {
     pipe_error invoke(execution_context& so, input_type& i, output_type& o)
     {
         using namespace std::literals;
+        auto timer = so.timer_scope("Timer");
         fmt::print("is_first? {}\n", is_first(so));
-        //std::this_thread::sleep_for(1ms);
+        std::this_thread::sleep_for(1ms);
         auto [val] = i;
         auto& [a, b] = o;
         a = val;
         b = val * 2.0;
+        so.store_debug_data("Sample Variable", a);
+
         return pipe_error::ok;
     }
 
@@ -47,7 +50,7 @@ struct exec_1 {
     pipe_error invoke(execution_context& so, input_type& i, output_type& o)
     {
         using namespace std::literals;
-        //std::this_thread::sleep_for(1ms);
+        std::this_thread::sleep_for(1ms);
         auto& [a, b] = i;
         auto& [D] = o;
         D = sqrt(a * b);
@@ -68,7 +71,7 @@ static void link_1_0(my_shared_data&, exec_1::output_type const& i, exec_0::inpu
     a = val;
 }
 
-TEST_CASE("pipeline compilation", "[.]")
+TEST_CASE("pipeline compilation", "")
 {
     constexpr int NUM_CASE = 128;
     std::vector<char> cases(NUM_CASE);

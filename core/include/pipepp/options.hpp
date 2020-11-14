@@ -72,7 +72,7 @@ template <typename Exec_, typename Ty_, size_t>
 struct _option_instance {
     using spec_type = option_specification<Exec_>;
 
-    _option_instance(Ty_&& init_value, char const* name, char const* category = {}, char const* desc = {})
+    _option_instance(Ty_&& init_value, char const* name, char const* category = "", char const* desc = "")
         : name_(name)
     {
         _opt_spec<Exec_>().init_values_[name] = std::forward<Ty_>(init_value);
@@ -98,4 +98,4 @@ struct _option_instance {
       ___executor_type___, TYPE, kangsw::fnv1a(#NAME)>       \
       NAME{DEFAULT_VALUE, #NAME, ##__VA_ARGS__};
 
-#define PIPEPP_INIT_OPTION(EXECUTOR) using ___executor_type___ = EXECUTOR;
+#define PIPEPP_DEFINE_OPTION_CLASS(EXECUTOR) using ___executor_type___ = EXECUTOR;

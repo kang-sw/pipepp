@@ -20,6 +20,10 @@ public:
     auto& _thread_pool() { return workers_; }
     void sync();
 
+public:
+    auto& options() const { return global_options_; }
+    auto& options() { return global_options_; }
+
 protected:
     // shared data object allocator
     std::shared_ptr<base_shared_context> _fetch_shared();

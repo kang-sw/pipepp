@@ -24,16 +24,19 @@ struct exec_0 {
 
     pipe_error invoke(execution_context& so, input_type& i, output_type& o)
     {
+        PIPEPP_REGISTER_CONTEXT(so);
+
         using namespace std::literals;
-        auto timer = so.timer_scope("Timer");
+
+        PIPEPP_ELAPSE_SCOPE("Timer Default");
         fmt::print("is_first? {}\n", is_first(so));
         std::this_thread::sleep_for(1ms);
         auto [val] = i;
         auto& [a, b] = o;
         a = val;
         b = val * 2.0;
-        so.store_debug_data("Sample Variable", a);
 
+        PIPEPP_STORE_DEBUG_DATA("Sample Variable", a);
         return pipe_error::ok;
     }
 

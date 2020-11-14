@@ -66,6 +66,7 @@ struct base_shared_context {
     friend class impl__::pipeline_base;
     virtual ~base_shared_context() = default;
     auto& option() const noexcept { return global_options_; }
+    operator impl__::option_base const &() const { return *global_options_; }
 
 private:
     impl__::option_base const* global_options_;

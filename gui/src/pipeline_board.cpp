@@ -1,6 +1,8 @@
 #include "pipepp/gui/pipeline_board.hpp"
 #include <set>
 
+#include "nana/basic_types.hpp"
+#include "nana/gui/drawing.hpp"
 #include "pipepp/gui/basic_utility.hpp"
 #include "pipepp/gui/pipe_view.hpp"
 #include "pipepp/pipeline.hpp"
@@ -14,13 +16,15 @@ struct pipe_widget_desc {
 };
 
 struct line_desc {
-    size_t begin;
-    size_t end;
-    bool is_dashed;
+    size_t index_begin;
+    size_t index_end;
+    bool is_optional_connection;
 };
 
 struct pipepp::gui::pipeline_board_data {
     pipeline_board& self;
+    nana::drawing drawing{self};
+
     std::weak_ptr<impl__::pipeline_base> pipe;
 
     double zoom;
@@ -45,7 +49,10 @@ pipepp::gui::pipeline_board::pipeline_board(const nana::window& wd, const nana::
     : panel<true>(wd, r, visible)
     , impl_(std::make_unique<pipeline_board_data>(*this))
 {
+    auto& m = impl_;
 }
+
+pipepp::gui::pipeline_board::~pipeline_board() = default;
 
 void pipepp::gui::pipeline_board::build_menu(nana::menu&) const
 {
@@ -65,7 +72,7 @@ void pipepp::gui::pipeline_board::_clear_views()
     m.all_points.clear();
 }
 
-void pipepp::gui::pipeline_board::_calc_hierarchical_node_positions(pipepp::impl__::pipe_proxy_base root_proxy, std::unordered_map<pipepp::pipe_id_t, pipepp::pipe_id_t>& connections, std::vector<std::tuple<pipepp::pipe_id_t, nana::size>>& positions)
+void pipepp::gui::pipeline_board::_calc_hierarchical_node_positions(pipepp::impl__::pipe_proxy_base root_proxy, std::unordered_multimap<pipepp::pipe_id_t, pipepp::pipe_id_t>& connections, std::vector<std::tuple<pipepp::pipe_id_t, nana::size>>& positions)
 {
     using namespace std;
     vector<vector<pipe_id_t>> hierarchy_occurences;
@@ -137,11 +144,15 @@ void pipepp::gui::pipeline_board::reset_pipeline(std::shared_ptr<pipepp::impl__:
     auto root_proxy = pipeline->get_first();
     using namespace std;
 
-    unordered_map<pipe_id_t, pipe_id_t> connections;
+    unordered_multimap<pipe_id_t, pipe_id_t> connections;
     vector<tuple<pipe_id_t, nana::size>> positions;
     _calc_hierarchical_node_positions(root_proxy, connections, positions);
 
-    // 3. TODO
+    // 3. 연결 정보를 직선 집합으로 만듭니다.
+    //  . 추후, 복잡한 곡선 등의 점 정보를 만들 가능성을 염두에 두고, 점 목록과 직선 정보를
+    //   분리하였습니다.
+    // TODO
 
-    // 4. TODO
+    // 4. 위젯을 스폰하고 파이프 정보를 입력합니다.
+    bgcolor(nana::colors::black);
 }

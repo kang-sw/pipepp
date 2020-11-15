@@ -63,10 +63,9 @@ namespace pipepp::gui {
 class pipeline_board : public nana::panel<true> {
 public:
     pipeline_board();
-
     pipeline_board(const nana::window& wd, bool visible);
-
     pipeline_board(const nana::window& wd, const nana::rectangle& r, bool visible);
+    ~pipeline_board();
 
     /**
      * 메뉴에 기능을 연결합니다.
@@ -93,7 +92,7 @@ public:
 
 private:
     void _clear_views();
-    void _calc_hierarchical_node_positions(impl__::pipe_proxy_base root_proxy, std::unordered_map<pipe_id_t, pipe_id_t>& connections, std::vector<std::tuple<pipe_id_t, nana::size>>& positions);
+    void _calc_hierarchical_node_positions(impl__::pipe_proxy_base root_proxy, std::unordered_multimap<pipepp::pipe_id_t, pipepp::pipe_id_t>& connections, std::vector<std::tuple<pipe_id_t, nana::size>>& positions);
 
 private:
     std::unique_ptr<struct pipeline_board_data> impl_;

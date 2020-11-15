@@ -49,16 +49,17 @@ protected:
       pipe_base& pipe_ref)
         : pipeline_(pipeline)
         , pipe_(pipe_ref)
-        , type_hash_(typeid(pipe_ref).hash_code())
     {
     }
+
+public:
     virtual ~pipe_proxy_base() = default;
 
 public:
     // size of output nodes
     // output nodes[index]
     size_t num_output_nodes() const { return pipe_.output_links().size(); }
-    pipe_proxy_base get_output_node(size_t index) { return {pipeline_, *pipe_.output_links().at(index).pipe}; }
+    pipe_proxy_base get_output_node(size_t index) const { return {pipeline_, *pipe_.output_links().at(index).pipe}; }
 
     // get previous execution context
     std::shared_ptr<execution_context_data> consume_execution_result();
@@ -82,7 +83,6 @@ public:
 protected:
     std::weak_ptr<pipeline_base> pipeline_;
     pipe_base& pipe_;
-    size_t type_hash_;
 };
 
 inline decltype(auto) pipeline_base::get_first()

@@ -3,6 +3,12 @@
 #include "nana/gui/widgets/panel.hpp"
 #include "pipepp/pipeline.hpp"
 
+namespace pipepp {
+namespace impl__ {
+class pipeline_base;
+}
+} // namespace pipepp
+
 namespace nana {
 class menu;
 }
@@ -71,7 +77,7 @@ public:
     /**
      * 인터페이스 할 파이프라인을 지정합니다.
      */
-    void reset_pipeline(std::weak_ptr<impl__::pipeline_base> pipeline);
+    void reset_pipeline(std::shared_ptr<impl__::pipeline_base> pipeline);
 
     /**
      * 줌 수준 설정
@@ -84,6 +90,10 @@ public:
      */
     nana::point center() const;
     void center(nana::point = {});
+
+private:
+    void _clear_views();
+    void _calc_hierarchical_node_positions(impl__::pipe_proxy_base root_proxy, std::unordered_map<pipe_id_t, pipe_id_t>& connections, std::vector<std::tuple<pipe_id_t, nana::size>>& positions);
 
 private:
     std::unique_ptr<struct pipeline_board_data> impl_;

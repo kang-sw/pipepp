@@ -12,4 +12,5 @@ target_link_libraries(		pipepp_gui	PUBLIC		pipepp_core
 													nana)
 
 target_include_directories(	pipepp_gui	PUBLIC		"include/")
+
 target_compile_features(	pipepp_gui	PUBLIC		cxx_std_20)

@@ -10,7 +10,18 @@
       "cmakeCommandArgs": "",
       "buildCommandArgs": "",
       "ctestCommandArgs": "",
-      "variables": []
+      "variables": [
+        {
+          "name": "MSVC_USE_STATIC_RUNTIME",
+          "value": "False",
+          "type": "BOOL"
+        },
+        {
+          "name": "NANA_STATIC_STDLIB",
+          "value": "False",
+          "type": "BOOL"
+        }
+      ]
     },
     {
       "name": "x64-Release",

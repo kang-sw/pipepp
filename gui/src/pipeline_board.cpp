@@ -1,18 +1,21 @@
 #include "pipepp/gui/pipeline_board.hpp"
+#include <iostream>
 #include <set>
 
 #include "nana/basic_types.hpp"
 #include "nana/gui/drawing.hpp"
+#include "nana/gui/widgets/label.hpp"
+#include "nana/paint/graphics.hpp"
 #include "pipepp/gui/basic_utility.hpp"
 #include "pipepp/gui/pipe_view.hpp"
 #include "pipepp/pipeline.hpp"
 
 struct pipe_widget_desc {
-    std::unique_ptr<pipepp::gui::pipe_view> view;
+    std::unique_ptr<nana::label> view;
     pipepp::pipe_id_t pipe_id;
 
-    nana::point base_location;
-    nana::size base_size;
+    int slot_hierarchy_level;
+    int slot_sibling_order;
 };
 
 struct line_desc {
@@ -80,21 +83,19 @@ void pipepp::gui::pipeline_board::_calc_hierarchical_node_positions(pipepp::impl
 
     kangsw::recurse_for_each(
       std::move(root_proxy),
-      [&](impl__::pipe_proxy_base p, auto append) {
-          // 모든 출력 파이프를 iterate하고, conntection을 기록합니다.
-          for (size_t i = 0, end = p.num_output_nodes(); i < end; ++i) {
-              auto next = p.get_output_node(i);
-              append(p.get_output_node(i));
-              connections.emplace(p.id(), next.id());
-          }
-      },
-      [&](impl__::pipe_proxy_base const& p, size_t hierarchy) {
+      [&](impl__::pipe_proxy_base const& p, size_t hierarchy, auto append) {
           if (hierarchy_occurences.size() <= hierarchy) {
               hierarchy_occurences.resize(hierarchy + 1);
           }
           hierarchy_occurences[hierarchy].push_back(p.id());
           auto& max_h = max_hierarchy[p.id()];
           max_h = std::max(max_h, hierarchy);
+
+          for (size_t i = 0, end = p.num_output_nodes(); i < end; ++i) {
+              auto next = p.get_output_node(i);
+              append(p.get_output_node(i));
+              connections.emplace(p.id(), next.id());
+          }
       });
 
     set<pipe_id_t> occurence_mask;
@@ -154,5 +155,22 @@ void pipepp::gui::pipeline_board::reset_pipeline(std::shared_ptr<pipepp::impl__:
     // TODO
 
     // 4. 위젯을 스폰하고 파이프 정보를 입력합니다.
-    bgcolor(nana::colors::black);
+    for (auto const& [id, slot] : positions) {
+        auto& elem = m.widgets.emplace_back();
+        elem.pipe_id = id;
+        elem.slot_sibling_order = slot.width;
+        elem.slot_hierarchy_level = slot.height;
+
+        elem.view = std::make_unique<decltype(elem.view)::element_type>(*this, true);
+
+        // TEST CODE
+        if (true) {
+            elem.view->typeface(nana::paint::font("consolas", 11.0));
+            elem.view->move(elem.slot_hierarchy_level * 32, elem.slot_sibling_order * 20);
+            elem.view->size({28, 16});
+            elem.view->bgcolor(nana::colors::light_blue);
+            elem.view->caption(pipeline->get_pipe(id).name());
+            std::cout << pipeline->get_pipe(id).name() << "\n";
+        }
+    }
 }

@@ -217,15 +217,14 @@ void pipepp::impl__::pipe_base::_connect_output_to_impl(pipe_base* other, pipepp
     // other 노드의 출력 노드를 재귀적으로 탐색해, 입력 노드와 순환하는지 검색합니다.
     if (
       bool is_met = false;
-      kangsw::recurse_for_each(
-        other, output_recurse,
-        [my_id = id(), &is_met](pipe_base* node) {
-            if (node->id() == my_id) {
-                is_met = true;
-                return kangsw::recurse_return::do_break;
-            }
-            return kangsw::recurse_return::do_continue;
-        }),
+      kangsw::recurse_for_each(other, [&](pipe_base* node, auto emplacer) {
+          if (id() == node->id()) {
+              is_met = true;
+          }
+          else {
+              output_recurse(node, emplacer);
+          }
+      }),
       is_met) {
         throw pipe_link_exception("cyclic link found");
     }
@@ -233,22 +232,21 @@ void pipepp::impl__::pipe_base::_connect_output_to_impl(pipe_base* other, pipepp
     // 각각 가장 가까운 optional node, 가장 먼 essential node를 공유해야 함 (항상 true로 가정)
     pipe_base *optional_to = nullptr, *optional_from = nullptr;
     size_t min_depth = -1;
-    kangsw::recurse_for_each(
-      other, input_recurse, // 입력 노드는 자기 자신을 포함하지 않고 계산
-      [my_id = id(), &optional_to, &min_depth](pipe_base* node, size_t depth) {
-          if (node->input_slot_.is_optional_ && depth < min_depth && depth > 0) {
-              optional_to = node;
-              min_depth = depth;
-          }
-      });
+    kangsw::recurse_for_each(other, [&, my_id = id()](pipe_base* node, size_t depth, auto emplacer) {
+        if (node->input_slot_.is_optional_ && depth < min_depth && depth > 0) {
+            optional_to = node;
+            min_depth = depth;
+        }
+        input_recurse(node, emplacer);
+    });
     min_depth = -1;
     kangsw::recurse_for_each(
-      this, input_recurse, // 입력 노드는 자기 자신을 포함하지 않고 계산
-      [my_id = id(), &optional_from, &min_depth](pipe_base* node, size_t depth) {
+      this, [&, my_id = id()](pipe_base* node, size_t depth, auto emplacer) {
           if (node->input_slot_.is_optional_ && depth < min_depth) {
               optional_from = node;
               min_depth = depth;
           }
+          input_recurse(node, emplacer);
       });
 
     if (other->input_links_.empty() == false && optional_to != optional_from) {

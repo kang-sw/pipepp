@@ -109,6 +109,7 @@ public:
     using output_handler_type = std::function<void(pipe_error, base_shared_context&, std::any const&)>;
 
     explicit pipe_base(std::string name, bool optional_pipe = false)
+        : name_(name)
     {
         input_slot_.is_optional_ = optional_pipe;
     }

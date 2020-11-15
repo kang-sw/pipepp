@@ -75,42 +75,46 @@ void pipepp::gui::pipeline_board::_clear_views()
     m.all_points.clear();
 }
 
-void pipepp::gui::pipeline_board::_calc_hierarchical_node_positions(pipepp::impl__::pipe_proxy_base root_proxy, std::unordered_multimap<pipepp::pipe_id_t, pipepp::pipe_id_t>& connections, std::vector<std::tuple<pipepp::pipe_id_t, nana::size>>& positions)
+void pipepp::gui::pipeline_board::_calc_hierarchical_node_positions(pipepp::impl__::pipe_proxy_base root_proxy, std::unordered_multimap<pipepp::pipe_id_t, pipepp::pipe_id_t>& connections, std::map<pipepp::pipe_id_t, nana::size>& positions)
 {
+    // 1. 계층 구조 계산 방식
+    //      1. 루트 프록시부터 자손 프록시로 iterate해 마주치는 모든 id를 hierarchy_occurences의
+    //        대응되는 인덱스에 넣습니다. 해당 배열의 인덱스는 계층 높이를 의미합니다.
+    //       . 또한, id 각각이 등장하는 최대 계층 번호를 지정합니다.
+    //       . hierarchy_occurrences에서, 해당 hierarchy index와 max_hierarchy의 값이 같은
+    //        경우에만 인스턴스가 존재합니다.
+    //      2. 렌더링 시, 수평 방향이 hierarchy의 깊이가 됩니다.
+    //       . 수직 방향은 위에서부터 아래로 내려오는 방식을 취하는데, 수직 방향의 높이는
+    //        hierarchy_occurences에서 가장 먼저 해당 id가 나타나는 지점으로 설정합니다.
+    //        단, 상기한 바와 같이 먼저 max_hierarchy가 일치해야 합니다.
+    //
     using namespace std;
-    vector<vector<pipe_id_t>> hierarchy_occurences;
-    map<pipe_id_t, size_t> max_hierarchy;
+    using impl__::pipe_proxy_base;
+    set<pipe_id_t> visit_mask;
+    auto recursive_build_tree
+      = [&](auto& recall, pipe_proxy_base const& proxy, size_t width, size_t hierarchy) -> size_t {
+        // post-order recursive 연산을 통해 다음 브랜치의 오프셋을 구합니다.
+        size_t output_index = 0, num_output_link = proxy.num_output_nodes();
+        for (size_t valid_output_index = 0; output_index < num_output_link; ++output_index) {
+            auto output = proxy.get_output_node(output_index);
+            auto& position = positions[output.id()];
+            connections.emplace(proxy.id(), output.id());
 
-    kangsw::recurse_for_each(
-      std::move(root_proxy),
-      [&](impl__::pipe_proxy_base const& p, size_t hierarchy, auto append) {
-          if (hierarchy_occurences.size() <= hierarchy) {
-              hierarchy_occurences.resize(hierarchy + 1);
-          }
-          hierarchy_occurences[hierarchy].push_back(p.id());
-          auto& max_h = max_hierarchy[p.id()];
-          max_h = std::max(max_h, hierarchy);
-
-          for (size_t i = 0, end = p.num_output_nodes(); i < end; ++i) {
-              auto next = p.get_output_node(i);
-              append(p.get_output_node(i));
-              connections.emplace(p.id(), next.id());
-          }
-      });
-
-    set<pipe_id_t> occurence_mask;
-    for (auto hierarchy = (int)hierarchy_occurences.size() - 1; hierarchy >= 0; --hierarchy) {
-        auto& layer = hierarchy_occurences[hierarchy];
-
-        for (size_t counter = 0; auto id : layer) {
-            auto width_order = counter++;
-            if (max_hierarchy.at(id) == hierarchy && occurence_mask.emplace(id).second) {
-                // 등장 계층과 최대 계층이 같을 때에만, 그리고 처음 등장한 경우에만
-                //유효한 위치로 칩니다.
-                positions.emplace_back(id, nana::size((int)width_order, (int)hierarchy));
+            if (visit_mask.emplace(output.id()).second) {
+                // 처음 마주치는 노드에 대해서만 재귀적으로 탐색을 수행합니다.
+                // 노드의 너비를 1씩 재귀적으로 증가시킵니다.
+                position.width = width + (valid_output_index > 0);
+                width = recall(recall, output, width + (valid_output_index > 0), hierarchy + 1);
+                ++valid_output_index;
             }
+            position.height = (int)max<size_t>(position.height, hierarchy + 1);
         }
-    }
+
+        return width;
+    };
+
+    positions[root_proxy.id()] = {};
+    recursive_build_tree(recursive_build_tree, root_proxy, 0, 0);
 }
 
 void pipepp::gui::pipeline_board::reset_pipeline(std::shared_ptr<pipepp::impl__::pipeline_base> pipeline)
@@ -131,22 +135,12 @@ void pipepp::gui::pipeline_board::reset_pipeline(std::shared_ptr<pipepp::impl__:
         return;
     }
 
-    // 1. 계층 구조 계산 방식
-    //      1. 루트 프록시부터 자손 프록시로 iterate해 마주치는 모든 id를 hierarchy_occurences의
-    //        대응되는 인덱스에 넣습니다. 해당 배열의 인덱스는 계층 높이를 의미합니다.
-    //       . 또한, id 각각이 등장하는 최대 계층 번호를 지정합니다.
-    //       . hierarchy_occurrences에서, 해당 hierarchy index와 max_hierarchy의 값이 같은
-    //        경우에만 인스턴스가 존재합니다.
-    //      2. 렌더링 시, 수평 방향이 hierarchy의 깊이가 됩니다.
-    //       . 수직 방향은 위에서부터 아래로 내려오는 방식을 취하는데, 수직 방향의 높이는
-    //        hierarchy_occurences에서 가장 먼저 해당 id가 나타나는 지점으로 설정합니다.
-    //        단, 상기한 바와 같이 먼저 max_hierarchy가 일치해야 합니다.
-    //
+    // 1, 2.
     auto root_proxy = pipeline->get_first();
     using namespace std;
 
     unordered_multimap<pipe_id_t, pipe_id_t> connections;
-    vector<tuple<pipe_id_t, nana::size>> positions;
+    map<pipe_id_t, nana::size> positions;
     _calc_hierarchical_node_positions(root_proxy, connections, positions);
 
     // 3. 연결 정보를 직선 집합으로 만듭니다.
@@ -166,11 +160,10 @@ void pipepp::gui::pipeline_board::reset_pipeline(std::shared_ptr<pipepp::impl__:
         // TEST CODE
         if (true) {
             elem.view->typeface(nana::paint::font("consolas", 11.0));
-            elem.view->move(elem.slot_hierarchy_level * 32, elem.slot_sibling_order * 20);
+            elem.view->move(elem.slot_hierarchy_level * 36, elem.slot_sibling_order * 20);
             elem.view->size({28, 16});
             elem.view->bgcolor(nana::colors::light_blue);
             elem.view->caption(pipeline->get_pipe(id).name());
-            std::cout << pipeline->get_pipe(id).name() << "\n";
         }
     }
 }

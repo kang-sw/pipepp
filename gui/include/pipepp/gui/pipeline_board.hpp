@@ -92,7 +92,7 @@ public:
 
 private:
     void _clear_views();
-    void _calc_hierarchical_node_positions(impl__::pipe_proxy_base root_proxy, std::unordered_multimap<pipepp::pipe_id_t, pipepp::pipe_id_t>& connections, std::vector<std::tuple<pipe_id_t, nana::size>>& positions);
+    void _calc_hierarchical_node_positions(impl__::pipe_proxy_base root_proxy, std::unordered_multimap<pipepp::pipe_id_t, pipepp::pipe_id_t>& connections, std::map<pipepp::pipe_id_t, nana::size>& positions);
 
 private:
     std::unique_ptr<struct pipeline_board_data> impl_;

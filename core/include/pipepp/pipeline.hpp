@@ -17,6 +17,8 @@ protected:
 
 public:
     decltype(auto) get_first();
+    decltype(auto) get_pipe(pipe_id_t);
+
     auto& _thread_pool() { return workers_; }
     void sync();
 
@@ -32,6 +34,7 @@ protected:
 protected:
     std::vector<std::unique_ptr<pipe_base>> pipes_;
     std::vector<std::shared_ptr<base_shared_context>> fence_objects_;
+    std::unordered_map<pipe_id_t, size_t> id_mapping_;
     std::mutex fence_object_pool_lock_;
     option_base global_options_;
     kangsw::timer_thread_pool workers_;
@@ -85,6 +88,12 @@ protected:
 inline decltype(auto) pipeline_base::get_first()
 {
     return pipe_proxy_base(weak_from_this(), *pipes_.front());
+}
+
+inline decltype(auto) pipepp::impl__::pipeline_base::get_pipe(pipe_id_t id)
+{
+    auto index = id_mapping_.at(id);
+    return pipe_proxy_base(weak_from_this(), *pipes_[index]);
 }
 
 } // namespace impl__
@@ -184,17 +193,20 @@ private:
     {
         if (num_execs == 0) { throw pipe_exception("invalid number of executors"); }
 
-        pipes_.emplace_back(
+        auto index = pipes_.size();
+        auto& pipe = pipes_.emplace_back(
           std::make_unique<impl__::pipe_base>(
             std::move(initial_pipe_name), is_optional));
-        pipes_.back()->_set_thread_pool_reference(&workers_);
-        pipes_.back()->options().reset_as_default<Exec_>();
+        pipe->_set_thread_pool_reference(&workers_);
+        pipe->options().reset_as_default<Exec_>();
 
         adapters_.emplace_back(
           num_execs,
           std::bind<factory_return_type>(
             std::forward<Fn_>(exec_factory),
             std::forward<Args_>(args)...));
+
+        id_mapping_[pipe->id()] = index;
 
         return *pipes_.back();
     }

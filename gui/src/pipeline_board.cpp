@@ -98,7 +98,7 @@ void pipepp::gui::pipeline_board::_calc_hierarchical_node_positions(pipepp::impl
       });
 
     set<pipe_id_t> occurence_mask;
-    for (size_t hierarchy = hierarchy_occurences.size() - 1; hierarchy >= 0; --hierarchy) {
+    for (auto hierarchy = (int)hierarchy_occurences.size() - 1; hierarchy >= 0; --hierarchy) {
         auto& layer = hierarchy_occurences[hierarchy];
 
         for (size_t counter = 0; auto id : layer) {

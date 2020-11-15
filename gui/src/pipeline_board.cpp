@@ -91,7 +91,7 @@ void pipepp::gui::pipeline_board::_calc_hierarchical_node_positions(pipepp::impl
       });
 
     set<pipe_id_t> occurence_mask;
-    for (int hierarchy = hierarchy_occurences.size() - 1; hierarchy >= 0; --hierarchy) {
+    for (size_t hierarchy = hierarchy_occurences.size() - 1; hierarchy >= 0; --hierarchy) {
         auto& layer = hierarchy_occurences[hierarchy];
 
         for (size_t counter = 0; auto id : layer) {
@@ -99,7 +99,7 @@ void pipepp::gui::pipeline_board::_calc_hierarchical_node_positions(pipepp::impl
             if (max_hierarchy.at(id) == hierarchy && occurence_mask.emplace(id).second) {
                 // 등장 계층과 최대 계층이 같을 때에만, 그리고 처음 등장한 경우에만
                 //유효한 위치로 칩니다.
-                positions.emplace_back(id, nana::size{width_order, hierarchy});
+                positions.emplace_back(id, nana::size((int)width_order, (int)hierarchy));
             }
         }
     }

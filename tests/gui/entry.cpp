@@ -7,7 +7,7 @@ int main(void)
     nana::form fm;
     fm.div("<main>");
 
-    pipepp::gui::pipeline_board board(fm, true);
+    pipepp::gui::pipeline_board board(fm, {}, true);
     fm["main"] << board;
 
     auto pipe = build_pipeline();

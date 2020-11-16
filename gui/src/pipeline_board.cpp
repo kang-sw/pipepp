@@ -4,14 +4,14 @@
 
 #include "nana/basic_types.hpp"
 #include "nana/gui/drawing.hpp"
-#include "nana/gui/widgets/label.hpp"
+#include "nana/gui/widgets/group.hpp"
 #include "nana/paint/graphics.hpp"
 #include "pipepp/gui/basic_utility.hpp"
 #include "pipepp/gui/pipe_view.hpp"
 #include "pipepp/pipeline.hpp"
 
 struct pipe_widget_desc {
-    std::unique_ptr<nana::label> view;
+    std::unique_ptr<pipepp::gui::pipe_view> view;
     pipepp::pipe_id_t pipe_id;
 
     int slot_hierarchy_level;
@@ -33,26 +33,32 @@ struct pipepp::gui::pipeline_board_data {
     double zoom;
     nana::point center;
 
+    nana::size widget_default_size = {128, 48};
+    nana::size widget_default_gap = {16, 16};
+
     std::vector<pipe_widget_desc> widgets;
     std::vector<nana::point> all_points;
     std::vector<line_desc> line_descriptions; // all_points
 };
 
-pipepp::gui::pipeline_board::pipeline_board()
-    : pipeline_board({}, {}, false)
-{
-}
-
-pipepp::gui::pipeline_board::pipeline_board(const nana::window& wd, bool visible)
-    : pipeline_board(wd, {}, visible)
-{
-}
-
 pipepp::gui::pipeline_board::pipeline_board(const nana::window& wd, const nana::rectangle& r, bool visible)
-    : panel<true>(wd, r, visible)
-    , impl_(std::make_unique<pipeline_board_data>(*this))
+    : super(wd, r, visible)
 {
+    impl_ = std::make_unique<pipeline_board_data>(*this);
+
     auto& m = impl_;
+
+    events().mouse_move([&, prev_mouse_pos_ = nana::point{}](nana::arg_mouse const& arg) mutable {
+        if (arg.left_button) {
+            auto delta = arg.pos - prev_mouse_pos_;
+            for (auto& widget : m->widgets) {
+                auto& view = *widget.view;
+
+                view.move(view.pos() + delta);
+            }
+        }
+        prev_mouse_pos_ = arg.pos;
+    });
 }
 
 pipepp::gui::pipeline_board::~pipeline_board() = default;
@@ -103,7 +109,7 @@ void pipepp::gui::pipeline_board::_calc_hierarchical_node_positions(pipepp::impl
             if (visit_mask.emplace(output.id()).second) {
                 // 처음 마주치는 노드에 대해서만 재귀적으로 탐색을 수행합니다.
                 // 노드의 너비를 1씩 재귀적으로 증가시킵니다.
-                position.width = width + (valid_output_index > 0);
+                position.width = (int)width + (valid_output_index > 0);
                 width = recall(recall, output, width + (valid_output_index > 0), hierarchy + 1);
                 ++valid_output_index;
             }
@@ -155,13 +161,15 @@ void pipepp::gui::pipeline_board::reset_pipeline(std::shared_ptr<pipepp::impl__:
         elem.slot_sibling_order = slot.width;
         elem.slot_hierarchy_level = slot.height;
 
-        elem.view = std::make_unique<decltype(elem.view)::element_type>(*this, true);
+        elem.view = std::make_unique<decltype(elem.view)::element_type>(*this, nana::rectangle{}, true);
 
         // TEST CODE
         if (true) {
+            auto gap = m.widget_default_size + m.widget_default_gap;
+
             elem.view->typeface(nana::paint::font("consolas", 11.0));
-            elem.view->move(elem.slot_hierarchy_level * 36, elem.slot_sibling_order * 20);
-            elem.view->size({28, 16});
+            elem.view->move(elem.slot_hierarchy_level * gap.width, elem.slot_sibling_order * gap.height);
+            elem.view->size(m.widget_default_size);
             elem.view->bgcolor(nana::colors::light_blue);
             elem.view->caption(pipeline->get_pipe(id).name());
         }

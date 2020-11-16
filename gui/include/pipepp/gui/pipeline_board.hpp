@@ -1,6 +1,6 @@
 #pragma once
 #include "nana/basic_types.hpp"
-#include "nana/gui/widgets/panel.hpp"
+#include "nana/gui/widgets/group.hpp"
 #include "pipepp/pipeline.hpp"
 
 namespace pipepp {
@@ -62,8 +62,9 @@ namespace pipepp::gui {
  */
 class pipeline_board : public nana::panel<true> {
 public:
-    pipeline_board();
-    pipeline_board(const nana::window& wd, bool visible);
+    using super = nana::panel<true>;
+
+public:
     pipeline_board(const nana::window& wd, const nana::rectangle& r, bool visible);
     ~pipeline_board();
 
@@ -89,6 +90,18 @@ public:
      */
     nana::point center() const;
     void center(nana::point = {});
+
+    /**
+     * 파이프 위젯 기본 크기 설정
+     */
+    nana::size pipe_widget_default_size() const;
+    void pipe_widget_default_size(nana::size = {}) const;
+
+    /**
+     * 파이프 기본 간격 설정
+     */
+    nana::size pipe_widget_default_gap() const;
+    void pipe_widget_default_gap(nana::size = {}) const;
 
 private:
     void _clear_views();

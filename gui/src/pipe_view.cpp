@@ -3,9 +3,13 @@
 #include "nana/gui/place.hpp"
 #include "nana/gui/widgets/button.hpp"
 #include "nana/gui/widgets/label.hpp"
+#include "pipepp/pipeline.hpp"
 
 struct pipepp::gui::pipe_view_data {
     pipe_view& self;
+
+    std::weak_ptr<impl__::pipeline_base> pipeline;
+    pipe_id_t pipe;
 
     nana::place layout{self};
     nana::button label{self};
@@ -22,6 +26,28 @@ pipepp::gui::pipe_view::pipe_view(const nana::window& wd, const nana::rectangle&
 }
 
 pipepp::gui::pipe_view::~pipe_view() = default;
+
+void pipepp::gui::pipe_view::reset_view(std::weak_ptr<impl__::pipeline_base> pipeline, pipe_id_t pipe)
+{
+    auto& m = *impl_;
+    m.pipeline = pipeline;
+    m.pipe = pipe;
+
+    auto pl = m.pipeline.lock();
+    if (pl == nullptr) { return; }
+
+    auto proxy = pl->get_pipe(m.pipe);
+    m.label.caption(proxy.name());
+}
+
+void pipepp::gui::pipe_view::update()
+{
+    auto& m = *impl_;
+    auto pl = m.pipeline.lock();
+    if (pl == nullptr) { return; }
+
+    auto proxy = pl->get_pipe(m.pipe);
+}
 
 void pipepp::gui::pipe_view::_m_caption(native_string_type&& f)
 {

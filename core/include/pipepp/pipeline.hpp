@@ -93,7 +93,7 @@ inline decltype(auto) pipeline_base::get_first()
 inline decltype(auto) pipepp::impl__::pipeline_base::get_pipe(pipe_id_t id)
 {
     auto index = id_mapping_.at(id);
-    return pipe_proxy_base(weak_from_this(), *pipes_[index]);
+    return pipe_proxy_base(weak_from_this(), *pipes_.at(index));
 }
 
 } // namespace impl__

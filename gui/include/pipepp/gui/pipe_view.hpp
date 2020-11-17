@@ -24,6 +24,11 @@ public:
     void reset_view(std::weak_ptr<impl__::pipeline_base> pipeline, pipe_id_t pipe);
 
     /**
+     * 뷰 업데이트
+     */
+    void update();
+
+    /**
      * 위젯에 뷰를 표시합니다.
      */
     void display_view(bool is_detail_view);

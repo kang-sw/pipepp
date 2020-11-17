@@ -1,7 +1,9 @@
 #include "pipepp/gui/pipeline_board.hpp"
 #include <iostream>
 #include <set>
+#include <span>
 
+#include "kangsw/zip.hxx"
 #include "nana/basic_types.hpp"
 #include "nana/gui/drawing.hpp"
 #include "nana/gui/widgets/group.hpp"
@@ -19,8 +21,8 @@ struct pipe_widget_desc {
 };
 
 struct line_desc {
-    size_t index_begin;
-    size_t index_end;
+    size_t index_offset;
+    size_t index_count;
     bool is_optional_connection;
 };
 
@@ -34,7 +36,7 @@ struct pipepp::gui::pipeline_board_data {
     nana::point center;
 
     nana::size widget_default_size = {128, 48};
-    nana::size widget_default_gap = {16, 16};
+    nana::size widget_default_gap = {48, 16};
 
     std::vector<pipe_widget_desc> widgets;
     std::vector<nana::point> all_points;
@@ -43,21 +45,33 @@ struct pipepp::gui::pipeline_board_data {
 
 pipepp::gui::pipeline_board::pipeline_board(const nana::window& wd, const nana::rectangle& r, bool visible)
     : super(wd, r, visible)
+    , impl_(std::make_unique<pipeline_board_data>(*this))
 {
-    impl_ = std::make_unique<pipeline_board_data>(*this);
 
     auto& m = impl_;
 
     events().mouse_move([&, prev_mouse_pos_ = nana::point{}](nana::arg_mouse const& arg) mutable {
         if (arg.left_button) {
             auto delta = arg.pos - prev_mouse_pos_;
-            for (auto& widget : m->widgets) {
-                auto& view = *widget.view;
-
-                view.move(view.pos() + delta);
-            }
+            m->center += delta;
+            _update_widget_pos();
+            nana::drawing{*this}.update();
         }
         prev_mouse_pos_ = arg.pos;
+    });
+
+    nana::drawing{*this}.draw_diehard([&](nana::paint::graphics& gp) {
+        std::span<nana::point> all_pts{m->all_points};
+        auto line_color = nana::colors::black;
+        auto offset = m->center;
+
+        for (auto& ld : m->line_descriptions) {
+            auto points = all_pts.subspan(ld.index_offset + 1, ld.index_count - 1);
+            auto begin_pt = all_pts[ld.index_offset] + offset;
+            gp.line_begin(begin_pt.x, begin_pt.y);
+
+            for (auto& pt : points) { gp.line_to(pt + offset, line_color); }
+        }
     });
 }
 
@@ -123,6 +137,16 @@ void pipepp::gui::pipeline_board::_calc_hierarchical_node_positions(pipepp::impl
     recursive_build_tree(recursive_build_tree, root_proxy, 0, 0);
 }
 
+void pipepp::gui::pipeline_board::_update_widget_pos()
+{
+    auto& m = *impl_;
+    for (auto& elem : m.widgets) {
+        auto gap = m.widget_default_size + m.widget_default_gap;
+        auto center = m.center;
+        elem.view->move(center.x + elem.slot_hierarchy_level * gap.width, center.y + elem.slot_sibling_order * gap.height);
+    }
+}
+
 void pipepp::gui::pipeline_board::reset_pipeline(std::shared_ptr<pipepp::impl__::pipeline_base> pipeline)
 {
     // TODO
@@ -153,6 +177,31 @@ void pipepp::gui::pipeline_board::reset_pipeline(std::shared_ptr<pipepp::impl__:
     //  . 추후, 복잡한 곡선 등의 점 정보를 만들 가능성을 염두에 두고, 점 목록과 직선 정보를
     //   분리하였습니다.
     // TODO
+    {
+        auto gap = m.widget_default_size + m.widget_default_gap;
+
+        for (auto [idx_from, idx_to] : connections) {
+            auto from = positions.at(idx_from);
+            auto to = positions.at(idx_to);
+
+            // TODO: Find if it's optional
+            // auto proxy = pipeline->get_pipe(idx_to);
+
+            nana::point l_dest[2];
+            auto l_pos = {from, to};
+            auto l_is_starting_pt = {true, false};
+            for (auto [dest, pos, is_starting] :
+                 kangsw::zip(l_dest, l_pos, l_is_starting_pt)) {
+                dest.x = pos.height * gap.width + is_starting * m.widget_default_size.width;
+                dest.y = pos.width * gap.height + m.widget_default_size.height / 2;
+            }
+
+            size_t indices[] = {m.all_points.size(), 2};
+            m.all_points.insert(m.all_points.end(), std::begin(l_dest), std::end(l_dest));
+            m.line_descriptions.push_back(
+              line_desc{.index_offset = indices[0], .index_count = indices[1], .is_optional_connection = false});
+        }
+    }
 
     // 4. 위젯을 스폰하고 파이프 정보를 입력합니다.
     for (auto const& [id, slot] : positions) {
@@ -162,16 +211,9 @@ void pipepp::gui::pipeline_board::reset_pipeline(std::shared_ptr<pipepp::impl__:
         elem.slot_hierarchy_level = slot.height;
 
         elem.view = std::make_unique<decltype(elem.view)::element_type>(*this, nana::rectangle{}, true);
-
-        // TEST CODE
-        if (true) {
-            auto gap = m.widget_default_size + m.widget_default_gap;
-
-            elem.view->typeface(nana::paint::font("consolas", 11.0));
-            elem.view->move(elem.slot_hierarchy_level * gap.width, elem.slot_sibling_order * gap.height);
-            elem.view->size(m.widget_default_size);
-            elem.view->bgcolor(nana::colors::light_blue);
-            elem.view->caption(pipeline->get_pipe(id).name());
-        }
+        elem.view->reset_view(pipeline, id);
+        elem.view->size(m.widget_default_size);
     }
+
+    _update_widget_pos();
 }

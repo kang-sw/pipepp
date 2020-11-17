@@ -35,12 +35,14 @@ struct execution_context_data {
 public:
     struct timer_entity {
         std::string_view name;
+        kangsw::hash_index category_id;
         size_t category_level;
         clock::duration elapsed;
     };
 
     struct debug_data_entity {
         std::string_view name;
+        kangsw::hash_index category_id;
         size_t category_level;
         debug_variant data;
     };
@@ -138,6 +140,7 @@ private:
     std::atomic_flag rd_buf_valid_;
 
     size_t category_level_ = 0;
+    std::vector<kangsw::hash_index> category_id_;
 };
 
 template <typename Ty_>
@@ -146,6 +149,7 @@ void execution_context::store_debug_data(kangsw::hash_pack hp, Ty_&& value)
     auto& entity = _wr()->debug_data.emplace_back();
     entity.category_level = category_level_;
     entity.name = string_pool()(hp).second;
+    entity.category_id = category_id_.back();
     auto& data = entity.data;
 
     if constexpr (std::is_same_v<bool, Ty_>) {

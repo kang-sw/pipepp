@@ -15,6 +15,7 @@ pipepp::execution_context::timer_scope_indicator::~timer_scope_indicator()
         auto& timer = self_->_wr()->timers;
         timer[index_].elapsed = clock::now() - issue_;
         self_->category_level_--;
+        self_->category_id_.pop_back();
     }
 }
 
@@ -51,8 +52,10 @@ pipepp::execution_context::timer_scope_indicator pipepp::execution_context::time
     auto& elem = _wr()->timers.emplace_back();
     elem.category_level = category_level_;
     elem.name = string_pool()(name).second;
+    elem.category_id = name.first;
 
     category_level_++;
+    category_id_.emplace_back(name.first);
     return s;
 }
 
@@ -62,6 +65,7 @@ void pipepp::execution_context::_clear_records()
     _wr()->timers.clear();
 
     category_level_ = 0;
+    category_id_.clear();
 }
 
 void pipepp::execution_context::_swap_data_buff()

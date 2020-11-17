@@ -38,7 +38,7 @@ public:
 
 private:
     nlohmann::json options_;
-    nlohmann::json descriptions_;
+    std::map<std::string, std::string> descriptions_;
     std::map<std::string, std::string> categories_;
     mutable std::shared_mutex lock_;
 };
@@ -49,7 +49,7 @@ class option_specification {
 
 public:
     nlohmann::json init_values_;
-    nlohmann::json init_descs_;
+    std::map<std::string, std::string> init_descs_;
     std::map<std::string, std::string> init_categories_;
 };
 

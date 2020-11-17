@@ -192,6 +192,10 @@ private:
     auto& _create_pipe(std::string initial_pipe_name, bool is_optional, size_t num_execs, Fn_&& exec_factory, Args_&&... args)
     {
         if (num_execs == 0) { throw pipe_exception("invalid number of executors"); }
+        auto fn = std::ranges::find_if(pipes_, [&initial_pipe_name](std::unique_ptr<impl__::pipe_base> const& pipe) {
+            return pipe->name() == initial_pipe_name;
+        });
+        if (fn != pipes_.end()) { throw pipe_exception("name duplication detected"); }
 
         auto index = pipes_.size();
         auto& pipe = pipes_.emplace_back(

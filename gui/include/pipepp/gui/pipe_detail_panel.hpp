@@ -2,6 +2,11 @@
 #include <memory>
 
 #include "nana/gui/widgets/form.hpp"
+#include "pipepp/options.hpp"
+
+namespace nana {
+struct arg_listbox;
+}
 
 namespace pipepp {
 struct execution_context_data;
@@ -25,6 +30,10 @@ public:
 public:
     void reset_pipe(std::weak_ptr<impl__::pipeline_base> pl, pipe_id_t id);
     void update(std::shared_ptr<execution_context_data>);
+
+private:
+    void _reload_options(pipepp::impl__::option_base const& opt);
+    void _cb_option_arg_selected(nana::arg_listbox const&);
 
 private:
     struct data_type;

@@ -248,7 +248,8 @@ public:
 
     // supply input (trigger)
     template <typename Fn_>
-    bool suply(input_type input, Fn_&& shared_data_init_func)
+    bool suply(
+      input_type input, Fn_&& shared_data_init_func = [](auto) {})
     {
         auto shared = _fetch_shared();
         shared_data_init_func(static_cast<shared_data_type&>(*shared));

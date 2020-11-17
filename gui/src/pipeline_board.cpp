@@ -26,7 +26,7 @@ struct line_desc {
     bool is_optional_connection;
 };
 
-struct pipepp::gui::pipeline_board_data {
+struct pipepp::gui::pipeline_board::data_type {
     pipeline_board& self;
     nana::drawing drawing{self};
 
@@ -45,7 +45,7 @@ struct pipepp::gui::pipeline_board_data {
 
 pipepp::gui::pipeline_board::pipeline_board(const nana::window& wd, const nana::rectangle& r, bool visible)
     : super(wd, r, visible)
-    , impl_(std::make_unique<pipeline_board_data>(*this))
+    , impl_(std::make_unique<data_type>(*this))
 {
 
     auto& m = impl_;
@@ -80,6 +80,13 @@ pipepp::gui::pipeline_board::~pipeline_board() = default;
 void pipepp::gui::pipeline_board::build_menu(nana::menu&) const
 {
     // TODO
+}
+
+void pipepp::gui::pipeline_board::update()
+{
+    for (auto& widget : impl_->widgets) {
+        widget.view->update();
+    }
 }
 
 void pipepp::gui::pipeline_board::_clear_views()
@@ -176,7 +183,6 @@ void pipepp::gui::pipeline_board::reset_pipeline(std::shared_ptr<pipepp::impl__:
     // 3. 연결 정보를 직선 집합으로 만듭니다.
     //  . 추후, 복잡한 곡선 등의 점 정보를 만들 가능성을 염두에 두고, 점 목록과 직선 정보를
     //   분리하였습니다.
-    // TODO
     {
         auto gap = m.widget_default_size + m.widget_default_gap;
 

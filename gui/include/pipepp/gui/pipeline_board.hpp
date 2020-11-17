@@ -103,13 +103,19 @@ public:
     nana::size pipe_widget_default_gap() const;
     void pipe_widget_default_gap(nana::size = {}) const;
 
+    /**
+     * 파이프라인 뷰 정보 업데이트 신호 보내기
+     */
+    void update();
+
 private:
     void _clear_views();
     void _calc_hierarchical_node_positions(impl__::pipe_proxy_base root_proxy, std::unordered_multimap<pipepp::pipe_id_t, pipepp::pipe_id_t>& connections, std::map<pipepp::pipe_id_t, nana::size>& positions);
     void _update_widget_pos();
 
 private:
-    std::unique_ptr<struct pipeline_board_data> impl_;
+    struct data_type;
+    std::unique_ptr<struct data_type> impl_;
 };
 
 } // namespace pipepp::gui

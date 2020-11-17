@@ -1,6 +1,7 @@
 #include "nana/gui.hpp"
 #include "nana/gui/detail/general_events.hpp"
 #include "nana/gui/timer.hpp"
+#include "nana/key_type.hpp"
 #include "pipepp/gui/pipeline_board.hpp"
 #include "sample_pipeline.hpp"
 
@@ -20,9 +21,6 @@ int main(void)
     fm.show();
 
     fm.events().key_press([&](nana::arg_keyboard const& key) {
-        if (key.key == L' ') {
-            pipe->suply(1, [](auto) {});
-        }
     });
 
     nana::timer tm;
@@ -30,6 +28,9 @@ int main(void)
     tm.interval(66ms);
     tm.elapse([&]() {
         board.update();
+        if (pipe->can_suply()) {
+            pipe->suply(1, [](auto) {});
+        }
     });
     tm.start();
 

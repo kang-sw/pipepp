@@ -80,33 +80,15 @@ public:
     void reset_pipeline(std::shared_ptr<impl__::pipeline_base> pipeline);
 
     /**
-     * 줌 수준 설정
-     */
-    double zoom() const;
-    void zoom(double = 1.0);
-
-    /**
-     * 스팬 중심 설정
-     */
-    nana::point center() const;
-    void center(nana::point = {});
-
-    /**
-     * 파이프 위젯 기본 크기 설정
-     */
-    nana::size pipe_widget_default_size() const;
-    void pipe_widget_default_size(nana::size = {}) const;
-
-    /**
-     * 파이프 기본 간격 설정
-     */
-    nana::size pipe_widget_default_gap() const;
-    void pipe_widget_default_gap(nana::size = {}) const;
-
-    /**
      * 파이프라인 뷰 정보 업데이트 신호 보내기
      */
     void update();
+
+public:
+    /**
+     *
+     */
+    std::function<bool(std::string const&, execution_context_data::debug_data_entity const&)> debug_data_subscriber;
 
 private:
     void _clear_views();

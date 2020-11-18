@@ -34,6 +34,8 @@ pipepp::gui::pipe_view::pipe_view(const nana::window& wd, const nana::rectangle&
     m.layout["MAIN"] << m.button;
     m.layout["TEXT"] << m.text;
     //  m.text.text_align(nana::align::center, nana::align_v::center);
+    m.button.typeface(nana::paint::font("consolas", 11.0));
+    m.text.typeface(nana::paint::font("consolas", 11.0));
 
     nana::drawing(m.text).draw_diehard([&](nana::paint::graphics& gp) {
         gp.round_rectangle(
@@ -115,7 +117,7 @@ void pipepp::gui::pipe_view::open_details(const nana::window& wd)
         appear.taskbar = true;
 
         auto p = m.detail_view
-          = std::make_shared<pipe_detail_panel>(this->parent(), parent_rect, appear);
+          = std::make_shared<pipe_detail_panel>(wd, parent_rect, appear);
 
         p->reset_pipe(m.pipeline, m.pipe);
         if (m.exec_data) { p->update(m.exec_data); }

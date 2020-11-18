@@ -12,8 +12,10 @@ int main(void)
 
     pipepp::gui::pipeline_board board(fm, {}, true);
     fm["main"] << board;
+    board.debug_data_subscriber = [](std::string const& a, auto& b) { printf("hell, world! %s", a.c_str()); return true ; };
 
-    auto pipe = build_pipeline();
+    auto pipe
+      = build_pipeline();
     pipe->launch();
     board.reset_pipeline(pipe);
 

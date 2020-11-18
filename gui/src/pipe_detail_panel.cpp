@@ -1,14 +1,18 @@
 #include "pipepp/gui/pipe_detail_panel.hpp"
+#include <any>
 #include <chrono>
 #include <functional>
 
 #include "fmt/format.h"
 #include "nana/basic_types.hpp"
 #include "nana/gui/msgbox.hpp"
+#include "nana/gui/programming_interface.hpp"
 #include "nana/gui/widgets/listbox.hpp"
 #include "nana/gui/widgets/textbox.hpp"
 #include "nana/gui/widgets/treebox.hpp"
 #include "nana/paint/graphics.hpp"
+#include "pipepp/execution_context.hpp"
+#include "pipepp/gui/pipeline_board.hpp"
 #include "pipepp/pipeline.hpp"
 
 #define COLUMN_CATEGORY 0
@@ -19,28 +23,34 @@ using clock_type = std::chrono::system_clock;
 
 struct pipepp::gui::pipe_detail_panel::data_type {
     pipe_detail_panel& self;
+    pipeline_board* board_ref;
 
     std::weak_ptr<impl__::pipeline_base> pipeline;
     pipe_id_t pipe;
 
     nana::textbox timers{self};
     nana::listbox options{self};
-    nana::treebox values{self};
+    nana::listbox values{self};
 };
 
 pipepp::gui::pipe_detail_panel::pipe_detail_panel(nana::window owner, const nana::rectangle& rectangle, const nana::appearance& appearance)
     : form(owner, rectangle, appearance)
     , impl_(std::make_unique<data_type>(*this))
 {
+    auto& m = *impl_;
+
+    auto hnd_pipe_board = nana::API::get_parent_window(owner);
+    auto pipe_board = dynamic_cast<pipeline_board*>(nana::API::get_widget(hnd_pipe_board));
+    m.board_ref = pipe_board;
+
     div(""
         "margin=2"
         "<vert"
         "   <w_timers weight=25% margin=[0,0,2,0]>"
         "   <w_vals margin=[0,0,2,0]>"
-        "   <w_opts>"
+        "   <w_opts weight=40%>"
         ">");
 
-    auto& m = *impl_;
     (*this)["w_timers"] << m.timers;
     (*this)["w_opts"] << m.options;
     (*this)["w_vals"] << m.values;
@@ -61,7 +71,10 @@ pipepp::gui::pipe_detail_panel::pipe_detail_panel(nana::window owner, const nana
     m.timers.editable(false);
     m.timers.enable_caret();
 
-    m.values.typeface(nana::paint::font("consolas", 10.0));
+    header_div = m.options.size().width * 48 / 100;
+    m.values.checkable(true);
+    m.values.append_header("Name", header_div);
+    m.values.append_header("Value", header_div);
 }
 
 pipepp::gui::pipe_detail_panel::~pipe_detail_panel() = default;
@@ -149,34 +162,93 @@ void pipepp::gui::pipe_detail_panel::reset_pipe(std::weak_ptr<impl__::pipeline_b
     }
 }
 
+nana::listbox::oresolver& operator<<(
+  nana::listbox::oresolver& o,
+  const pipepp::execution_context_data::debug_data_entity& i)
+{
+    o << std::string(i.name);
+
+    std::visit(
+      [&]<typename T0>(T0&& arg) {
+          using type = std::decay_t<T0>;
+
+          if constexpr (std::is_same_v<std::any, type>)
+              o << arg.type().name();
+          else if constexpr (std::is_same_v<std::string, type>)
+              o << arg;
+          else if constexpr (std::is_same_v<bool, type>)
+              o << (arg ? "true" : "false");
+          else
+              o << std::to_string(arg);
+      },
+      i.data);
+    return o;
+}
+
 void pipepp::gui::pipe_detail_panel::update(std::shared_ptr<execution_context_data> data)
 {
     auto& m = *impl_;
+    auto proxy = m.pipeline.lock()->get_pipe(m.pipe);
 
     // -- 타이머 문자열 빌드
-    auto pos = m.timers.text_position().front();
+    {
+        auto pos = m.timers.text_position().front();
 
-    size_t horizontal_chars = num_timer_text_view_horizontal_chars;
-    std::string text;
-    text.reserve(1024);
-    auto& timers = data->timers;
-    fmt::format_to(std::back_inserter(text), "\n {0:<{1}}\n\n", "Timer Records", horizontal_chars + 3);
+        size_t horizontal_chars = num_timer_text_view_horizontal_chars;
+        std::string text;
+        text.reserve(1024);
+        auto& timers = data->timers;
+        fmt::format_to(std::back_inserter(text), "\n {0:<{1}}\n\n", "Timer Records", horizontal_chars + 3);
 
-    auto left_chars = horizontal_chars - 15;
+        auto left_chars = horizontal_chars - 15;
 
-    for (auto& tm : timers) {
-        auto left_indent = tm.category_level;
+        for (auto& tm : timers) {
+            auto left_indent = tm.category_level;
 
-        fmt::format_to(
-          std::back_inserter(text),
-          " {0:-<{3}}{1:.<{4}}{2:.>15.4f} ms\n", "",
-          tm.name, 1000.0 * std::chrono::duration<double>{tm.elapsed}.count(),
-          left_indent, left_chars - left_indent);
+            fmt::format_to(
+              std::back_inserter(text),
+              " {0:<{3}}{1:.<{4}}{2:.>15.4f} ms\n", "",
+              tm.name, 1000.0 * std::chrono::duration<double>{tm.elapsed}.count(),
+              left_indent, left_chars - left_indent);
+        }
+
+        m.timers.select(true);
+        m.timers.append(text, true);
+        m.timers.caret_pos(pos), m.timers.append(".", true);
     }
 
-    m.timers.select(true);
-    m.timers.append(text, true);
-    m.timers.caret_pos(pos), m.timers.del(), m.timers.append(" ", true);
-
     // -- 디버그 옵션 빌드
+    // pipeline_board 탐색
+    auto subscr_ptr = m.board_ref ? &m.board_ref->debug_data_subscriber : nullptr;
+    m.values.auto_draw(false);
+    auto showing = m.values.first_visible();
+    auto list = m.values.at(0);
+    for (auto& dbg : data->debug_data) {
+        // 이름 및 카테고리로 탐색
+        [&]() { // 내부 루프를 간편하게 빠져나가기 위해 lambda로 감쌈
+            for (auto& item : list) {
+                // 아이템을 검색해 이름과 카테고리가 중복된 경우 데이터만 갱신합니다.
+                auto& entry = item.value<execution_context_data::debug_data_entity>();
+                if (entry.category_id == dbg.category_id && entry.name == dbg.name) {
+                    item.resolve_from(dbg);
+                    if (item.checked() && subscr_ptr && *subscr_ptr) {
+                        // 만약 체크되었고, 구독 함수가 존재한다면 호출합니다.
+                        // 이 때 구독 함수가 false 반환 시 uncheck
+                        if ((*subscr_ptr)(proxy.name(), dbg) == false) {
+                            item.check(false);
+                        }
+                    }
+                    return;
+                }
+            }
+
+            // 대응되는 아이템을 찾지 못한 경우에만 새로운 요소 삽입
+            list.append(dbg, true);
+        }();
+    }
+
+    try {
+        m.values.scroll(false, showing);
+    } catch (std::exception&) {}
+    m.values.auto_draw(true);
 }

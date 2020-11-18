@@ -34,6 +34,27 @@ struct my_executor_0 {
             {
                 std::this_thread::sleep_for(wait_ms(o) * 1ms);
             }
+
+            PIPEPP_STORE_DEBUG_DATA("My Int", 150 + rand() % 15);
+            PIPEPP_STORE_DEBUG_DATA("My Float", 150.3f + rand() % 22);
+            PIPEPP_STORE_DEBUG_DATA("My String", "Hell, world!");
+            PIPEPP_STORE_DEBUG_DATA("My Boolean", false);
+            PIPEPP_STORE_DEBUG_DATA("My Any", std::vector<int>{});
+            PIPEPP_STORE_DEBUG_DATA("My Int", 150 + rand() % 15);
+            PIPEPP_STORE_DEBUG_DATA("My Float", 150.3f + rand() % 22);
+            PIPEPP_STORE_DEBUG_DATA("My String", "Hell, world!");
+            PIPEPP_STORE_DEBUG_DATA("My Boolean", false);
+            PIPEPP_STORE_DEBUG_DATA("My Any", std::vector<int>{});
+            PIPEPP_STORE_DEBUG_DATA("My Int", 150 + rand() % 15);
+            PIPEPP_STORE_DEBUG_DATA("My Float", 150.3f + rand() % 22);
+            PIPEPP_STORE_DEBUG_DATA("My String", "Hell, world!");
+            PIPEPP_STORE_DEBUG_DATA("My Boolean", false);
+            PIPEPP_STORE_DEBUG_DATA("My Any", std::vector<int>{});
+            PIPEPP_STORE_DEBUG_DATA("My Int", 150 + rand() % 15);
+            PIPEPP_STORE_DEBUG_DATA("My Float", 150.3f + rand() % 22);
+            PIPEPP_STORE_DEBUG_DATA("My String", "Hell, world!");
+            PIPEPP_STORE_DEBUG_DATA("My Boolean", false);
+            PIPEPP_STORE_DEBUG_DATA("My Any", std::vector<int>{});
         }
         return pipepp::pipe_error::ok;
     }

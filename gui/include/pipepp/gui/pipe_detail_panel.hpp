@@ -2,6 +2,7 @@
 #include <memory>
 
 #include "nana/gui/widgets/form.hpp"
+#include "pipepp/execution_context.hpp"
 #include "pipepp/options.hpp"
 
 namespace nana {

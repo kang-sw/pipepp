@@ -85,7 +85,9 @@ void pipepp::gui::pipeline_board::build_menu(nana::menu&) const
 void pipepp::gui::pipeline_board::update()
 {
     for (auto& widget : impl_->widgets) {
-        widget.view->update();
+        if (widget.view) {
+            widget.view->update();
+        }
     }
 }
 

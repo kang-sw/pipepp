@@ -1,8 +1,14 @@
 #include "pipepp/gui/pipe_detail_panel.hpp"
+#include <chrono>
+#include <functional>
 
+#include "fmt/format.h"
+#include "nana/basic_types.hpp"
 #include "nana/gui/msgbox.hpp"
 #include "nana/gui/widgets/listbox.hpp"
 #include "nana/gui/widgets/textbox.hpp"
+#include "nana/gui/widgets/treebox.hpp"
+#include "nana/paint/graphics.hpp"
 #include "pipepp/pipeline.hpp"
 
 #define COLUMN_CATEGORY 0
@@ -19,7 +25,7 @@ struct pipepp::gui::pipe_detail_panel::data_type {
 
     nana::textbox timers{self};
     nana::listbox options{self};
-    nana::listbox values{self};
+    nana::treebox values{self};
 };
 
 pipepp::gui::pipe_detail_panel::pipe_detail_panel(nana::window owner, const nana::rectangle& rectangle, const nana::appearance& appearance)
@@ -27,21 +33,35 @@ pipepp::gui::pipe_detail_panel::pipe_detail_panel(nana::window owner, const nana
     , impl_(std::make_unique<data_type>(*this))
 {
     div(""
-        "margin=10"
-        "<vert gap=10"
-        "   <w_timers weight=20% margin=[0,0,10,0]>"
-        "   <w_opts margin=[0,0,10,0]>"
-        "   <w_vals>"
+        "margin=2"
+        "<vert"
+        "   <w_timers weight=25% margin=[0,0,2,0]>"
+        "   <w_vals margin=[0,0,2,0]>"
+        "   <w_opts>"
         ">");
 
     auto& m = *impl_;
     (*this)["w_timers"] << m.timers;
     (*this)["w_opts"] << m.options;
-    (*this)["w_values"] << m.values;
+    (*this)["w_vals"] << m.values;
     collocate();
 
     m.options.checkable(true);
     m.options.events().checked(std::bind(&pipe_detail_panel::_cb_option_arg_selected, this, std::placeholders::_1));
+
+    auto header_div = m.options.size().width * 32 / 100;
+    m.options.append_header("Category", header_div);
+    m.options.append_header("Key", header_div);
+    m.options.append_header("Value", header_div);
+
+    m.timers.bgcolor(nana::colors::dim_gray);
+    m.timers.fgcolor(nana::colors::white);
+    m.timers.typeface(nana::paint::font{"consolas", 10.0});
+    m.timers.text_align(nana::align::left);
+    m.timers.editable(false);
+    m.timers.enable_caret();
+
+    m.values.typeface(nana::paint::font("consolas", 10.0));
 }
 
 pipepp::gui::pipe_detail_panel::~pipe_detail_panel() = default;
@@ -94,11 +114,11 @@ void pipepp::gui::pipe_detail_panel::_cb_option_arg_selected(nana::arg_listbox c
         try {
             json_parsed = nlohmann::json::parse(input_str);
             if (strcmp(json_parsed.type_name(), json.type_name()) != 0) {
-                nana::msgbox{"Type mismatch"};
+                auto _ = (nana::msgbox{*this, "Error "} << "Type mismatch").show();
                 return false;
             }
         } catch (std::exception e) {
-            nana::msgbox{"Parse failure"};
+            auto _ = (nana::msgbox{*this, "Error ", nana::msgbox::ok} << "Parse Failed").show();
             return false;
         }
 
@@ -122,21 +142,41 @@ void pipepp::gui::pipe_detail_panel::reset_pipe(std::weak_ptr<impl__::pipeline_b
 
     if (auto pipeline = pl.lock()) {
         auto proxy = pipeline->get_pipe(id);
-
-        caption(proxy.name());
-
-        // 옵션 뷰 빌드
-        // 카테고리 별 정렬
-        auto header_div = m.options.size().width * 32 / 100;
-        m.options.append_header("Category", header_div);
-        m.options.append_header("Key", header_div);
-        m.options.append_header("Value", header_div);
         auto const& opt = proxy.options();
+        caption(proxy.name());
 
         _reload_options(opt);
     }
 }
 
-void pipepp::gui::pipe_detail_panel::update(std::shared_ptr<execution_context_data>)
+void pipepp::gui::pipe_detail_panel::update(std::shared_ptr<execution_context_data> data)
 {
+    auto& m = *impl_;
+
+    // -- 타이머 문자열 빌드
+    auto pos = m.timers.text_position().front();
+
+    size_t horizontal_chars = num_timer_text_view_horizontal_chars;
+    std::string text;
+    text.reserve(1024);
+    auto& timers = data->timers;
+    fmt::format_to(std::back_inserter(text), "\n {0:<{1}}\n\n", "Timer Records", horizontal_chars + 3);
+
+    auto left_chars = horizontal_chars - 15;
+
+    for (auto& tm : timers) {
+        auto left_indent = tm.category_level;
+
+        fmt::format_to(
+          std::back_inserter(text),
+          " {0:-<{3}}{1:.<{4}}{2:.>15.4f} ms\n", "",
+          tm.name, 1000.0 * std::chrono::duration<double>{tm.elapsed}.count(),
+          left_indent, left_chars - left_indent);
+    }
+
+    m.timers.select(true);
+    m.timers.append(text, true);
+    m.timers.caret_pos(pos), m.timers.del(), m.timers.append(" ", true);
+
+    // -- 디버그 옵션 빌드
 }

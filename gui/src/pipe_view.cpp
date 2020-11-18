@@ -86,7 +86,10 @@ void pipepp::gui::pipe_view::update()
           "%10.4f ms ",
           std::chrono::duration<double>(m.exec_data->timers[0].elapsed).count() * 1000.0);
         m.text.caption(sec);
-        m.detail_view->update(m.exec_data);
+
+        if (auto detail_view = details()) {
+            detail_view->update(m.exec_data);
+        }
     }
 }
 

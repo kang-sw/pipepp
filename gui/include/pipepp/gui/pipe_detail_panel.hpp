@@ -35,6 +35,9 @@ private:
     void _reload_options(pipepp::impl__::option_base const& opt);
     void _cb_option_arg_selected(nana::arg_listbox const&);
 
+public:
+    size_t num_timer_text_view_horizontal_chars = 56;
+
 private:
     struct data_type;
     std::unique_ptr<data_type> impl_;

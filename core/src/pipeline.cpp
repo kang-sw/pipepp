@@ -1,3 +1,4 @@
+#include <filesystem>
 #include <mutex>
 #include "pipepp/pipeline.hpp"
 
@@ -42,12 +43,31 @@ void pipepp::impl__::pipeline_base::import_options(nlohmann::json const& in)
     options().value().merge_patch(in["shared"]);
     auto& pipes_in = in["pipes"];
 
+    using nlohmann::json;
+    auto update = [](auto& recurse, json& l, json const& r) -> void {
+        if (l.is_object() && r.is_object()) {
+            for (auto& item : l.items()) {
+                if (r.contains(item.key())) {
+                    recurse(recurse, item.value(), r.at(item.key()));
+                }
+            }
+        }
+        else if (l.is_array() && r.is_array()) {
+            for (int i = 0; i < std::min(l.size(), r.size()); ++i) {
+                recurse(recurse, l[i], r[i]);
+            }
+        }
+        else if (strcmp(l.type_name(), r.type_name()) == 0) {
+            l = r;
+        }
+    };
+
     for (auto& pipe : pipes_) {
         auto& opts = pipe->options().value();
         auto it_found = pipes_in.find(pipe->name());
         if (it_found == pipes_in.end()) { continue; }
 
-        opts.merge_patch(it_found.value());
+        update(update, opts, it_found.value());
     }
 }
 

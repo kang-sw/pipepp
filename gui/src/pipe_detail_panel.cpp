@@ -64,8 +64,8 @@ pipepp::gui::pipe_detail_panel::pipe_detail_panel(nana::window owner, const nana
     m.options.append_header("Key", header_div);
     m.options.append_header("Value", header_div);
 
-    m.timers.bgcolor(nana::colors::dim_gray);
-    m.timers.fgcolor(nana::colors::white);
+    m.timers.bgcolor(nana::colors::black);
+    m.timers.fgcolor(nana::colors::light_green);
     m.timers.typeface(nana::paint::font{"consolas", 10.0});
     m.timers.text_align(nana::align::left);
     m.timers.editable(false);
@@ -214,7 +214,7 @@ void pipepp::gui::pipe_detail_panel::update(std::shared_ptr<execution_context_da
         std::string text;
         text.reserve(1024);
         auto& timers = data->timers;
-        fmt::format_to(std::back_inserter(text), "\n {0:<{1}}\n\n", "Timer Records", horizontal_chars + 3);
+        fmt::format_to(std::back_inserter(text), "{0:<{1}}\n", "", horizontal_chars + 3);
 
         auto left_chars = horizontal_chars - 15;
 
@@ -230,7 +230,7 @@ void pipepp::gui::pipe_detail_panel::update(std::shared_ptr<execution_context_da
 
         m.timers.select(true);
         m.timers.append(text, true);
-        m.timers.caret_pos(pos), m.timers.append(".", true);
+        m.timers.caret_pos(pos), m.timers.append("+", true);
     }
 
     // -- 디버그 옵션 빌드

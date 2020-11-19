@@ -66,7 +66,7 @@ struct exec_1 {
     }
 };
 
-static void link_1_0(my_shared_data&, exec_1::output_type const& i, exec_0::input_type& o)
+static void link_1_0(my_shared_data const&, exec_1::output_type const& i, exec_0::input_type& o)
 {
     auto& [val] = i;
     auto& [a] = o;

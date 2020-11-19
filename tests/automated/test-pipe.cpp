@@ -49,7 +49,7 @@ struct test_exec {
         return pipe_error::warning;
     }
 
-    static void recursive_adapter(base_shared_context&, output_type const& result, input_type& next_input)
+    static void recursive_adapter(base_shared_context const&, output_type const& result, input_type& next_input)
     {
         next_input.value = result.value;
         next_input.contributes.push_back(result.contrib);

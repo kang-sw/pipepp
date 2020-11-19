@@ -185,3 +185,9 @@ void execution_context::store_debug_data(kangsw::hash_pack hp, Ty_&& value)
 #define PIPEPP_STORE_DEBUG_DATA(NAME, VALUE)                                      \
     constexpr kangsw::hash_pack ___PIPEPP_CONCAT(___DATA_HASH_, __LINE__) = NAME; \
     ___call_PIPEPP_REGISTER_CONTEXT.store_debug_data(___PIPEPP_CONCAT(___DATA_HASH_, __LINE__), (VALUE));
+
+#define PIPEPP_STORE_DEBUG_DATA_COND(NAME, VALUE, COND)                                                       \
+    if (COND) {                                                                                               \
+        constexpr kangsw::hash_pack ___PIPEPP_CONCAT(___DATA_HASH_, __LINE__) = NAME;                         \
+        ___call_PIPEPP_REGISTER_CONTEXT.store_debug_data(___PIPEPP_CONCAT(___DATA_HASH_, __LINE__), (VALUE)); \
+    }

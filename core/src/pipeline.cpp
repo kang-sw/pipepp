@@ -1,3 +1,4 @@
+#include <filesystem>
 #include <mutex>
 #include "pipepp/pipeline.hpp"
 
@@ -17,6 +18,61 @@ void pipepp::impl__::pipeline_base::sync()
 
         is_busy = is_busy
                   || workers_.num_total_waitings() > 0;
+    }
+}
+
+nlohmann::json pipepp::impl__::pipeline_base::export_options()
+{
+    nlohmann::json opts;
+    auto _lck = options().lock_read();
+    opts["shared"] = options().value();
+    auto& opts_pipe_section = opts["pipes"];
+
+    for (auto& pipe : pipes_) {
+        auto& opts_pipe = opts_pipe_section[pipe->name()];
+        opts_pipe = pipe->options().value();
+    }
+
+    return opts;
+}
+
+void pipepp::impl__::pipeline_base::import_options(nlohmann::json const& in)
+{
+    // 재귀적으로 옵션을 대입합니다.
+    auto _lck = options().lock_write();
+    options().value().merge_patch(in["shared"]);
+    auto& pipes_in = in["pipes"];
+
+    using nlohmann::json;
+    auto update = [](auto& recurse, json& l, json const& r) -> void {
+        if (l.is_object() && r.is_object()) {
+            for (auto& item : l.items()) {
+                if (r.contains(item.key())) {
+                    recurse(recurse, item.value(), r.at(item.key()));
+                }
+            }
+        }
+        else if (l.is_array() && r.is_array()) {
+            int i;
+            for (i = 0; i < std::min(l.size(), r.size()); ++i) {
+                recurse(recurse, l[i], r[i]);
+            }
+            // 만약 r의 크기가 더 크다면, 일단 복사.
+            while (i < r.size()) {
+                l[i] = r[i];
+            }
+        }
+        else if (strcmp(l.type_name(), r.type_name()) == 0) {
+            l = r;
+        }
+    };
+
+    for (auto& pipe : pipes_) {
+        auto& opts = pipe->options().value();
+        auto it_found = pipes_in.find(pipe->name());
+        if (it_found == pipes_in.end()) { continue; }
+
+        update(update, opts, it_found.value());
     }
 }
 

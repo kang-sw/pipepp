@@ -26,6 +26,9 @@ public:
     auto& options() const { return global_options_; }
     auto& options() { return global_options_; }
 
+    nlohmann::json export_options();
+    void import_options(nlohmann::json const&);
+
 protected:
     // shared data object allocator
     std::shared_ptr<base_shared_context> _fetch_shared();
@@ -166,8 +169,8 @@ template <typename Fn_>
 pipe_proxy<SharedData_, Exec_>&
 pipe_proxy<SharedData_, Exec_>::add_output_handler(Fn_&& handler)
 {
-    auto wrapper = [fn_ = std::move(handler)](pipe_error e, base_shared_context const& s, std::any const& o) {
-        fn_(e, static_cast<SharedData_ const&>(s), std::any_cast<output_type const&>(o));
+    auto wrapper = [fn_ = std::move(handler)](pipe_error e, base_shared_context& s, std::any const& o) {
+        fn_(e, static_cast<SharedData_&>(s), std::any_cast<output_type const&>(o));
     };
     pipe_.add_output_handler(std::move(wrapper));
     return *this;
@@ -224,6 +227,8 @@ private:
           num_exec,
           std::forward<Fn_>(initial_executor_factory),
           std::forward<Args_>(args)...);
+
+        global_options_.reset_as_default<shared_data_type>();
     }
 
 public:

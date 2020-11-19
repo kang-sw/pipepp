@@ -31,8 +31,8 @@ public:
         return trial ? std::unique_lock{lock_, std::try_to_lock} : std::unique_lock{lock_};
     }
 
-    auto& option() const { return options_; }
-    auto& option() { return options_; }
+    auto& value() const { return options_; }
+    auto& value() { return options_; }
     auto& description() const { return descriptions_; }
     auto& categories() const { return categories_; }
 
@@ -72,12 +72,12 @@ template <typename Exec_, typename Ty_, size_t>
 struct _option_instance {
     using spec_type = option_specification<Exec_>;
 
-    _option_instance(Ty_&& init_value, char const* name, char const* category = "", char const* desc = "")
+    _option_instance(Ty_&& init_value, char const* name, std::string category = "", std::string desc = "")
         : name_(name)
     {
         _opt_spec<Exec_>().init_values_[name] = std::forward<Ty_>(init_value);
-        _opt_spec<Exec_>().init_categories_[name] = std::string(category);
-        _opt_spec<Exec_>().init_descs_[name] = std::string(desc);
+        _opt_spec<Exec_>().init_categories_[name] = std::move(category);
+        _opt_spec<Exec_>().init_descs_[name] = std::move(desc);
     }
 
     template <typename RTy_>
@@ -96,6 +96,11 @@ struct _option_instance {
 #define PIPEPP_DEFINE_OPTION(TYPE, NAME, DEFAULT_VALUE, ...) \
     inline static const ::pipepp::impl__::_option_instance<  \
       ___executor_type___, TYPE, kangsw::fnv1a(#NAME)>       \
+      NAME{DEFAULT_VALUE, #NAME, ##__VA_ARGS__};
+
+#define PIPEPP_DEFINE_OPTION_2(NAME, DEFAULT_VALUE, ...)                  \
+    inline static const ::pipepp::impl__::_option_instance<               \
+      ___executor_type___, decltype(DEFAULT_VALUE), kangsw::fnv1a(#NAME)> \
       NAME{DEFAULT_VALUE, #NAME, ##__VA_ARGS__};
 
 #define PIPEPP_DEFINE_OPTION_CLASS(EXECUTOR) using ___executor_type___ = EXECUTOR;

@@ -64,8 +64,8 @@ pipepp::gui::pipe_detail_panel::pipe_detail_panel(nana::window owner, const nana
     m.options.append_header("Key", header_div);
     m.options.append_header("Value", header_div);
 
-    m.timers.bgcolor(nana::colors::dim_gray);
-    m.timers.fgcolor(nana::colors::white);
+    m.timers.bgcolor(nana::colors::black);
+    m.timers.fgcolor(nana::colors::light_green);
     m.timers.typeface(nana::paint::font{"consolas", 10.0});
     m.timers.text_align(nana::align::left);
     m.timers.editable(false);
@@ -88,20 +88,21 @@ void pipepp::gui::pipe_detail_panel::_reload_options(pipepp::impl__::option_base
 
     auto list = m.options.at(0);
     auto& categories = opt.categories();
-    auto& val = opt.option();
+    auto& val = opt.value();
     for (auto& pair : val.items()) {
         auto& category_str = categories.at(pair.key());
         auto& value = pair.value();
 
         list.append({category_str, pair.key(), value.dump()});
+        if (value.type() == nlohmann::detail::value_t::boolean) {
+            list.back().check((bool)value);
+        }
     }
     m.options.auto_draw(true);
 }
 
 void pipepp::gui::pipe_detail_panel::_cb_option_arg_selected(nana::arg_listbox const& arg)
 {
-    if (arg.item.checked() == false) { return; }
-
     auto& m = *impl_;
     auto sel = arg.item.pos();
 
@@ -112,39 +113,54 @@ void pipepp::gui::pipe_detail_panel::_cb_option_arg_selected(nana::arg_listbox c
     auto& opts = pl->get_pipe(m.pipe).options();
     auto key = arg.item.text(COLUMN_KEY);
     auto val = arg.item.text(COLUMN_VALUE);
-    auto desc = opts.description().at(key);
-    nana::inputbox ib{*this, desc, key};
+    auto& json = opts.value().at(key);
 
-    auto& json = opts.option().at(key);
-    nlohmann::json json_parsed;
-    nana::inputbox::text value{"Value", val};
-
-    // verification ...
-    // 1. parsing에 성공해야 합니다.
-    // 2. 요소 속성이 일치해야 합니다.
-    ib.verify([&](nana::window handle) {
-        auto input_str = value.value();
-        try {
-            json_parsed = nlohmann::json::parse(input_str);
-            if (strcmp(json_parsed.type_name(), json.type_name()) != 0) {
-                auto _ = (nana::msgbox{*this, "Error "} << "Type mismatch").show();
-                return false;
-            }
-        } catch (std::exception e) {
-            auto _ = (nana::msgbox{*this, "Error ", nana::msgbox::ok} << "Parse Failed").show();
-            return false;
-        }
-
-        return true;
-    });
-
-    if (ib.show(value)) {
+    // Boolean 형식인 경우, 특별히 체크박스 자체가 값을 나타냅니다.
+    if (json.type() == nlohmann::detail::value_t::boolean) {
+        if (arg.item.checked() == (bool)json) { return; }
         auto _lck0 = opts.lock_write();
-        json = json_parsed;
+        json = arg.item.checked();
         arg.item.text(COLUMN_VALUE, json.dump());
     }
+    else {
+        if (arg.item.checked() == false) { return; }
 
-    arg.item.check(false);
+        auto desc = opts.description().at(key);
+        nana::inputbox ib{*this, desc, key};
+
+        nlohmann::json json_parsed;
+        nana::inputbox::text value{"Value", val};
+
+        // verification ...
+        // 1. parsing에 성공해야 합니다.
+        // 2. 요소 속성이 일치해야 합니다.
+        ib.verify([&](nana::window handle) {
+            auto input_str = value.value();
+            try {
+                json_parsed = nlohmann::json::parse(input_str);
+                if (strcmp(json_parsed.type_name(), json.type_name()) != 0) {
+                    auto _ = (nana::msgbox{*this, "Error "} << "Type mismatch").show();
+                    return false;
+                }
+            } catch (std::exception e) {
+                auto _ = (nana::msgbox{*this, "Error ", nana::msgbox::ok} << "Parse Failed").show();
+                return false;
+            }
+
+            return true;
+        });
+
+        if (ib.show(value)) {
+            auto _lck0 = opts.lock_write();
+            json = json_parsed;
+            arg.item.text(COLUMN_VALUE, json.dump());
+        }
+
+        arg.item.check(false);
+    }
+
+    auto& notify = m.board_ref->option_changed;
+    if (notify) { notify(m.pipe, key); }
 }
 
 void pipepp::gui::pipe_detail_panel::reset_pipe(std::weak_ptr<impl__::pipeline_base> pl, pipe_id_t id)
@@ -198,7 +214,7 @@ void pipepp::gui::pipe_detail_panel::update(std::shared_ptr<execution_context_da
         std::string text;
         text.reserve(1024);
         auto& timers = data->timers;
-        fmt::format_to(std::back_inserter(text), "\n {0:<{1}}\n\n", "Timer Records", horizontal_chars + 3);
+        fmt::format_to(std::back_inserter(text), "{0:<{1}}\n", "", horizontal_chars + 3);
 
         auto left_chars = horizontal_chars - 15;
 
@@ -214,7 +230,7 @@ void pipepp::gui::pipe_detail_panel::update(std::shared_ptr<execution_context_da
 
         m.timers.select(true);
         m.timers.append(text, true);
-        m.timers.caret_pos(pos), m.timers.append(".", true);
+        m.timers.caret_pos(pos), m.timers.append("+", true);
     }
 
     // -- 디버그 옵션 빌드

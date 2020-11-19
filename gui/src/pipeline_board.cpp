@@ -91,6 +91,18 @@ void pipepp::gui::pipeline_board::update()
     }
 }
 
+void pipepp::gui::pipeline_board::center(nana::point center)
+{
+    impl_->center = center;
+    _update_widget_pos();
+    nana::drawing{*this}.update();
+}
+
+nana::point pipepp::gui::pipeline_board::center() const
+{
+    return impl_->center;
+}
+
 void pipepp::gui::pipeline_board::_clear_views()
 {
     auto& m = *impl_;

@@ -84,6 +84,12 @@ public:
      */
     void update();
 
+    /**
+     * 중점 위치 강제 변경
+     */
+    void center(nana::point = {});
+    nana::point center() const;
+
 public:
     /**
      *

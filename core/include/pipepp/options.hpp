@@ -72,12 +72,12 @@ template <typename Exec_, typename Ty_, size_t>
 struct _option_instance {
     using spec_type = option_specification<Exec_>;
 
-    _option_instance(Ty_&& init_value, char const* name, char const* category = "", char const* desc = "")
+    _option_instance(Ty_&& init_value, char const* name, std::string category = "", std::string desc = "")
         : name_(name)
     {
         _opt_spec<Exec_>().init_values_[name] = std::forward<Ty_>(init_value);
-        _opt_spec<Exec_>().init_categories_[name] = std::string(category);
-        _opt_spec<Exec_>().init_descs_[name] = std::string(desc);
+        _opt_spec<Exec_>().init_categories_[name] = std::move(category);
+        _opt_spec<Exec_>().init_descs_[name] = std::move(desc);
     }
 
     template <typename RTy_>

@@ -166,8 +166,8 @@ template <typename Fn_>
 pipe_proxy<SharedData_, Exec_>&
 pipe_proxy<SharedData_, Exec_>::add_output_handler(Fn_&& handler)
 {
-    auto wrapper = [fn_ = std::move(handler)](pipe_error e, base_shared_context const& s, std::any const& o) {
-        fn_(e, static_cast<SharedData_ const&>(s), std::any_cast<output_type const&>(o));
+    auto wrapper = [fn_ = std::move(handler)](pipe_error e, base_shared_context& s, std::any const& o) {
+        fn_(e, static_cast<SharedData_&>(s), std::any_cast<output_type const&>(o));
     };
     pipe_.add_output_handler(std::move(wrapper));
     return *this;

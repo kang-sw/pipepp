@@ -53,8 +53,13 @@ void pipepp::impl__::pipeline_base::import_options(nlohmann::json const& in)
             }
         }
         else if (l.is_array() && r.is_array()) {
-            for (int i = 0; i < std::min(l.size(), r.size()); ++i) {
+            int i;
+            for (i = 0; i < std::min(l.size(), r.size()); ++i) {
                 recurse(recurse, l[i], r[i]);
+            }
+            // 만약 r의 크기가 더 크다면, 일단 복사.
+            while (i < r.size()) {
+                l[i] = r[i];
             }
         }
         else if (strcmp(l.type_name(), r.type_name()) == 0) {

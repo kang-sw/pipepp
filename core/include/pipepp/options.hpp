@@ -31,8 +31,8 @@ public:
         return trial ? std::unique_lock{lock_, std::try_to_lock} : std::unique_lock{lock_};
     }
 
-    auto& option() const { return options_; }
-    auto& option() { return options_; }
+    auto& value() const { return options_; }
+    auto& value() { return options_; }
     auto& description() const { return descriptions_; }
     auto& categories() const { return categories_; }
 

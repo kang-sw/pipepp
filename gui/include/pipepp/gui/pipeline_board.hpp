@@ -95,6 +95,7 @@ public:
      *
      */
     std::function<bool(std::string const&, execution_context_data::debug_data_entity const&)> debug_data_subscriber;
+    std::function<void(pipe_id_t id, std::string_view key)> option_changed;
 
 private:
     void _clear_views();

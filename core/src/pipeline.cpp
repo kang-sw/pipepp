@@ -20,6 +20,28 @@ void pipepp::impl__::pipeline_base::sync()
     }
 }
 
+nlohmann::json pipepp::impl__::pipeline_base::export_options()
+{
+    nlohmann::json opts;
+    auto _lck = options().lock_read();
+    opts["shared"] = options().value();
+    auto& opts_pipe_section = opts["pipes"];
+
+    for (auto& pipe : pipes_) {
+        auto& opts_pipe = opts_pipe_section[pipe->name()];
+        opts_pipe = pipe->options().value();
+    }
+
+    return opts;
+}
+
+void pipepp::impl__::pipeline_base::import_options(nlohmann::json const& in)
+{
+    // 재귀적으로 옵션을 대입합니다.
+    auto _lck = options().lock_write();
+    options().value().merge_patch(in);
+}
+
 std::shared_ptr<pipepp::base_shared_context> pipepp::impl__::pipeline_base::_fetch_shared()
 {
     std::lock_guard lock(fence_object_pool_lock_);

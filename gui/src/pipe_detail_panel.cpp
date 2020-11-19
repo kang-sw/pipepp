@@ -88,20 +88,21 @@ void pipepp::gui::pipe_detail_panel::_reload_options(pipepp::impl__::option_base
 
     auto list = m.options.at(0);
     auto& categories = opt.categories();
-    auto& val = opt.option();
+    auto& val = opt.value();
     for (auto& pair : val.items()) {
         auto& category_str = categories.at(pair.key());
         auto& value = pair.value();
 
         list.append({category_str, pair.key(), value.dump()});
+        if (value.type() == nlohmann::detail::value_t::boolean) {
+            list.back().check((bool)value);
+        }
     }
     m.options.auto_draw(true);
 }
 
 void pipepp::gui::pipe_detail_panel::_cb_option_arg_selected(nana::arg_listbox const& arg)
 {
-    if (arg.item.checked() == false) { return; }
-
     auto& m = *impl_;
     auto sel = arg.item.pos();
 
@@ -112,10 +113,20 @@ void pipepp::gui::pipe_detail_panel::_cb_option_arg_selected(nana::arg_listbox c
     auto& opts = pl->get_pipe(m.pipe).options();
     auto key = arg.item.text(COLUMN_KEY);
     auto val = arg.item.text(COLUMN_VALUE);
+    auto& json = opts.value().at(key);
+
+    // Boolean 형식인 경우, 특별히 체크박스 자체가 값을 나타냅니다.
+    if (json.type() == nlohmann::detail::value_t::boolean) {
+        auto _lck0 = opts.lock_write();
+        json = arg.item.checked();
+        arg.item.text(COLUMN_VALUE, json.dump());
+        return;
+    }
+    if (arg.item.checked() == false) { return; }
+
     auto desc = opts.description().at(key);
     nana::inputbox ib{*this, desc, key};
 
-    auto& json = opts.option().at(key);
     nlohmann::json json_parsed;
     nana::inputbox::text value{"Value", val};
 
@@ -145,6 +156,9 @@ void pipepp::gui::pipe_detail_panel::_cb_option_arg_selected(nana::arg_listbox c
     }
 
     arg.item.check(false);
+
+    auto& notify = m.board_ref->option_changed;
+    if (notify) { notify(m.pipe, key); }
 }
 
 void pipepp::gui::pipe_detail_panel::reset_pipe(std::weak_ptr<impl__::pipeline_base> pl, pipe_id_t id)

@@ -224,6 +224,8 @@ private:
           num_exec,
           std::forward<Fn_>(initial_executor_factory),
           std::forward<Args_>(args)...);
+
+        global_options_.reset_as_default<shared_data_type>();
     }
 
 public:

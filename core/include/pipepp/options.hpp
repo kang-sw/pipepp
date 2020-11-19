@@ -98,4 +98,9 @@ struct _option_instance {
       ___executor_type___, TYPE, kangsw::fnv1a(#NAME)>       \
       NAME{DEFAULT_VALUE, #NAME, ##__VA_ARGS__};
 
+#define PIPEPP_DEFINE_OPTION_2(NAME, DEFAULT_VALUE, ...)                  \
+    inline static const ::pipepp::impl__::_option_instance<               \
+      ___executor_type___, decltype(DEFAULT_VALUE), kangsw::fnv1a(#NAME)> \
+      NAME{DEFAULT_VALUE, #NAME, ##__VA_ARGS__};
+
 #define PIPEPP_DEFINE_OPTION_CLASS(EXECUTOR) using ___executor_type___ = EXECUTOR;

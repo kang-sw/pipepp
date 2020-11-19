@@ -39,7 +39,16 @@ void pipepp::impl__::pipeline_base::import_options(nlohmann::json const& in)
 {
     // 재귀적으로 옵션을 대입합니다.
     auto _lck = options().lock_write();
-    options().value().merge_patch(in);
+    options().value().merge_patch(in["shared"]);
+    auto& pipes_in = in["pipes"];
+
+    for (auto& pipe : pipes_) {
+        auto& opts = pipe->options().value();
+        auto it_found = pipes_in.find(pipe->name());
+        if (it_found == pipes_in.end()) { continue; }
+
+        opts.merge_patch(it_found.value());
+    }
 }
 
 std::shared_ptr<pipepp::base_shared_context> pipepp::impl__::pipeline_base::_fetch_shared()

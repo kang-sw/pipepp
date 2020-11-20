@@ -146,22 +146,23 @@ private:
 template <typename Ty_>
 void execution_context::store_debug_data(kangsw::hash_pack hp, Ty_&& value)
 {
+    using type = std::decay_t<Ty_>;
     auto& entity = _wr()->debug_data.emplace_back();
     entity.category_level = category_level_;
     entity.name = string_pool()(hp).second;
     entity.category_id = category_id_.back();
     auto& data = entity.data;
 
-    if constexpr (std::is_same_v<bool, Ty_>) {
+    if constexpr (std::is_same_v<bool, type>) {
         data = value;
     }
-    else if constexpr (std::is_integral_v<Ty_>) {
+    else if constexpr (std::is_integral_v<type>) {
         data.emplace<int64_t>(std::forward<Ty_>(value));
     }
-    else if constexpr (std::is_floating_point_v<Ty_>) {
+    else if constexpr (std::is_floating_point_v<type>) {
         data.emplace<double>(std::forward<Ty_>(value));
     }
-    else if constexpr (std::is_convertible_v<Ty_, std::string>) {
+    else if constexpr (std::is_convertible_v<type, std::string>) {
         data.emplace<std::string>(std::forward<Ty_>(value));
     }
     else {
@@ -186,8 +187,18 @@ void execution_context::store_debug_data(kangsw::hash_pack hp, Ty_&& value)
     constexpr kangsw::hash_pack ___PIPEPP_CONCAT(___DATA_HASH_, __LINE__) = NAME; \
     ___call_PIPEPP_REGISTER_CONTEXT.store_debug_data(___PIPEPP_CONCAT(___DATA_HASH_, __LINE__), (VALUE));
 
+#define PIPEPP_CAPTURE_DEBUG_DATA(VALUE)                                            \
+    constexpr kangsw::hash_pack ___PIPEPP_CONCAT(___DATA_HASH_, __LINE__) = #VALUE; \
+    ___call_PIPEPP_REGISTER_CONTEXT.store_debug_data(___PIPEPP_CONCAT(___DATA_HASH_, __LINE__), (VALUE));
+
 #define PIPEPP_STORE_DEBUG_DATA_COND(NAME, VALUE, COND)                                                       \
     if (COND) {                                                                                               \
         constexpr kangsw::hash_pack ___PIPEPP_CONCAT(___DATA_HASH_, __LINE__) = NAME;                         \
+        ___call_PIPEPP_REGISTER_CONTEXT.store_debug_data(___PIPEPP_CONCAT(___DATA_HASH_, __LINE__), (VALUE)); \
+    }
+
+#define PIPEPP_CAPTURE_DEBUG_DATA_COND(VALUE, COND)                                                           \
+    if (COND) {                                                                                               \
+        constexpr kangsw::hash_pack ___PIPEPP_CONCAT(___DATA_HASH_, __LINE__) = #VALUE;                       \
         ___call_PIPEPP_REGISTER_CONTEXT.store_debug_data(___PIPEPP_CONCAT(___DATA_HASH_, __LINE__), (VALUE)); \
     }

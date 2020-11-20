@@ -260,6 +260,8 @@ public:
         std::any cached_input_;
         std::any cached_output_;
 
+        std::optional<execution_context::timer_scope_indicator> timer_scope_;
+
         size_t index_;
     };
 

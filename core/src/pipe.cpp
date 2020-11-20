@@ -86,18 +86,25 @@ void pipepp::impl__::pipe_base::executor_slot::_launch_callback()
     std::lock_guard destruction_guard{owner_.destruction_guard_};
 
     executor()->set_context_ref(&context_write());
-    constexpr auto EXEC_TIMER = "total execution time"_hp;
     pipe_error exec_res;
 
-    context_write().timer_scope(EXEC_TIMER), // 항상 전체 시간을 계측합니다.
-      latest_execution_result_.store(
-        exec_res = executor()->invoke__(cached_input_, cached_output_),
-        std::memory_order_relaxed);
+    PIPEPP_REGISTER_CONTEXT(context_write());
+    timer_scope_ = context_write().timer_scope("Total Execution Time");
+
+    PIPEPP_ELAPSE_BLOCK("A. Executor Run Time")
+    {
+        latest_execution_result_.store(
+          exec_res = executor()->invoke__(cached_input_, cached_output_),
+          std::memory_order_relaxed);
+    }
 
     // 먼저, 연결된 일반 핸들러를 모두 처리합니다.
-    auto fence_obj = fence_object_.get();
-    for (auto& fn : owner_.output_handlers_) {
-        fn(exec_res, *fence_obj, cached_output_);
+    PIPEPP_ELAPSE_BLOCK("B. Output Handler Overhead")
+    {
+        auto fence_obj = fence_object_.get();
+        for (auto& fn : owner_.output_handlers_) {
+            fn(exec_res, *fence_obj, cached_output_);
+        }
     }
 
     if (owner_.output_links_.empty() == false) {
@@ -118,6 +125,7 @@ void pipepp::impl__::pipe_base::executor_slot::_perform_post_output()
 
     auto constexpr RELAXED = std::memory_order_relaxed;
     // 연결된 모든 출력을 처리한 경우입니다.
+    timer_scope_.reset();
 
     // 실행기의 내부 상태를 정리합니다.
     fence_object_.reset();

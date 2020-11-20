@@ -65,7 +65,7 @@ pipepp::gui::pipe_detail_panel::pipe_detail_panel(nana::window owner, const nana
     m.options.append_header("Value", header_div);
 
     m.timers.bgcolor(nana::colors::black);
-    m.timers.fgcolor(nana::colors::light_green);
+    m.timers.fgcolor(nana::color{}.from_rgb(0, 255, 0));
     m.timers.typeface(nana::paint::font{"consolas", 10.0});
     m.timers.text_align(nana::align::left);
     m.timers.editable(false);
@@ -218,7 +218,21 @@ void pipepp::gui::pipe_detail_panel::update(std::shared_ptr<execution_context_da
 
         auto left_chars = horizontal_chars - 15;
 
-        for (auto& tm : timers) {
+        const static nana::color category_colors[] = {
+          nana::colors::white,
+          nana::colors::light_gray,
+          nana::colors::light_green,
+          nana::colors::light_blue,
+          nana::colors::sky_blue,
+          nana::colors::blue,
+          nana::colors::cadet_blue,
+          nana::colors::purple,
+          nana::colors::pink,
+          nana::colors::gray,
+        };
+        const size_t max_category = *(&category_colors + 1) - category_colors - 1;
+
+        for (size_t line = 1; auto& tm : timers) {
             auto left_indent = tm.category_level;
 
             fmt::format_to(
@@ -226,6 +240,10 @@ void pipepp::gui::pipe_detail_panel::update(std::shared_ptr<execution_context_da
               " {0:<{3}}{1:.<{4}}{2:.>15.4f} ms\n", "",
               tm.name, 1000.0 * std::chrono::duration<double>{tm.elapsed}.count(),
               left_indent, left_chars - left_indent);
+
+            m.timers.colored_area_access()->get(line)->count = 1;
+            m.timers.colored_area_access()->get(line)->fgcolor = category_colors[std::min(tm.category_level, max_category)];
+            ++line;
         }
 
         m.timers.select(true);

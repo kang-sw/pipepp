@@ -64,6 +64,9 @@ public:
     size_t num_output_nodes() const { return pipe_.output_links().size(); }
     pipe_proxy_base get_output_node(size_t index) const { return {pipeline_, *pipe_.output_links().at(index).pipe}; }
 
+    size_t num_input_nodes() const { return pipe_.input_links().size(); }
+    pipe_proxy_base get_input_node(size_t index) const { return {pipeline_, *pipe_.input_links().at(index).pipe}; }
+
     // get previous execution context
     std::shared_ptr<execution_context_data> consume_execution_result();
     bool execution_result_available() const;

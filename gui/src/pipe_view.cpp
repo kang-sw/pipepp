@@ -7,6 +7,7 @@
 #include "pipepp/gui/pipe_detail_panel.hpp"
 #include "pipepp/gui/pipe_view.hpp"
 
+#include "kangsw/misc.hxx"
 #include "kangsw/zip.hxx"
 #include "nana/basic_types.hpp"
 #include "nana/gui/detail/general_events.hpp"
@@ -15,6 +16,8 @@
 #include "nana/gui/widgets/group.hpp"
 #include "nana/gui/widgets/textbox.hpp"
 #include "pipepp/pipeline.hpp"
+
+using clock_type = std::chrono::system_clock;
 
 struct pipepp::gui::pipe_view::data_type {
     pipe_view& self;
@@ -35,6 +38,9 @@ struct pipepp::gui::pipe_view::data_type {
     double label_dur_exec = 0;
 
     nana::panel<true> executor_notes{self};
+
+    clock_type::time_point latest_exec_receive;
+    bool upper_node_paused = false;
 };
 
 void pipepp::gui::pipe_view::_label_events()
@@ -43,7 +49,11 @@ void pipepp::gui::pipe_view::_label_events()
 
     nana::drawing(m.label).draw_diehard([&](nana::paint::graphics& gp) {
         auto proxy = impl_->pipeline.lock()->get_pipe(impl_->pipe);
-        auto backcolor = proxy.is_paused() ? nana::colors::dark_red : nana::color(85, 65, 85);
+        auto backcolor = proxy.is_paused()
+                           ? nana::colors::dark_red
+                           : m.upper_node_paused
+                               ? nana::colors::yellow
+                               : nana::color(85, 65, 85);
 
         gp.gradual_rectangle(
           nana::rectangle{{1, 1}, gp.size() + nana::size(-1, -1)}, backcolor, nana::color(35, 35, 35), true);
@@ -120,6 +130,8 @@ void pipepp::gui::pipe_view::reset_view(std::weak_ptr<impl__::pipeline_base> pip
 
 void pipepp::gui::pipe_view::update()
 {
+    using namespace std::chrono_literals;
+
     auto& m = *impl_;
     auto pl = m.pipeline.lock();
     if (pl == nullptr) { return; }
@@ -144,6 +156,23 @@ void pipepp::gui::pipe_view::update()
         if (auto detail_view = details()) {
             detail_view->update(m.exec_data);
         }
+        m.latest_exec_receive = clock_type::now();
+        m.upper_node_paused = false;
+    }
+    else if (clock_type::now() - m.latest_exec_receive > 500ms) {
+        m.latest_exec_receive = clock_type::now();
+        auto has_any_paused_input = [&](auto recurse, impl__::pipe_proxy_base const& prx) -> bool {
+            if (prx.is_paused()) { return true; }
+            for (auto index : kangsw::iota{(int)prx.num_input_nodes()}) {
+                if (recurse(recurse, prx.get_input_node(index))) {
+                    return true;
+                }
+            }
+            return false;
+        };
+
+        m.upper_node_paused = has_any_paused_input(has_any_paused_input, proxy);
+        nana::drawing(m.label).update();
     }
 }
 

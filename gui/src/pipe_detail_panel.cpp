@@ -75,6 +75,15 @@ pipepp::gui::pipe_detail_panel::pipe_detail_panel(nana::window owner, const nana
     m.values.checkable(true);
     m.values.append_header("Name", header_div);
     m.values.append_header("Value", header_div);
+    m.values.events().checked([&](nana::arg_listbox const& arg) {
+        if (arg.item.checked() == false) {
+            auto unchecked_notify = m.board_ref->debug_data_unchecked;
+            if (unchecked_notify) {
+                auto proxy = m.pipeline.lock()->get_pipe(m.pipe);
+                unchecked_notify(proxy.name(), arg.item.value<execution_context_data::debug_data_entity>());
+            }
+        }
+    });
 }
 
 pipepp::gui::pipe_detail_panel::~pipe_detail_panel() = default;

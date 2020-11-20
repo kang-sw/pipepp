@@ -122,6 +122,10 @@ void pipepp::gui::pipe_view::open_details(const nana::window& wd)
         p->reset_pipe(m.pipeline, m.pipe);
         if (m.exec_data) { p->update(m.exec_data); }
 
+        p->events().destroy([&](auto) {
+            m.button.bgcolor(nana::colors::antique_white);
+        });
+        m.button.bgcolor(nana::colors::light_green);
         p->show();
     }
 }

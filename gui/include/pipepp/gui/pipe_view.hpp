@@ -16,6 +16,7 @@ public:
     using super = nana::panel<false>;
 
 public:
+    void _label_events();
     pipe_view(const nana::window& wd, const nana::rectangle& r, bool visible);
     ~pipe_view();
 
@@ -56,6 +57,8 @@ protected:
     void _m_caption(native_string_type&&) override;
     void _m_bgcolor(const nana::color&) override;
     void _m_typeface(const nana::paint::font& font) override;
+
+    void _refresh_btn_color(bool detail_open);
 
 private:
     struct data_type;

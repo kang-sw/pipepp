@@ -83,6 +83,11 @@ public:
     // return latest output interval
     auto output_interval() const { return pipe_.output_interval(); }
 
+    // pause functionality
+    bool is_paused() const { return pipe_.is_paused(); }
+    void pause() { pipe_.pause(); }
+    void unpause() { pipe_.unpause(); }
+
     // TODO: report currently active output executor
     // TODO: report execution results of each executors
 

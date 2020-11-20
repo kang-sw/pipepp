@@ -367,7 +367,7 @@ bool pipepp::impl__::pipe_base::input_slot_t::_submit_input(fence_index_t output
         throw pipe_input_exception("duplicated input submit request ... something's wrong!");
     }
 
-    if (abort_current) {
+    if (abort_current || owner_.is_paused()) {
         // 현재 입력 슬롯의 펜스를 invalidate합니다.
 
         // 연결된 각각의 출력 링크에 새로운 인덱스를 전파합니다.

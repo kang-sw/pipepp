@@ -291,9 +291,12 @@ public:
 
     /** 입력 가능 상태인지 확인 */
     bool can_submit_input_direct() const { return !_active_exec_slot()._is_executor_busy(); }
+    bool is_paused() const { return paused_.load(std::memory_order_relaxed); }
+    void pause() { paused_.store(true, std::memory_order_relaxed); }
+    void unpause() { paused_.store(false, std::memory_order_relaxed); }
 
     /** 출력 인터벌 반환 */
-    system_clock::duration output_interval() const { return latest_interval_.load(std::memory_order::memory_order_relaxed); }
+    system_clock::duration output_interval() const { return latest_interval_.load(std::memory_order_relaxed); }
 
 public:
     /** 입력 연결자 */
@@ -358,17 +361,19 @@ private:
     std::vector<input_link_desc> input_links_;
     std::vector<output_link_desc> output_links_;
 
-    // 가장 최근에 실행된 execution 정보
+    /** 가장 최근에 실행된 execution 정보 */
     std::atomic<execution_context const*> latest_exec_context_;
     std::atomic<fence_index_t> latest_output_fence_;
     std::atomic<system_clock::duration> latest_interval_;
+    std::atomic<system_clock::time_point> latest_output_tp_ = system_clock::now();
 
     std::vector<output_handler_type> output_handlers_;
 
     kangsw::timer_thread_pool* ref_workers_ = nullptr;
     option_base executor_options_;
 
-    std::atomic<system_clock::time_point> latest_output_tp_ = system_clock::now();
+    /** 일시 정지 처리 */
+    std::atomic_bool paused_;
 
     //---GUARD--//
     kangsw::destruction_guard destruction_guard_;

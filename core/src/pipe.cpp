@@ -405,6 +405,8 @@ bool pipepp::impl__::pipe_base::input_slot_t::_submit_input(fence_index_t output
 
 bool pipepp::impl__::pipe_base::input_slot_t::_submit_input_direct(std::any&& input, std::shared_ptr<pipepp::base_shared_context> fence_object)
 {
+    if (owner_.is_paused()) { return false; }
+
     std::lock_guard lock{cached_input_.second};
     std::lock_guard destruction_guard{owner_.destruction_guard_};
 

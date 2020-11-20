@@ -8,6 +8,7 @@
 #include "pipepp/gui/pipe_view.hpp"
 
 #include "kangsw/zip.hxx"
+#include "nana/basic_types.hpp"
 #include "nana/gui/detail/general_events.hpp"
 #include "nana/gui/programming_interface.hpp"
 #include "nana/gui/widgets/checkbox.hpp"
@@ -32,7 +33,6 @@ struct pipepp::gui::pipe_view::data_type {
     std::string label_text_exec;
     double label_dur_interval = 0;
     double label_dur_exec = 0;
-    bool label_mouse_hovering = false;
 
     nana::panel<true> executor_notes{self};
 };
@@ -43,12 +43,13 @@ void pipepp::gui::pipe_view::_label_events()
 
     nana::drawing(m.label).draw_diehard([&](nana::paint::graphics& gp) {
         auto proxy = impl_->pipeline.lock()->get_pipe(impl_->pipe);
-        auto backcolor = proxy.is_paused() ? nana::colors::dark_red : nana::color{}.from_rgb(35, 35, 35);
-        backcolor = backcolor + (m.label_mouse_hovering ? nana::color{}.from_rgb(35, 35, 35) : nana::colors::black);
+        auto backcolor = proxy.is_paused() ? nana::colors::dark_red : nana::color(85, 65, 85);
 
+        gp.gradual_rectangle(
+          nana::rectangle{{1, 1}, gp.size() + nana::size(-1, -1)}, backcolor, nana::color(35, 35, 35), true);
         gp.round_rectangle(
           nana::rectangle{{}, gp.size()}, 3, 3,
-          nana::colors::black, true, backcolor);
+          nana::colors::black, false, backcolor);
         auto extent = gp.text_extent_size(m.label_text_interval);
         nana::point str_draw_pos = {};
         str_draw_pos.y = m.label.size().height / 2 - extent.height - 2;
@@ -93,9 +94,11 @@ pipepp::gui::pipe_view::pipe_view(const nana::window& wd, const nana::rectangle&
     });
 
     nana::drawing(m.executor_notes).draw_diehard([&](nana::paint::graphics& gp) {
+        gp.gradual_rectangle(
+          nana::rectangle{{1, 1}, gp.size() + nana::size(-1, -1)}, nana::color(87, 76, 86), nana::colors::floral_white, true);
         gp.round_rectangle(
-          nana::rectangle{{}, gp.size()}, 3, 3,
-          nana::colors::black, true, nana::colors::white_smoke);
+          nana::rectangle{{}, gp.size()}, 2, 2,
+          nana::colors::black, false, nana::colors::dim_gray);
     });
 }
 

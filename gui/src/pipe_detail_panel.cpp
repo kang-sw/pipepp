@@ -84,6 +84,11 @@ pipepp::gui::pipe_detail_panel::pipe_detail_panel(nana::window owner, const nana
             }
         }
     });
+    events().unload([&](auto&) {
+        for (auto item : m.values.at(0)) {
+            item.check(false);
+        }
+    });
 }
 
 pipepp::gui::pipe_detail_panel::~pipe_detail_panel() = default;

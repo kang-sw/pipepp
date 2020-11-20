@@ -124,8 +124,10 @@ void pipepp::impl__::pipe_base::executor_slot::_perform_post_output()
     }
 
     auto constexpr RELAXED = std::memory_order_relaxed;
-    // 연결된 모든 출력을 처리한 경우입니다.
+    // -- 연결된 모든 출력을 처리한 경우입니다.
+    // 타이머 관련 로직 처리
     timer_scope_.reset();
+    owner_._refresh_interval_timer();
 
     // 실행기의 내부 상태를 정리합니다.
     fence_object_.reset();
@@ -291,6 +293,14 @@ void pipepp::impl__::pipe_base::_rotate_output_order(executor_slot* ref)
 {
     assert(ref == executor_slots_[_pending_output_slot_index()].get());
     output_exec_slot_.fetch_add(1);
+}
+
+void pipepp::impl__::pipe_base::_refresh_interval_timer()
+{
+    constexpr auto RELAXED = std::memory_order_relaxed;
+    auto tp = latest_output_tp_.load(RELAXED);
+    latest_interval_.store(system_clock::now() - tp);
+    latest_output_tp_.compare_exchange_strong(tp, system_clock::now());
 }
 
 void pipepp::impl__::pipe_base::input_slot_t::_supply_input_to_active_executor(bool is_initial_call)

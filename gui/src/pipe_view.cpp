@@ -7,7 +7,10 @@
 #include "pipepp/gui/pipe_detail_panel.hpp"
 #include "pipepp/gui/pipe_view.hpp"
 
+#include "kangsw/zip.hxx"
 #include "nana/gui/programming_interface.hpp"
+#include "nana/gui/widgets/group.hpp"
+#include "nana/gui/widgets/textbox.hpp"
 #include "pipepp/pipeline.hpp"
 
 struct pipepp::gui::pipe_view::data_type {
@@ -21,7 +24,14 @@ struct pipepp::gui::pipe_view::data_type {
 
     nana::place layout{self};
     nana::button button{self};
-    nana::panel<true> text{self};
+    nana::panel<true> label{self};
+
+    std::string label_text_interval;
+    std::string label_text_exec;
+    double label_dur_interval = 0;
+    double label_dur_exec = 0;
+
+    nana::panel<true> executor_notes{self};
 };
 
 pipepp::gui::pipe_view::pipe_view(const nana::window& wd, const nana::rectangle& r, bool visible)
@@ -30,22 +40,28 @@ pipepp::gui::pipe_view::pipe_view(const nana::window& wd, const nana::rectangle&
 {
     auto& m = *impl_;
 
-    m.layout.div("vert<MAIN weight=40%><TEXT>");
+    m.layout.div("vert<MAIN weight=20><INTERVAL weight=40><EXEC_COND>");
     m.layout["MAIN"] << m.button;
-    m.layout["TEXT"] << m.text;
-    //  m.text.text_align(nana::align::center, nana::align_v::center);
-    m.button.typeface(nana::paint::font("consolas", 11.0));
-    m.text.typeface(nana::paint::font("consolas", 11.0));
+    m.layout["INTERVAL"] << m.label;
+    m.layout["EXEC_COND"] << m.executor_notes;
 
-    nana::drawing(m.text).draw_diehard([&](nana::paint::graphics& gp) {
+    //  m.text.text_align(nana::align::center, nana::align_v::center);
+    // m.button.typeface(nana::paint::font("consolas", 11.0));
+    // m.label.typeface(nana::paint::font("consolas", 11.0));
+
+    nana::drawing(m.label).draw_diehard([&](nana::paint::graphics& gp) {
         gp.round_rectangle(
-          nana::rectangle{{}, m.text.size()}, 5, 5,
-          nana::colors::black, true, nana::colors::light_grey);
-        auto extent = gp.text_extent_size(m.text.caption());
+          nana::rectangle{{}, gp.size()}, 3, 3,
+          nana::colors::black, true, nana::color{}.from_rgb(35, 35, 35));
+        auto extent = gp.text_extent_size(m.label_text_interval);
         nana::point str_draw_pos = {};
-        str_draw_pos.y = m.text.size().height / 2 - extent.height / 2;
-        str_draw_pos.x = m.text.size().width - 5 - extent.width;
-        gp.string(str_draw_pos, m.text.caption());
+        str_draw_pos.y = m.label.size().height / 2 - extent.height - 2;
+        str_draw_pos.x = m.label.size().width - 5 - extent.width;
+        gp.string(str_draw_pos, m.label_text_interval, nana::colors::white);
+        extent = gp.text_extent_size(m.label_text_exec);
+        str_draw_pos.y = m.label.size().height / 2 + 2;
+        str_draw_pos.x = m.label.size().width - 5 - extent.width;
+        gp.string(str_draw_pos, m.label_text_exec, nana::colors::light_sky_blue);
     });
 
     m.button.events().click([&](auto) {
@@ -55,6 +71,12 @@ pipepp::gui::pipe_view::pipe_view(const nana::window& wd, const nana::rectangle&
         else {
             close_details();
         }
+    });
+
+    nana::drawing(m.executor_notes).draw_diehard([&](nana::paint::graphics& gp) {
+        gp.round_rectangle(
+          nana::rectangle{{}, gp.size()}, 3, 3,
+          nana::colors::black, true, nana::colors::white_smoke);
     });
 }
 
@@ -83,11 +105,19 @@ void pipepp::gui::pipe_view::update()
     auto proxy = pl->get_pipe(m.pipe);
     if (proxy.execution_result_available()) {
         m.exec_data = proxy.consume_execution_result();
+        // auto time = m.exec_data->timers[0].elapsed;
 
-        auto sec = kangsw::format(
-          "%10.4f ms ",
-          std::chrono::duration<double>(m.exec_data->timers[0].elapsed).count() * 1000.0);
-        m.text.caption(sec);
+        auto lst_tm = {proxy.output_interval(), m.exec_data->timers[0].elapsed};
+        auto lst_tget = {&m.label_text_interval, &m.label_text_exec};
+        auto lst_lerp = {&m.label_dur_interval, &m.label_dur_exec};
+        for (
+          auto [time, tget, base] :
+          kangsw::zip(lst_tm, lst_tget, lst_lerp)) {
+            auto dur = std::chrono::duration<double>(time).count() * 1000.0;
+            *base = std::lerp(*base, dur, 0.33);
+            *tget = kangsw::format("%10.4f ms ", *base);
+        }
+        nana::drawing(m.label).update();
 
         if (auto detail_view = details()) {
             detail_view->update(m.exec_data);
@@ -147,12 +177,17 @@ void pipepp::gui::pipe_view::_m_caption(native_string_type&& f)
 
 void pipepp::gui::pipe_view::_m_bgcolor(const nana::color& c)
 {
-    impl_->button.bgcolor(c);
+    auto& m = *impl_;
+    m.label.bgcolor(c);
+    m.executor_notes.bgcolor(c);
     super::_m_bgcolor(c);
 }
 
 void pipepp::gui::pipe_view::_m_typeface(const nana::paint::font& font)
 {
-    impl_->button.typeface(font);
+    auto& m = *impl_;
+    m.button.typeface(font);
+    m.label.typeface(font);
+    m.executor_notes.typeface(font);
     super::_m_typeface(font);
 }

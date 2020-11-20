@@ -35,7 +35,7 @@ struct pipepp::gui::pipeline_board::data_type {
     double zoom;
     nana::point center;
 
-    nana::size widget_default_size = {128, 48};
+    nana::size widget_default_size = {128, 128};
     nana::size widget_default_gap = {48, 16};
 
     std::vector<pipe_widget_desc> widgets;
@@ -168,6 +168,26 @@ void pipepp::gui::pipeline_board::_update_widget_pos()
     }
 }
 
+void pipepp::gui::pipeline_board::_m_bgcolor(const nana::color& color)
+{
+    super::_m_bgcolor(color);
+    for (auto& widget : impl_->widgets) {
+        if (widget.view) {
+            widget.view->bgcolor(color);
+        }
+    }
+}
+
+void pipepp::gui::pipeline_board::_m_typeface(const nana::paint::font& font)
+{
+    super::_m_typeface(font);
+    for (auto& widget : impl_->widgets) {
+        if (widget.view) {
+            widget.view->typeface(font);
+        }
+    }
+}
+
 void pipepp::gui::pipeline_board::reset_pipeline(std::shared_ptr<pipepp::impl__::pipeline_base> pipeline)
 {
     // TODO
@@ -233,6 +253,9 @@ void pipepp::gui::pipeline_board::reset_pipeline(std::shared_ptr<pipepp::impl__:
         elem.view = std::make_unique<decltype(elem.view)::element_type>(*this, nana::rectangle{}, true);
         elem.view->reset_view(pipeline, id);
         elem.view->size(m.widget_default_size);
+
+        elem.view->typeface({"consolas", 11.0});
+        elem.view->bgcolor(bgcolor());
     }
 
     _update_widget_pos();

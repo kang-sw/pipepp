@@ -103,6 +103,10 @@ private:
     void _calc_hierarchical_node_positions(impl__::pipe_proxy_base root_proxy, std::unordered_multimap<pipepp::pipe_id_t, pipepp::pipe_id_t>& connections, std::map<pipepp::pipe_id_t, nana::size>& positions);
     void _update_widget_pos();
 
+protected:
+    void _m_bgcolor(const nana::color&) override;
+    void _m_typeface(const nana::paint::font& font) override;
+
 private:
     struct data_type;
     std::unique_ptr<struct data_type> impl_;

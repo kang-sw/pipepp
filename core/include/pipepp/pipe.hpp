@@ -107,6 +107,7 @@ class pipe_base final : public std::enable_shared_from_this<pipe_base> {
 public:
     using output_link_adapter_type = std::function<void(base_shared_context const&, std::any const& output, std::any& input)>;
     using output_handler_type = std::function<void(pipe_error, base_shared_context&, std::any const&)>;
+    using system_clock = std::chrono::system_clock;
 
     explicit pipe_base(std::string name, bool optional_pipe = false)
         : name_(name)
@@ -291,6 +292,9 @@ public:
     /** 입력 가능 상태인지 확인 */
     bool can_submit_input_direct() const { return !_active_exec_slot()._is_executor_busy(); }
 
+    /** 출력 인터벌 반환 */
+    system_clock::duration output_interval() const { return latest_interval_.load(std::memory_order::memory_order_relaxed); }
+
 public:
     /** 입력 연결자 */
     template <typename Shared_, typename PrevOut_, typename NextIn_, typename Fn_>
@@ -332,6 +336,7 @@ public:
     void _set_thread_pool_reference(kangsw::timer_thread_pool* ref) { ref_workers_ = ref; }
     executor_slot const& _active_exec_slot() const { return *executor_slots_[_slot_active()]; }
     size_t _slot_active() const { return active_exec_slot_.load() % executor_slots_.size(); }
+    void _refresh_interval_timer();
 
 private:
     kangsw::timer_thread_pool& _thread_pool() const { return *ref_workers_; }
@@ -356,11 +361,14 @@ private:
     // 가장 최근에 실행된 execution 정보
     std::atomic<execution_context const*> latest_exec_context_;
     std::atomic<fence_index_t> latest_output_fence_;
+    std::atomic<system_clock::duration> latest_interval_;
 
     std::vector<output_handler_type> output_handlers_;
 
     kangsw::timer_thread_pool* ref_workers_ = nullptr;
     option_base executor_options_;
+
+    std::atomic<system_clock::time_point> latest_output_tp_ = system_clock::now();
 
     //---GUARD--//
     kangsw::destruction_guard destruction_guard_;

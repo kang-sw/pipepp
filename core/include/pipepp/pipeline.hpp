@@ -80,6 +80,9 @@ public:
     // check validity
     bool is_valid() const { return pipeline_.expired() == false; }
 
+    // return latest output interval
+    auto output_interval() const { return pipe_.output_interval(); }
+
     // TODO: report currently active output executor
     // TODO: report execution results of each executors
 

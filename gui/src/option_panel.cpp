@@ -1,6 +1,7 @@
 #include "pipepp/gui/option_panel.hpp"
 
 #include "fmt/format.h"
+#include "nana/gui/drawing.hpp"
 #include "nana/gui/place.hpp"
 #include "nana/gui/widgets/button.hpp"
 #include "nana/gui/widgets/group.hpp"
@@ -32,7 +33,7 @@ struct pipepp::gui::option_panel::body_type {
     textbox input_enter{input};
     button input_enter_check{input};
 
-    std::string input_active_key = {};
+    nana::treebox::item_proxy selected_proxy;
 };
 
 struct option_tree_arg {
@@ -58,7 +59,7 @@ pipepp::gui::option_panel::option_panel(nana::window wd, bool visible)
     m.input_layout.div(
       "vert gap=2"
       "<TITLE weight=20>"
-      "<DESC margin=[1,0,1,0] weight=100>"
+      "<DESC margin=[1,0,1,0] weight=30%>"
       "<LIST margin=2>"
       "<INPUT weight=20 arrange=[variable, 20]>");
 
@@ -114,17 +115,17 @@ void pipepp::gui::option_panel::_cb_tree_selected(nana::arg_treebox const& a)
     auto& key = a.item.key();
 
     if (!a.item.selected() || is_category_node || opts.value().contains(key) == false) {
-        m.input_active_key = {};
+        m.selected_proxy = {};
         _expand(false);
         return;
     }
 
+    m.selected_proxy = a.item;
     _expand(true);
     auto& value = opts.value().at(key);
     m.input_title.caption(opts.names().at(key));
     m.input_descr.reset(fmt::format("<{} [{}]>\n", value.type_name(), value.size()));
     m.input_descr.append(opts.description().at(key), true);
-    m.input_active_key = key;
 
     auto& list = m.input_array_object_list;
     list.clear();
@@ -170,44 +171,77 @@ void pipepp::gui::option_panel::_cb_json_list_selected(nana::arg_listbox const& 
     m.input_enter.select(true);
 }
 
-void pipepp::gui::option_panel::_assign_enterbox_events()
+void pipepp::gui::option_panel::_update_enterbox(bool trig_modify)
 {
     auto& m = *impl_;
     using nlohmann::json;
-    static constexpr auto check_json = [](json const& compare, std::string const& parse) {
-        try {
-            auto parsed_json = nlohmann::json::parse(parse);
-            return strcmp(compare.type_name(), parsed_json.type_name()) == 0;
-        } catch (std::exception& e) {
-            return false;
-        }
-    };
+    auto& widget = m.input_enter;
+    auto selections = m.input_array_object_list.selected();
+    if (selections.empty()) { return; }
 
-    m.input_enter.events().text_changed([&](arg_textbox const& arg) {
-        auto selections = m.input_array_object_list.selected();
-        if (selections.empty()) { return; }
+    bool correct = true;
 
-        auto& key = m.input_active_key;
-        auto& opts = *m.option;
-        auto& root_value = opts.value().at(key);
-        bool correct = true;
+    json parsed_json;
+    try {
+        parsed_json = nlohmann::json::parse(widget.text());
 
-        if (root_value.is_object() || root_value.is_array()) {
-            for (auto& index : selections) {
-                auto sel = m.input_array_object_list.at(index);
-                auto value = sel.value<json*>();
-                if (!check_json(*value, arg.widget.text())) {
-                    correct = false;
-                    break;
-                }
+        for (auto& index : selections) {
+            auto sel = m.input_array_object_list.at(index);
+            auto value = sel.value<json*>();
+            if (strcmp(parsed_json.type_name(), value->type_name())) {
+                correct = false;
+                break;
             }
         }
-        else {
-            correct = check_json(root_value, arg.widget.text());
+    } catch (std::exception& e) {
+        correct = false;
+    }
+
+    widget.bgcolor(correct ? colors::light_green : colors::orange_red);
+
+    if (trig_modify && correct) {
+        for (auto& index : selections) {
+            auto sel = m.input_array_object_list.at(index);
+            auto value = sel.value<json*>();
+            value->merge_patch(parsed_json);
+
+            sel.text(1, value->dump());
         }
 
-        arg.widget.bgcolor(correct ? colors::light_green : colors::orange_red);
+        _refresh_item(m.selected_proxy);
+        API::refresh_window(m.items);
+    }
+}
+
+void pipepp::gui::option_panel::_assign_enterbox_events()
+{
+    auto& m = *impl_;
+    m.input_enter.events().text_changed([&](arg_textbox const& arg) { _update_enterbox(false); });
+    m.input_enter.events().key_press([&](arg_keyboard const& arg) {
+        if (arg.key == keyboard::enter) { _update_enterbox(true); }
     });
+    m.input_enter_check.events().click([&](auto&&) {
+        _update_check_button(true);
+    });
+}
+
+void pipepp::gui::option_panel::_update_check_button(bool operate)
+{
+    auto& m = *impl_;
+    bool status;
+    if (m.input_enter.text() == "true") {
+        if (operate) { m.input_enter.reset("false"); }
+        status = operate ? false : true;
+    }
+    else if (m.input_enter.text() == "false") {
+        if (operate) { m.input_enter.reset("true"); }
+        status = operate ? true : false;
+    }
+    else {
+        return;
+    }
+    m.input_enter_check.bgcolor(status ? colors::black : colors::white);
+    _update_enterbox(true);
 }
 
 void pipepp::gui::option_panel::reload(std::weak_ptr<impl__::pipeline_base> pl, impl__::option_base* option)

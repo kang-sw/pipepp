@@ -32,10 +32,12 @@ struct pipepp::gui::pipe_view::data_type {
     nana::button button{self};
     nana::panel<true> label{self};
 
-    std::string label_text_interval;
-    std::string label_text_exec;
+    std::string label_text_interval = " ms";
+    std::string label_text_exec = " ms";
+    std::string label_text_latency = " ms";
     double label_dur_interval = 0;
     double label_dur_exec = 0;
+    double label_dur_latency = 0;
 
     nana::panel<true> executor_notes{self};
 
@@ -60,15 +62,18 @@ void pipepp::gui::pipe_view::_label_events()
         gp.round_rectangle(
           nana::rectangle{{}, gp.size()}, 3, 3,
           nana::colors::black, false, backcolor);
-        auto extent = gp.text_extent_size(m.label_text_interval);
-        nana::point str_draw_pos = {};
-        str_draw_pos.y = m.label.size().height / 2 - extent.height - 2;
-        str_draw_pos.x = m.label.size().width - 5 - extent.width;
-        gp.string(str_draw_pos, m.label_text_interval, nana::colors::white);
-        extent = gp.text_extent_size(m.label_text_exec);
-        str_draw_pos.y = m.label.size().height / 2 + 2;
-        str_draw_pos.x = m.label.size().width - 5 - extent.width;
-        gp.string(str_draw_pos, m.label_text_exec, nana::colors::light_sky_blue);
+
+        auto put_text = [&](int slot, nana::color color, std::string& text) {
+            auto extent = gp.text_extent_size(text);
+            nana::point str_draw_pos = {};
+            str_draw_pos.y = slot * (extent.height + 2) + 3;
+            str_draw_pos.x = m.label.size().width - 5 - extent.width;
+            gp.string(str_draw_pos, text, color);
+        };
+
+        put_text(0, nana::colors::yellow, m.label_text_latency);
+        put_text(1, nana::colors::light_sky_blue, m.label_text_exec);
+        put_text(2, nana::colors::light_gray, m.label_text_interval);
     });
 
     m.label.events().mouse_down([&](nana::arg_mouse const& arg) {
@@ -79,6 +84,12 @@ void pipepp::gui::pipe_view::_label_events()
             nana::drawing(m.label).update();
         }
     });
+
+    m.label.tooltip("Right click to suspend/resume.\n\n"
+                    "Respectively from above: \n"
+                    "- Output Latency from First Input\n"
+                    "- Execution Time\n"
+                    "- Output Interval\n");
 }
 
 pipepp::gui::pipe_view::pipe_view(const nana::window& wd, const nana::rectangle& r, bool visible)
@@ -87,7 +98,7 @@ pipepp::gui::pipe_view::pipe_view(const nana::window& wd, const nana::rectangle&
 {
     auto& m = *impl_;
 
-    m.layout.div("vert<MAIN weight=20><<INTERVAL> weight=40><EXEC_COND>");
+    m.layout.div("vert<MAIN weight=20><<INTERVAL> weight=60><EXEC_COND>");
     m.layout["MAIN"] << m.button;
     m.layout["INTERVAL"] << m.label;
     m.layout["EXEC_COND"] << m.executor_notes;
@@ -145,15 +156,15 @@ void pipepp::gui::pipe_view::update()
         m.exec_data = proxy.consume_execution_result();
         // auto time = m.exec_data->timers[0].elapsed;
 
-        auto lst_tm = {proxy.output_interval(), m.exec_data->timers[0].elapsed};
-        auto lst_tget = {&m.label_text_interval, &m.label_text_exec};
-        auto lst_lerp = {&m.label_dur_interval, &m.label_dur_exec};
+        auto lst_tm = {proxy.output_interval(), m.exec_data->timers[0].elapsed, proxy.output_latency()};
+        auto lst_tget = {&m.label_text_interval, &m.label_text_exec, &m.label_text_latency};
+        auto lst_lerp = {&m.label_dur_interval, &m.label_dur_exec, &m.label_dur_latency};
         for (
           auto [time, tget, base] :
           kangsw::zip(lst_tm, lst_tget, lst_lerp)) {
             auto dur = std::chrono::duration<double>(time).count() * 1000.0;
             *base = std::lerp(*base, dur, 0.33);
-            *tget = kangsw::format("%10.4f ms ", *base);
+            *tget = kangsw::format("%10.4f ms", *base);
         }
         nana::drawing(m.label).update();
 

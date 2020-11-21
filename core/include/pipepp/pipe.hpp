@@ -1,11 +1,13 @@
 #pragma once
 #include <any>
 #include <atomic>
+#include <chrono>
 #include <memory>
 #include <optional>
 #include <span>
 #include <type_traits>
 #include <vector>
+
 #include "kangsw/misc.hxx"
 #include "kangsw/thread_pool.hxx"
 #include "kangsw/thread_utility.hxx"
@@ -67,9 +69,11 @@ struct base_shared_context {
     virtual ~base_shared_context() = default;
     auto& option() const noexcept { return global_options_; }
     operator impl__::option_base const &() const { return *global_options_; }
+    auto launch_time_point() const { return launched_; }
 
 private:
     impl__::option_base const* global_options_;
+    std::chrono::system_clock::time_point launched_;
 };
 
 namespace impl__ {
@@ -299,7 +303,8 @@ public:
     bool is_optional_input() const { return input_slot_.is_optional_; }
 
     /** 출력 인터벌 반환 */
-    system_clock::duration output_interval() const { return latest_interval_.load(std::memory_order_relaxed); }
+    auto output_interval() const { return latest_interval_.load(std::memory_order_relaxed); }
+    auto output_latency() const { return latest_output_latency_.load(std::memory_order_relaxed); }
 
 public:
     /** 입력 연결자 */
@@ -343,6 +348,7 @@ public:
     executor_slot const& _active_exec_slot() const { return *executor_slots_[_slot_active()]; }
     size_t _slot_active() const { return active_exec_slot_.load() % executor_slots_.size(); }
     void _refresh_interval_timer();
+    void _update_latest_latency(system_clock::time_point launched);
 
 private:
     kangsw::timer_thread_pool& _thread_pool() const { return *ref_workers_; }
@@ -369,6 +375,7 @@ private:
     std::atomic<fence_index_t> latest_output_fence_;
     std::atomic<system_clock::duration> latest_interval_;
     std::atomic<system_clock::time_point> latest_output_tp_ = system_clock::now();
+    std::atomic<system_clock::duration> latest_output_latency_;
 
     std::vector<output_handler_type> output_handlers_;
 

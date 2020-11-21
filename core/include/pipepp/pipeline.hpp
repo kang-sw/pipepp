@@ -86,7 +86,7 @@ public:
 
     // return latest output interval
     auto output_interval() const { return pipe_.output_interval(); }
-
+    auto output_latency() const { return pipe_.output_latency(); }
     // pause functionality
     bool is_paused() const { return pipe_.is_paused(); }
     void pause() { pipe_.pause(); }

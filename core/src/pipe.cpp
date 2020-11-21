@@ -128,6 +128,7 @@ void pipepp::impl__::pipe_base::executor_slot::_perform_post_output()
     // 타이머 관련 로직 처리
     timer_scope_.reset();
     owner_._refresh_interval_timer();
+    owner_._update_latest_latency(fence_object_->launch_time_point());
 
     // 실행기의 내부 상태를 정리합니다.
     fence_object_.reset();
@@ -301,6 +302,12 @@ void pipepp::impl__::pipe_base::_refresh_interval_timer()
     auto tp = latest_output_tp_.load(RELAXED);
     latest_interval_.store(system_clock::now() - tp);
     latest_output_tp_.compare_exchange_strong(tp, system_clock::now());
+}
+
+void pipepp::impl__::pipe_base::_update_latest_latency(system_clock::time_point launched)
+{
+    constexpr auto RELAXED = std::memory_order_relaxed;
+    latest_output_latency_.store(system_clock::now() - launched, RELAXED);
 }
 
 void pipepp::impl__::pipe_base::input_slot_t::_supply_input_to_active_executor(bool is_initial_call)

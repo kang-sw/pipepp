@@ -35,8 +35,8 @@ struct pipepp::gui::pipeline_board::data_type {
     double zoom;
     nana::point center;
 
-    nana::size widget_default_size = {128, 128};
-    nana::size widget_default_gap = {48, 16};
+    nana::size widget_default_size = {196, 100};
+    nana::size widget_default_gap = {16, 36};
 
     std::vector<pipe_widget_desc> widgets;
     std::vector<nana::point> all_points;
@@ -65,13 +65,13 @@ pipepp::gui::pipeline_board::pipeline_board(const nana::window& wd, const nana::
         auto offset = m->center;
 
         for (auto& ld : m->line_descriptions) {
-            auto line_color = ld.is_optional_connection ? nana::colors::light_gray : nana::colors::black;
+            auto line_color = ld.is_optional_connection ? nana::colors::light_gray : nana::colors::green;
             auto points = all_pts.subspan(ld.index_offset + 1, ld.index_count - 1);
             auto begin_pt = all_pts[ld.index_offset] + offset;
 
-            for (int ofst_y : kangsw::iota(4)) {
-                gp.line_begin(begin_pt.x, begin_pt.y + ofst_y);
-                auto ofst = nana::point{0, ofst_y};
+            for (int ofst_y : kangsw::iota(-1, 2)) {
+                gp.line_begin(begin_pt.x + ofst_y, begin_pt.y + ofst_y);
+                auto ofst = nana::point{ofst_y, 0};
                 for (auto& pt : points) { gp.line_to(pt + offset + ofst, line_color); }
             }
         }
@@ -167,7 +167,9 @@ void pipepp::gui::pipeline_board::_update_widget_pos()
     for (auto& elem : m.widgets) {
         auto gap = m.widget_default_size + m.widget_default_gap;
         auto center = m.center;
-        elem.view->move(center.x + elem.slot_hierarchy_level * gap.width, center.y + elem.slot_sibling_order * gap.height);
+        auto x = center.x + elem.slot_sibling_order * gap.width;
+        auto y = center.y + elem.slot_hierarchy_level * gap.height;
+        elem.view->move(x, y);
     }
 }
 
@@ -235,8 +237,8 @@ void pipepp::gui::pipeline_board::reset_pipeline(std::shared_ptr<pipepp::impl__:
             auto l_is_starting_pt = {true, false};
             for (auto [dest, pos, is_starting] :
                  kangsw::zip(l_dest, l_pos, l_is_starting_pt)) {
-                dest.x = pos.height * gap.width + is_starting * m.widget_default_size.width;
-                dest.y = pos.width * gap.height + m.widget_default_size.height / 2;
+                dest.x = pos.width * gap.width + m.widget_default_size.width / 2;
+                dest.y = pos.height * gap.height + is_starting * m.widget_default_size.height;
             }
 
             size_t indices[] = {m.all_points.size(), 2};

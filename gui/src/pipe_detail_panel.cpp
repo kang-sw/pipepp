@@ -260,9 +260,10 @@ void pipepp::gui::pipe_detail_panel::update(std::shared_ptr<execution_context_da
             ++line;
         }
 
-        m.timers.select(true);
-        m.timers.append(text, true);
-        m.timers.caret_pos(pos), m.timers.append("+", true);
+        m.timers.reset(text, true);
+        m.timers.append("\n", true);
+        m.timers.caret_pos(pos);
+        m.timers.append("+", true);
     }
 
     // -- 디버그 옵션 빌드

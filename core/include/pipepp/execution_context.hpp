@@ -174,7 +174,9 @@ void execution_context::store_debug_data(kangsw::hash_pack hp, Ty_&& value)
 
 #define ___PIPEPP_CONCAT_2(A, B) A##B
 #define ___PIPEPP_CONCAT(A, B) ___PIPEPP_CONCAT_2(A, B)
+
 #define PIPEPP_REGISTER_CONTEXT(CONTEXT) auto& ___call_PIPEPP_REGISTER_CONTEXT = (CONTEXT)
+
 #define PIPEPP_ELAPSE_SCOPE(NAME)                                                  \
     constexpr kangsw::hash_pack ___PIPEPP_CONCAT(___TIMER_HASH_, __LINE__) = NAME; \
     auto ___PIPEPP_CONCAT(___TIMER_SCOPE_, __LINE__) = ___call_PIPEPP_REGISTER_CONTEXT.timer_scope(___PIPEPP_CONCAT(___TIMER_HASH_, __LINE__));
@@ -182,6 +184,12 @@ void execution_context::store_debug_data(kangsw::hash_pack hp, Ty_&& value)
 #define PIPEPP_ELAPSE_BLOCK(NAME)                                                  \
     constexpr kangsw::hash_pack ___PIPEPP_CONCAT(___TIMER_HASH_, __LINE__) = NAME; \
     if (auto ___PIPEPP_CONCAT(___TIMER_SCOPE_, __LINE__) = ___call_PIPEPP_REGISTER_CONTEXT.timer_scope(___PIPEPP_CONCAT(___TIMER_HASH_, __LINE__)); true)
+
+#define PIPEPP_ELAPSE_SCOPE_DYNAMIC(NAME) \
+    auto ___PIPEPP_CONCAT(___TIMER_SCOPE_, __LINE__) = ___call_PIPEPP_REGISTER_CONTEXT.timer_scope(NAME);
+
+#define PIPEPP_STORE_DEBUG_DATA_DYNAMIC(NAME, VALUE) \
+    ___call_PIPEPP_REGISTER_CONTEXT.store_debug_data(NAME, (VALUE));
 
 #define PIPEPP_STORE_DEBUG_DATA(NAME, VALUE)                                      \
     constexpr kangsw::hash_pack ___PIPEPP_CONCAT(___DATA_HASH_, __LINE__) = NAME; \

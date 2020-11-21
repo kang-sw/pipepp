@@ -95,12 +95,17 @@ public:
      *
      */
     std::function<bool(std::string const&, execution_context_data::debug_data_entity const&)> debug_data_subscriber;
+    std::function<void(std::string const&, execution_context_data::debug_data_entity const&)> debug_data_unchecked;
     std::function<void(pipe_id_t id, std::string_view key)> option_changed;
 
 private:
     void _clear_views();
     void _calc_hierarchical_node_positions(impl__::pipe_proxy_base root_proxy, std::unordered_multimap<pipepp::pipe_id_t, pipepp::pipe_id_t>& connections, std::map<pipepp::pipe_id_t, nana::size>& positions);
     void _update_widget_pos();
+
+protected:
+    void _m_bgcolor(const nana::color&) override;
+    void _m_typeface(const nana::paint::font& font) override;
 
 private:
     struct data_type;

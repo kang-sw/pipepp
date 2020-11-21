@@ -1,11 +1,13 @@
 #pragma once
 #include <any>
 #include <atomic>
+#include <chrono>
 #include <memory>
 #include <optional>
 #include <span>
 #include <type_traits>
 #include <vector>
+
 #include "kangsw/misc.hxx"
 #include "kangsw/thread_pool.hxx"
 #include "kangsw/thread_utility.hxx"
@@ -67,9 +69,17 @@ struct base_shared_context {
     virtual ~base_shared_context() = default;
     auto& option() const noexcept { return global_options_; }
     operator impl__::option_base const &() const { return *global_options_; }
+    auto launch_time_point() const { return launched_; }
 
 private:
     impl__::option_base const* global_options_;
+    std::chrono::system_clock::time_point launched_;
+};
+
+enum class executor_condition_t : uint8_t {
+    idle,
+    busy,
+    output
 };
 
 namespace impl__ {
@@ -107,6 +117,7 @@ class pipe_base final : public std::enable_shared_from_this<pipe_base> {
 public:
     using output_link_adapter_type = std::function<void(base_shared_context const&, std::any const& output, std::any& input)>;
     using output_handler_type = std::function<void(pipe_error, base_shared_context&, std::any const&)>;
+    using system_clock = std::chrono::system_clock;
 
     explicit pipe_base(std::string name, bool optional_pipe = false)
         : name_(name)
@@ -201,6 +212,7 @@ public:
         fence_index_t fence_index() const { return fence_index_; }
         bool _is_executor_busy() const { return fence_index_ != fence_index_t::none; }
         bool _is_output_order() const { return index_ == owner_._pending_output_slot_index(); }
+        bool _is_busy() const { return timer_scope_.has_value(); }
 
     public:
         struct launch_args_t {
@@ -260,6 +272,8 @@ public:
         std::any cached_input_;
         std::any cached_output_;
 
+        std::optional<execution_context::timer_scope_indicator> timer_scope_;
+
         size_t index_;
     };
 
@@ -288,6 +302,21 @@ public:
 
     /** 입력 가능 상태인지 확인 */
     bool can_submit_input_direct() const { return !_active_exec_slot()._is_executor_busy(); }
+    bool is_paused() const { return paused_.load(std::memory_order_relaxed); }
+    void pause() { paused_.store(true, std::memory_order_relaxed); }
+    void unpause() { paused_.store(false, std::memory_order_relaxed); }
+
+    /** 상태 점검 */
+    bool is_optional_input() const { return input_slot_.is_optional_; }
+    size_t num_executors() const { return executor_slots_.size(); }
+    void executor_conditions(std::vector<executor_condition_t>& conds) const;
+
+    /** 출력 인터벌 반환 */
+    auto output_interval() const
+    {
+        return latest_interval_.load(std::memory_order_relaxed);
+    }
+    auto output_latency() const { return latest_output_latency_.load(std::memory_order_relaxed); }
 
 public:
     /** 입력 연결자 */
@@ -330,6 +359,8 @@ public:
     void _set_thread_pool_reference(kangsw::timer_thread_pool* ref) { ref_workers_ = ref; }
     executor_slot const& _active_exec_slot() const { return *executor_slots_[_slot_active()]; }
     size_t _slot_active() const { return active_exec_slot_.load() % executor_slots_.size(); }
+    void _refresh_interval_timer();
+    void _update_latest_latency(system_clock::time_point launched);
 
 private:
     kangsw::timer_thread_pool& _thread_pool() const { return *ref_workers_; }
@@ -351,14 +382,20 @@ private:
     std::vector<input_link_desc> input_links_;
     std::vector<output_link_desc> output_links_;
 
-    // 가장 최근에 실행된 execution 정보
+    /** 가장 최근에 실행된 execution 정보 */
     std::atomic<execution_context const*> latest_exec_context_;
     std::atomic<fence_index_t> latest_output_fence_;
+    std::atomic<system_clock::duration> latest_interval_;
+    std::atomic<system_clock::time_point> latest_output_tp_ = system_clock::now();
+    std::atomic<system_clock::duration> latest_output_latency_;
 
     std::vector<output_handler_type> output_handlers_;
 
     kangsw::timer_thread_pool* ref_workers_ = nullptr;
     option_base executor_options_;
+
+    /** 일시 정지 처리 */
+    std::atomic_bool paused_;
 
     //---GUARD--//
     kangsw::destruction_guard destruction_guard_;

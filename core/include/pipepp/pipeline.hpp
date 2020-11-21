@@ -64,6 +64,9 @@ public:
     size_t num_output_nodes() const { return pipe_.output_links().size(); }
     pipe_proxy_base get_output_node(size_t index) const { return {pipeline_, *pipe_.output_links().at(index).pipe}; }
 
+    size_t num_input_nodes() const { return pipe_.input_links().size(); }
+    pipe_proxy_base get_input_node(size_t index) const { return {pipeline_, *pipe_.input_links().at(index).pipe}; }
+
     // get previous execution context
     std::shared_ptr<execution_context_data> consume_execution_result();
     bool execution_result_available() const;
@@ -79,6 +82,19 @@ public:
 
     // check validity
     bool is_valid() const { return pipeline_.expired() == false; }
+    bool is_optional() const { return pipe_.is_optional_input(); }
+
+    // executor conditions
+    size_t num_executors() const { return pipe_.num_executors(); }
+    void executor_conditions(std::vector<executor_condition_t>& out) const { pipe_.executor_conditions(out); }
+
+    // return latest output interval
+    auto output_interval() const { return pipe_.output_interval(); }
+    auto output_latency() const { return pipe_.output_latency(); }
+    // pause functionality
+    bool is_paused() const { return pipe_.is_paused(); }
+    void pause() { pipe_.pause(); }
+    void unpause() { pipe_.unpause(); }
 
     // TODO: report currently active output executor
     // TODO: report execution results of each executors

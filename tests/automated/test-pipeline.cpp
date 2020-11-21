@@ -11,13 +11,13 @@ namespace pipepp_test::pipelines {
 using namespace pipepp;
 
 struct my_shared_data : public base_shared_context {
-    PIPEPP_DEFINE_OPTION_CLASS(my_shared_data);
+    PIPEPP_DECLARE_OPTION_CLASS(my_shared_data);
     int level = 0;
 };
 
 struct exec_0 {
-    PIPEPP_DEFINE_OPTION_CLASS(exec_0);
-    PIPEPP_DEFINE_OPTION(bool, is_first, false, "debug.show");
+    PIPEPP_DECLARE_OPTION_CLASS(exec_0);
+    PIPEPP_OPTION_2(bool, is_first, false, "debug.show");
 
     using input_type = std::tuple<double>;
     using output_type = std::tuple<double, double>;

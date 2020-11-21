@@ -86,18 +86,25 @@ void pipepp::impl__::pipe_base::executor_slot::_launch_callback()
     std::lock_guard destruction_guard{owner_.destruction_guard_};
 
     executor()->set_context_ref(&context_write());
-    constexpr auto EXEC_TIMER = "total execution time"_hp;
     pipe_error exec_res;
 
-    context_write().timer_scope(EXEC_TIMER), // 항상 전체 시간을 계측합니다.
-      latest_execution_result_.store(
-        exec_res = executor()->invoke__(cached_input_, cached_output_),
-        std::memory_order_relaxed);
+    PIPEPP_REGISTER_CONTEXT(context_write());
+    timer_scope_ = context_write().timer_scope("Total Execution Time");
+
+    PIPEPP_ELAPSE_BLOCK("A. Executor Run Time")
+    {
+        latest_execution_result_.store(
+          exec_res = executor()->invoke__(cached_input_, cached_output_),
+          std::memory_order_relaxed);
+    }
 
     // 먼저, 연결된 일반 핸들러를 모두 처리합니다.
-    auto fence_obj = fence_object_.get();
-    for (auto& fn : owner_.output_handlers_) {
-        fn(exec_res, *fence_obj, cached_output_);
+    PIPEPP_ELAPSE_BLOCK("B. Output Handler Overhead")
+    {
+        auto fence_obj = fence_object_.get();
+        for (auto& fn : owner_.output_handlers_) {
+            fn(exec_res, *fence_obj, cached_output_);
+        }
     }
 
     if (owner_.output_links_.empty() == false) {
@@ -117,7 +124,11 @@ void pipepp::impl__::pipe_base::executor_slot::_perform_post_output()
     }
 
     auto constexpr RELAXED = std::memory_order_relaxed;
-    // 연결된 모든 출력을 처리한 경우입니다.
+    // -- 연결된 모든 출력을 처리한 경우입니다.
+    // 타이머 관련 로직 처리
+    timer_scope_.reset();
+    owner_._refresh_interval_timer();
+    owner_._update_latest_latency(fence_object_->launch_time_point());
 
     // 실행기의 내부 상태를 정리합니다.
     fence_object_.reset();
@@ -261,6 +272,21 @@ void pipepp::impl__::pipe_base::_connect_output_to_impl(pipe_base* other, pipepp
     assert(other->input_links_.size() == other->input_slot_.ready_conds_.size());
 }
 
+void pipepp::impl__::pipe_base::executor_conditions(std::vector<executor_condition_t>& conds) const
+{
+    conds.resize(num_executors());
+    for (auto i : kangsw::iota(conds.size())) {
+        auto& exec = *executor_slots_[i];
+
+        if (exec._is_busy()) {
+            conds[i] = _pending_output_slot_index() == i ? executor_condition_t::output : executor_condition_t::busy;
+        }
+        else {
+            conds[i] = executor_condition_t::idle;
+        }
+    }
+}
+
 void pipepp::impl__::pipe_base::launch(size_t num_executors, std::function<std::unique_ptr<executor_base>()>&& factory)
 {
     if (is_launched()) {
@@ -283,6 +309,20 @@ void pipepp::impl__::pipe_base::_rotate_output_order(executor_slot* ref)
 {
     assert(ref == executor_slots_[_pending_output_slot_index()].get());
     output_exec_slot_.fetch_add(1);
+}
+
+void pipepp::impl__::pipe_base::_refresh_interval_timer()
+{
+    constexpr auto RELAXED = std::memory_order_relaxed;
+    auto tp = latest_output_tp_.load(RELAXED);
+    latest_interval_.store(system_clock::now() - tp);
+    latest_output_tp_.compare_exchange_strong(tp, system_clock::now());
+}
+
+void pipepp::impl__::pipe_base::_update_latest_latency(system_clock::time_point launched)
+{
+    constexpr auto RELAXED = std::memory_order_relaxed;
+    latest_output_latency_.store(system_clock::now() - launched, RELAXED);
 }
 
 void pipepp::impl__::pipe_base::input_slot_t::_supply_input_to_active_executor(bool is_initial_call)
@@ -349,7 +389,7 @@ bool pipepp::impl__::pipe_base::input_slot_t::_submit_input(fence_index_t output
         throw pipe_input_exception("duplicated input submit request ... something's wrong!");
     }
 
-    if (abort_current) {
+    if (abort_current || owner_.is_paused()) {
         // 현재 입력 슬롯의 펜스를 invalidate합니다.
 
         // 연결된 각각의 출력 링크에 새로운 인덱스를 전파합니다.
@@ -387,6 +427,8 @@ bool pipepp::impl__::pipe_base::input_slot_t::_submit_input(fence_index_t output
 
 bool pipepp::impl__::pipe_base::input_slot_t::_submit_input_direct(std::any&& input, std::shared_ptr<pipepp::base_shared_context> fence_object)
 {
+    if (owner_.is_paused()) { return false; }
+
     std::lock_guard lock{cached_input_.second};
     std::lock_guard destruction_guard{owner_.destruction_guard_};
 

@@ -83,12 +83,16 @@ std::shared_ptr<pipepp::base_shared_context> pipepp::impl__::pipeline_base::_fet
     for (auto& ptr : fence_objects_) {
         if (ptr.use_count() == 1) {
             // 만약 다른 레퍼런스가 모두 해제되었다면, 재사용합니다.
+            ptr->launched_ = std::chrono::system_clock::now();
             return ptr;
         }
     }
 
     auto& gen = fence_objects_.emplace_back(_new_shared_object());
-    return gen->global_options_ = &global_options_, gen;
+    gen->global_options_ = &global_options_;
+    gen->launched_ = std::chrono::system_clock::now();
+
+    return gen;
 }
 
 std::shared_ptr<pipepp::execution_context_data> pipepp::impl__::pipe_proxy_base::consume_execution_result()

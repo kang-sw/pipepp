@@ -295,6 +295,9 @@ public:
     void pause() { paused_.store(true, std::memory_order_relaxed); }
     void unpause() { paused_.store(false, std::memory_order_relaxed); }
 
+    /** 상태 점검 */
+    bool is_optional_input() const { return input_slot_.is_optional_; }
+
     /** 출력 인터벌 반환 */
     system_clock::duration output_interval() const { return latest_interval_.load(std::memory_order_relaxed); }
 

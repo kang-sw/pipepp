@@ -110,6 +110,10 @@ pipepp::gui::pipe_view::pipe_view(const nana::window& wd, const nana::rectangle&
           nana::rectangle{{}, gp.size()}, 2, 2,
           nana::colors::black, false, nana::colors::dim_gray);
     });
+
+    events().destroy([&](nana::arg_destroy const& a) {
+        close_details();
+    });
 }
 
 pipepp::gui::pipe_view::~pipe_view() = default;

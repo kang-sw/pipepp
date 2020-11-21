@@ -82,6 +82,7 @@ public:
 
     // check validity
     bool is_valid() const { return pipeline_.expired() == false; }
+    bool is_optional() const { return pipe_.is_optional_input(); }
 
     // return latest output interval
     auto output_interval() const { return pipe_.output_interval(); }

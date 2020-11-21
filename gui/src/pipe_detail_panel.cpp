@@ -34,7 +34,7 @@ struct pipepp::gui::pipe_detail_panel::data_type {
 };
 
 pipepp::gui::pipe_detail_panel::pipe_detail_panel(nana::window owner, const nana::rectangle& rectangle, const nana::appearance& appearance)
-    : form(owner, rectangle, appearance)
+    : form(rectangle, appearance)
     , impl_(std::make_unique<data_type>(*this))
 {
     auto& m = *impl_;

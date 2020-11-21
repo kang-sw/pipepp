@@ -62,15 +62,18 @@ pipepp::gui::pipeline_board::pipeline_board(const nana::window& wd, const nana::
 
     nana::drawing{*this}.draw_diehard([&](nana::paint::graphics& gp) {
         std::span<nana::point> all_pts{m->all_points};
-        auto line_color = nana::colors::black;
         auto offset = m->center;
 
         for (auto& ld : m->line_descriptions) {
+            auto line_color = ld.is_optional_connection ? nana::colors::light_gray : nana::colors::black;
             auto points = all_pts.subspan(ld.index_offset + 1, ld.index_count - 1);
             auto begin_pt = all_pts[ld.index_offset] + offset;
-            gp.line_begin(begin_pt.x, begin_pt.y);
 
-            for (auto& pt : points) { gp.line_to(pt + offset, line_color); }
+            for (int ofst_y : kangsw::iota(4)) {
+                gp.line_begin(begin_pt.x, begin_pt.y + ofst_y);
+                auto ofst = nana::point{0, ofst_y};
+                for (auto& pt : points) { gp.line_to(pt + offset + ofst, line_color); }
+            }
         }
     });
 }
@@ -239,7 +242,7 @@ void pipepp::gui::pipeline_board::reset_pipeline(std::shared_ptr<pipepp::impl__:
             size_t indices[] = {m.all_points.size(), 2};
             m.all_points.insert(m.all_points.end(), std::begin(l_dest), std::end(l_dest));
             m.line_descriptions.push_back(
-              line_desc{.index_offset = indices[0], .index_count = indices[1], .is_optional_connection = false});
+              line_desc{.index_offset = indices[0], .index_count = indices[1], .is_optional_connection = pipeline->get_pipe(idx_to).is_optional()});
         }
     }
 

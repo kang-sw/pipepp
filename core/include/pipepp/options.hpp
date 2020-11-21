@@ -71,9 +71,11 @@ void option_base::reset_as_default()
 template <typename Exec_, typename Ty_, size_t>
 struct _option_instance {
     using spec_type = option_specification<Exec_>;
+    using value_type = Ty_;
 
-    _option_instance(Ty_&& init_value, char const* name, std::string category = "", std::string desc = "")
+    _option_instance(Ty_&& init_value, char const* name, std::string category = "", std::string desc = "", std::function<void(Ty_&)> constr = {})
         : name_(name)
+        , constr_(constr ? std::move(constr) : [](auto&) {})
     {
         _opt_spec<Exec_>().init_values_[name] = std::forward<Ty_>(init_value);
         _opt_spec<Exec_>().init_categories_[name] = std::move(category);
@@ -82,9 +84,15 @@ struct _option_instance {
 
     template <typename RTy_>
     void operator()(option_base& o, RTy_&& r) const { o.lock_write(), o.options_[name_] = Ty_(std::forward<RTy_>(r)); }
-    Ty_ operator()(option_base const& o) const { return o.lock_read(), o.options_[name_].get<Ty_>(); }
+    Ty_ operator()(option_base const& o) const
+    {
+        Ty_ value;
+        o.lock_read(), value = o.options_[name_].get<Ty_>();
+        return constr_(value), value;
+    }
 
     std::string const name_;
+    std::function<void(Ty_&)> const constr_;
 };
 
 } // namespace impl__
@@ -93,14 +101,14 @@ struct _option_instance {
 /**
  * PIPEPP_DEFINE_OPTION(TYPE, NAME, DEFAULT_VALUE [, CATEGORY[, DESCRIPTION]])
  */
-#define PIPEPP_DEFINE_OPTION(TYPE, NAME, DEFAULT_VALUE, ...) \
-    inline static const ::pipepp::impl__::_option_instance<  \
-      ___executor_type___, TYPE, kangsw::fnv1a(#NAME)>       \
+#define PIPEPP_OPTION_2(TYPE, NAME, DEFAULT_VALUE, ...)     \
+    inline static const ::pipepp::impl__::_option_instance< \
+      ___executor_type___, TYPE, kangsw::fnv1a(#NAME)>      \
       NAME{DEFAULT_VALUE, #NAME, ##__VA_ARGS__};
 
-#define PIPEPP_DEFINE_OPTION_2(NAME, DEFAULT_VALUE, ...)                  \
+#define PIPEPP_OPTION(NAME, DEFAULT_VALUE, ...)                           \
     inline static const ::pipepp::impl__::_option_instance<               \
       ___executor_type___, decltype(DEFAULT_VALUE), kangsw::fnv1a(#NAME)> \
       NAME{DEFAULT_VALUE, #NAME, ##__VA_ARGS__};
 
-#define PIPEPP_DEFINE_OPTION_CLASS(EXECUTOR) using ___executor_type___ = EXECUTOR;
+#define PIPEPP_DECLARE_OPTION_CLASS(EXECUTOR) using ___executor_type___ = EXECUTOR;

@@ -7,10 +7,10 @@ struct my_shared_context : public pipepp::base_shared_context {
 };
 
 struct my_executor_0 {
-    PIPEPP_DEFINE_OPTION_CLASS(my_executor_0);
-    PIPEPP_DEFINE_OPTION(bool, initial_flag, false, "MyCategory.Flags", "Inital flag type check");
-    PIPEPP_DEFINE_OPTION(int, initial_int, 15, "MyCategory.Integers", "Initial integer type check");
-    PIPEPP_DEFINE_OPTION(int, wait_ms, 150, "MyCategory.Integers", "Initial integer type check");
+    PIPEPP_DECLARE_OPTION_CLASS(my_executor_0);
+    PIPEPP_OPTION_2(bool, initial_flag, false, "MyCategory.Flags", "Inital flag type check");
+    PIPEPP_OPTION_2(int, initial_int, 15, "MyCategory.Integers", "Initial integer type check");
+    PIPEPP_OPTION_2(int, wait_ms, 150, "MyCategory.Integers", "Initial integer type check");
 
     using input_type = int;
     using output_type = int;

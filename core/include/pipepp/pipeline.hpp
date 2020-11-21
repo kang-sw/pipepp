@@ -19,6 +19,8 @@ public:
     decltype(auto) get_first();
     decltype(auto) get_pipe(pipe_id_t);
 
+    auto get_pipe(std::string_view s);
+
     auto& _thread_pool() { return workers_; }
     void sync();
 
@@ -45,64 +47,69 @@ protected:
 
 class pipe_proxy_base {
     friend class pipeline_base;
+    friend class std::optional<pipe_proxy_base>;
 
 protected:
     pipe_proxy_base(
       std::weak_ptr<pipeline_base> pipeline,
       pipe_base& pipe_ref)
         : pipeline_(pipeline)
-        , pipe_(pipe_ref)
+        , pipe_(&pipe_ref)
     {
     }
 
 public:
     virtual ~pipe_proxy_base() = default;
 
+protected:
+    auto& pipe() { return *pipe_; }
+    auto& pipe() const { return *pipe_; }
+
 public:
     // size of output nodes
     // output nodes[index]
-    size_t num_output_nodes() const { return pipe_.output_links().size(); }
-    pipe_proxy_base get_output_node(size_t index) const { return {pipeline_, *pipe_.output_links().at(index).pipe}; }
+    size_t num_output_nodes() const { return pipe().output_links().size(); }
+    pipe_proxy_base get_output_node(size_t index) const { return {pipeline_, *pipe().output_links().at(index).pipe}; }
 
-    size_t num_input_nodes() const { return pipe_.input_links().size(); }
-    pipe_proxy_base get_input_node(size_t index) const { return {pipeline_, *pipe_.input_links().at(index).pipe}; }
+    size_t num_input_nodes() const { return pipe().input_links().size(); }
+    pipe_proxy_base get_input_node(size_t index) const { return {pipeline_, *pipe().input_links().at(index).pipe}; }
 
     // get previous execution context
     std::shared_ptr<execution_context_data> consume_execution_result();
     bool execution_result_available() const;
 
     // get options
-    auto& options() const { return pipe_.options(); }
+    auto& options() const { return pipe().options(); }
 
     // get id
-    auto id() const { return pipe_.id(); }
+    auto id() const { return pipe().id(); }
 
     // get name
-    auto& name() const { return pipe_.name(); }
+    auto& name() const { return pipe().name(); }
 
     // check validity
     bool is_valid() const { return pipeline_.expired() == false; }
-    bool is_optional() const { return pipe_.is_optional_input(); }
+    bool is_optional() const { return pipe().is_optional_input(); }
 
     // executor conditions
-    size_t num_executors() const { return pipe_.num_executors(); }
-    void executor_conditions(std::vector<executor_condition_t>& out) const { pipe_.executor_conditions(out); }
+    size_t num_executors() const { return pipe().num_executors(); }
+    void executor_conditions(std::vector<executor_condition_t>& out) const { pipe().executor_conditions(out); }
 
     // return latest output interval
-    auto output_interval() const { return pipe_.output_interval(); }
-    auto output_latency() const { return pipe_.output_latency(); }
+    auto output_interval() const { return pipe().output_interval(); }
+    auto output_latency() const { return pipe().output_latency(); }
 
     // pause functionality
-    bool is_paused() const { return pipe_.is_paused(); }
-    void pause() { pipe_.pause(); }
-    void unpause() { pipe_.unpause(); }
+    bool is_paused() const { return pipe().is_paused(); }
+    void pause() { pipe().pause(); }
+    void unpause() { pipe().unpause(); }
 
     // mark dirty
-    void mark_option_dirty() { pipe_.mark_dirty(); }
+    void mark_option_dirty() { pipe().mark_dirty(); }
 
 protected:
     std::weak_ptr<pipeline_base> pipeline_;
-    pipe_base& pipe_;
+    pipe_base* pipe_;
 };
 
 inline decltype(auto) pipeline_base::get_first()
@@ -114,6 +121,20 @@ inline decltype(auto) pipepp::impl__::pipeline_base::get_pipe(pipe_id_t id)
 {
     auto index = id_mapping_.at(id);
     return pipe_proxy_base(weak_from_this(), *pipes_.at(index));
+}
+
+inline auto pipepp::impl__::pipeline_base::get_pipe(std::string_view s)
+{
+    std::optional<pipe_proxy_base> rval;
+
+    for (auto& pipe : pipes_) {
+        if (pipe->name() == s) {
+            rval = pipe_proxy_base(weak_from_this(), *pipe);
+            break;
+        }
+    }
+
+    return std::move(rval);
 }
 
 } // namespace impl__
@@ -175,8 +196,8 @@ pipe_proxy<SharedData_, Exec_>::link_output(pipe_proxy<shared_data_type, Dest_> 
 {
     using prev_output_type = output_type;
     using next_input_type = typename Dest_::input_type;
-    pipe_.connect_output_to<shared_data_type, prev_output_type, next_input_type>(
-      dest.pipe_, std::forward<LnkFn_>(linker));
+    pipe().connect_output_to<shared_data_type, prev_output_type, next_input_type>(
+      dest.pipe(), std::forward<LnkFn_>(linker));
 
     return dest;
 }
@@ -189,7 +210,7 @@ pipe_proxy<SharedData_, Exec_>::add_output_handler(Fn_&& handler)
     auto wrapper = [fn_ = std::move(handler)](pipe_error e, base_shared_context& s, std::any const& o) {
         fn_(e, static_cast<SharedData_&>(s), std::any_cast<output_type const&>(o));
     };
-    pipe_.add_output_handler(std::move(wrapper));
+    pipe().add_output_handler(std::move(wrapper));
     return *this;
 }
 

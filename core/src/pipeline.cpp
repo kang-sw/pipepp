@@ -98,13 +98,13 @@ std::shared_ptr<pipepp::base_shared_context> pipepp::impl__::pipeline_base::_fet
 
 std::shared_ptr<pipepp::execution_context_data> pipepp::impl__::pipe_proxy_base::consume_execution_result()
 {
-    auto exec_result = pipe_.latest_execution_context();
+    auto exec_result = pipe().latest_execution_context();
     return exec_result ? const_cast<execution_context*>(exec_result)->_consume_read_buffer()
                        : nullptr;
 }
 
 bool pipepp::impl__::pipe_proxy_base::execution_result_available() const
 {
-    auto exec_result = pipe_.latest_execution_context();
+    auto exec_result = pipe().latest_execution_context();
     return exec_result && exec_result->can_consume_read_buffer();
 }

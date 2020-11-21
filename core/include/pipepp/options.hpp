@@ -117,10 +117,10 @@ struct _option_instance {
       ___executor_type___, decltype(DEFAULT_VALUE), kangsw::fnv1a(#NAME)> \
       NAME{DEFAULT_VALUE, #NAME, ##__VA_ARGS__};
 
-#define PIPEPP_OPTION_CAT(NAME, DEFAULT_VALUE, CATEGORY, ...)             \
+#define PIPEPP_OPTION_CAT(NAME, DEFAULT_VALUE, ...)                       \
     inline static const ::pipepp::impl__::_option_instance<               \
       ___executor_type___, decltype(DEFAULT_VALUE), kangsw::fnv1a(#NAME)> \
-      NAME{DEFAULT_VALUE, #NAME, ___category___ + CATEGORY, ##__VA_ARGS__};
+      NAME{DEFAULT_VALUE, #NAME, ___category___, ##__VA_ARGS__};
 
 #define PIPEPP_DECLARE_OPTION_CLASS(EXECUTOR) using ___executor_type___ = EXECUTOR;
-#define PIPEPP_DECLARE_OPTION_CATEGORY(CATEGORY) inline static const std::string ___category___ = (CATEGORY ".");
+#define PIPEPP_DECLARE_OPTION_CATEGORY(CATEGORY) inline static const std::string ___category___ = (CATEGORY);

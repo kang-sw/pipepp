@@ -16,7 +16,7 @@
 #include "pipepp/pipeline.hpp"
 
 #define COLUMN_CATEGORY 0
-#define COLUMN_KEY 1
+#define COLUMN_NAME 1
 #define COLUMN_VALUE 2
 
 using clock_type = std::chrono::system_clock;
@@ -103,11 +103,14 @@ void pipepp::gui::pipe_detail_panel::_reload_options(pipepp::impl__::option_base
     auto list = m.options.at(0);
     auto& categories = opt.categories();
     auto& val = opt.value();
+    auto& names = opt.names();
+
     for (auto& pair : val.items()) {
         auto& category_str = categories.at(pair.key());
         auto& value = pair.value();
+        auto& name = names.at(pair.key());
 
-        list.append({category_str, pair.key(), value.dump()});
+        list.append({category_str, name, value.dump()});
         if (value.type() == nlohmann::detail::value_t::boolean) {
             list.back().check((bool)value);
         }
@@ -125,7 +128,7 @@ void pipepp::gui::pipe_detail_panel::_cb_option_arg_selected(nana::arg_listbox c
     if (pl == nullptr) { return; }
 
     auto& opts = pl->get_pipe(m.pipe).options();
-    auto key = arg.item.text(COLUMN_KEY);
+    auto key = arg.item.text(COLUMN_CATEGORY) + arg.item.text(COLUMN_NAME);
     auto val = arg.item.text(COLUMN_VALUE);
     auto& json = opts.value().at(key);
 
@@ -235,13 +238,14 @@ void pipepp::gui::pipe_detail_panel::update(std::shared_ptr<execution_context_da
         const static nana::color category_colors[] = {
           nana::colors::white,
           nana::colors::light_gray,
-          nana::colors::light_green,
           nana::colors::light_blue,
           nana::colors::sky_blue,
           nana::colors::blue,
-          nana::colors::cadet_blue,
-          nana::colors::purple,
-          nana::colors::pink,
+          nana::colors::blue_violet,
+          nana::colors::light_pink,
+          nana::colors::light_yellow,
+          nana::colors::light_green,
+          nana::colors::lawn_green,
           nana::colors::gray,
         };
         const size_t max_category = *(&category_colors + 1) - category_colors - 1;

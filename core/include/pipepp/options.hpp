@@ -35,11 +35,13 @@ public:
     auto& value() { return options_; }
     auto& description() const { return descriptions_; }
     auto& categories() const { return categories_; }
+    auto& names() const { return names_; }
 
 private:
     nlohmann::json options_;
     std::map<std::string, std::string> descriptions_;
     std::map<std::string, std::string> categories_;
+    std::map<std::string, std::string> names_;
     mutable std::shared_mutex lock_;
 };
 
@@ -51,6 +53,7 @@ public:
     nlohmann::json init_values_;
     std::map<std::string, std::string> init_descs_;
     std::map<std::string, std::string> init_categories_;
+    std::map<std::string, std::string> init_names_;
 };
 
 template <typename Exec_>
@@ -66,6 +69,7 @@ void option_base::reset_as_default()
     options_ = _opt_spec<Exec_>().init_values_;
     categories_ = _opt_spec<Exec_>().init_categories_;
     descriptions_ = _opt_spec<Exec_>().init_descs_;
+    names_ = _opt_spec<Exec_>().init_names_;
 }
 
 template <typename Exec_, typename Ty_, size_t>
@@ -73,25 +77,27 @@ struct _option_instance {
     using spec_type = option_specification<Exec_>;
     using value_type = Ty_;
 
-    _option_instance(Ty_&& init_value, char const* name, std::string category = "", std::string desc = "", std::function<void(Ty_&)> constr = {})
-        : name_(name)
+    _option_instance(Ty_&& init_value, std::string name, std::string category = "", std::string desc = "", std::function<void(Ty_&)> constr = {})
+        : key_(category + name)
         , constr_(constr ? std::move(constr) : [](auto&) {})
     {
-        _opt_spec<Exec_>().init_values_[name] = std::forward<Ty_>(init_value);
-        _opt_spec<Exec_>().init_categories_[name] = std::move(category);
-        _opt_spec<Exec_>().init_descs_[name] = std::move(desc);
+        if (_opt_spec<Exec_>().init_values_.contains(key_)) throw;
+        _opt_spec<Exec_>().init_values_[key_] = std::forward<Ty_>(init_value);
+        _opt_spec<Exec_>().init_categories_[key_] = std::move(category);
+        _opt_spec<Exec_>().init_descs_[key_] = std::move(desc);
+        _opt_spec<Exec_>().init_names_[key_] = std::move(name);
     }
 
     template <typename RTy_>
-    void operator()(option_base& o, RTy_&& r) const { o.lock_write(), o.options_[name_] = Ty_(std::forward<RTy_>(r)); }
+    void operator()(option_base& o, RTy_&& r) const { o.lock_write(), o.options_[key_] = Ty_(std::forward<RTy_>(r)); }
     Ty_ operator()(option_base const& o) const
     {
         Ty_ value;
-        o.lock_read(), value = o.options_[name_].get<Ty_>();
+        o.lock_read(), value = o.options_[key_].get<Ty_>();
         return constr_(value), value;
     }
 
-    std::string const name_;
+    std::string const key_;
     std::function<void(Ty_&)> const constr_;
 };
 

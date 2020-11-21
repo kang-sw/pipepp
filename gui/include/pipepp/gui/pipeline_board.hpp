@@ -98,6 +98,9 @@ public:
     std::function<void(std::string const&, execution_context_data::debug_data_entity const&)> debug_data_unchecked;
     std::function<void(pipe_id_t id, std::string_view key)> option_changed;
 
+    nana::color main_connection_line_color = nana::colors::black;
+    nana::color optional_connection_line_color = nana::colors::dark_orange;
+
 private:
     void _clear_views();
     void _calc_hierarchical_node_positions(impl__::pipe_proxy_base root_proxy, std::unordered_multimap<pipepp::pipe_id_t, pipepp::pipe_id_t>& connections, std::map<pipepp::pipe_id_t, nana::size>& positions);

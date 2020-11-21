@@ -65,7 +65,7 @@ pipepp::gui::pipeline_board::pipeline_board(const nana::window& wd, const nana::
         auto offset = m->center;
 
         for (auto& ld : m->line_descriptions) {
-            auto line_color = ld.is_optional_connection ? nana::colors::light_gray : nana::colors::green;
+            auto line_color = ld.is_optional_connection ? optional_connection_line_color : main_connection_line_color;
             auto points = all_pts.subspan(ld.index_offset + 1, ld.index_count - 1);
             auto begin_pt = all_pts[ld.index_offset] + offset;
 

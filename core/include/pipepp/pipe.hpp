@@ -78,6 +78,7 @@ private:
 
 enum class executor_condition_t : uint8_t {
     idle,
+    idle_output,
     busy,
     output
 };

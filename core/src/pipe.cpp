@@ -282,7 +282,7 @@ void pipepp::impl__::pipe_base::executor_conditions(std::vector<executor_conditi
             conds[i] = _pending_output_slot_index() == i ? executor_condition_t::output : executor_condition_t::busy;
         }
         else {
-            conds[i] = executor_condition_t::idle;
+            conds[i] = _pending_output_slot_index() == i ? executor_condition_t::idle_output : executor_condition_t::idle;
         }
     }
 }

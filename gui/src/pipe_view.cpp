@@ -117,11 +117,11 @@ pipepp::gui::pipe_view::pipe_view(const nana::window& wd, const nana::rectangle&
     });
 
     nana::drawing(m.executor_notes).draw_diehard([&](nana::paint::graphics& gp) {
-        auto bgcol = bgcolor();
+        auto bgcol = nana::color(34, 22, 34);
         gp.gradual_rectangle(
           //nana::rectangle{{1, 1}, gp.size() + nana::size(-1, -1)},
           nana::rectangle{{}, gp.size()},
-          nana::color(87, 76, 86), bgcol, true);
+          bgcol, nana::color(87, 76, 86), true);
 
         int top = 0, bottom = gp.size().height - 0;
         int left = 0, right = gp.size().width - 0;
@@ -145,13 +145,13 @@ pipepp::gui::pipe_view::pipe_view(const nana::window& wd, const nana::rectangle&
                 nana::color color;
                 switch (cond[i]) {
                     case executor_condition_t::idle: color = nana::color(45, 45, 45); break;
-                    case executor_condition_t::busy: color = nana::colors::orange; break;
-                    case executor_condition_t::output: color = nana::colors::deep_sky_blue; break;
-                    default: color = nana::colors::red;
+                    case executor_condition_t::busy: color = nana::colors::yellow; break;
+                    case executor_condition_t::output: color = nana::colors::orange; break;
+                    default: color = nana::colors::lawn_green;
                 }
 
                 // gp.rectangle(r, true, color);
-                gp.gradual_rectangle(rect, color, bgcol, true);
+                gp.gradual_rectangle(rect, bgcol, color, true);
                 // gp.rectangle(r, false, nana::colors::dim_gray);
             }
         }

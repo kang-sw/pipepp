@@ -91,13 +91,14 @@ public:
     // return latest output interval
     auto output_interval() const { return pipe_.output_interval(); }
     auto output_latency() const { return pipe_.output_latency(); }
+
     // pause functionality
     bool is_paused() const { return pipe_.is_paused(); }
     void pause() { pipe_.pause(); }
     void unpause() { pipe_.unpause(); }
 
-    // TODO: report currently active output executor
-    // TODO: report execution results of each executors
+    // mark dirty
+    void mark_option_dirty() { pipe_.mark_dirty(); }
 
 protected:
     std::weak_ptr<pipeline_base> pipeline_;
@@ -222,6 +223,7 @@ private:
             std::move(initial_pipe_name), is_optional));
         pipe->_set_thread_pool_reference(&workers_);
         pipe->options().reset_as_default<Exec_>();
+        pipe->mark_dirty();
 
         adapters_.emplace_back(
           num_execs,

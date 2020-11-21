@@ -73,6 +73,7 @@ void pipepp::impl__::pipeline_base::import_options(nlohmann::json const& in)
         if (it_found == pipes_in.end()) { continue; }
 
         update(update, opts, it_found.value());
+        pipe->mark_dirty();
     }
 }
 

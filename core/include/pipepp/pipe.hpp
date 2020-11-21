@@ -320,6 +320,9 @@ public:
     }
     auto output_latency() const { return latest_output_latency_.load(std::memory_order_relaxed); }
 
+    /** 옵션 변경 후 호출, mark dirty */
+    void mark_dirty();
+
 public:
     /** 입력 연결자 */
     template <typename Shared_, typename PrevOut_, typename NextIn_, typename Fn_>

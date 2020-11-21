@@ -289,6 +289,13 @@ void pipepp::impl__::pipe_base::executor_conditions(std::vector<executor_conditi
     }
 }
 
+void pipepp::impl__::pipe_base::mark_dirty()
+{
+    for (auto& exec_ptr : executor_slots_) {
+        exec_ptr->context_write()._mark_dirty();
+    }
+}
+
 void pipepp::impl__::pipe_base::launch(size_t num_executors, std::function<std::unique_ptr<executor_base>()>&& factory)
 {
     if (is_launched()) {

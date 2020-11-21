@@ -12,6 +12,7 @@
 #include "nana/gui/widgets/treebox.hpp"
 #include "nana/paint/graphics.hpp"
 #include "pipepp/execution_context.hpp"
+#include "pipepp/gui/option_panel.hpp"
 #include "pipepp/gui/pipeline_board.hpp"
 #include "pipepp/pipeline.hpp"
 
@@ -29,7 +30,7 @@ struct pipepp::gui::pipe_detail_panel::data_type {
     pipe_id_t pipe;
 
     nana::textbox timers{self};
-    nana::listbox options{self};
+    option_panel option{self, true};
     nana::listbox values{self};
 };
 
@@ -52,17 +53,9 @@ pipepp::gui::pipe_detail_panel::pipe_detail_panel(nana::window owner, const nana
         ">");
 
     (*this)["w_timers"] << m.timers;
-    (*this)["w_opts"] << m.options;
+    (*this)["w_opts"] << m.option;
     (*this)["w_vals"] << m.values;
     collocate();
-
-    m.options.checkable(true);
-    m.options.events().checked(std::bind(&pipe_detail_panel::_cb_option_arg_selected, this, std::placeholders::_1));
-
-    auto header_div = m.options.size().width * 32 / 100;
-    m.options.append_header("Category", header_div);
-    m.options.append_header("Key", header_div);
-    m.options.append_header("Value", header_div);
 
     m.timers.bgcolor(nana::colors::black);
     m.timers.fgcolor(nana::color{}.from_rgb(0, 255, 0));
@@ -71,7 +64,7 @@ pipepp::gui::pipe_detail_panel::pipe_detail_panel(nana::window owner, const nana
     m.timers.editable(false);
     m.timers.enable_caret();
 
-    header_div = m.options.size().width * 48 / 100;
+    auto header_div = m.values.size().width * 48 / 100;
     m.values.checkable(true);
     m.values.append_header("Name", header_div);
     m.values.append_header("Value", header_div);
@@ -92,31 +85,6 @@ pipepp::gui::pipe_detail_panel::pipe_detail_panel(nana::window owner, const nana
 }
 
 pipepp::gui::pipe_detail_panel::~pipe_detail_panel() = default;
-
-void pipepp::gui::pipe_detail_panel::_reload_options(pipepp::impl__::option_base const& opt)
-{
-    auto& m = *impl_;
-    auto option_read_lock = opt.lock_read();
-    m.options.auto_draw(false);
-    m.options.clear();
-
-    auto list = m.options.at(0);
-    auto& categories = opt.categories();
-    auto& val = opt.value();
-    auto& names = opt.names();
-
-    for (auto& pair : val.items()) {
-        auto& category_str = categories.at(pair.key());
-        auto& value = pair.value();
-        auto& name = names.at(pair.key());
-
-        list.append({category_str, name, value.dump()});
-        if (value.type() == nlohmann::detail::value_t::boolean) {
-            list.back().check((bool)value);
-        }
-    }
-    m.options.auto_draw(true);
-}
 
 void pipepp::gui::pipe_detail_panel::_cb_option_arg_selected(nana::arg_listbox const& arg)
 {
@@ -188,10 +156,11 @@ void pipepp::gui::pipe_detail_panel::reset_pipe(std::weak_ptr<impl__::pipeline_b
 
     if (auto pipeline = pl.lock()) {
         auto proxy = pipeline->get_pipe(id);
-        auto const& opt = proxy.options();
+        auto& opt = proxy.options();
         caption(proxy.name());
 
-        _reload_options(opt);
+        m.option.reload(pl, &opt);
+        // _reload_options(opt);
     }
 }
 

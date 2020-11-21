@@ -33,7 +33,6 @@ public:
     void update(std::shared_ptr<execution_context_data>);
 
 private:
-    void _reload_options(pipepp::impl__::option_base const& opt);
     void _cb_option_arg_selected(nana::arg_listbox const&);
 
 public:

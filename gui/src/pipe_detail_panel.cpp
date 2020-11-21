@@ -63,7 +63,6 @@ pipepp::gui::pipe_detail_panel::pipe_detail_panel(nana::window owner, const nana
     m.timers.typeface(nana::paint::font{"consolas", 10.0});
     m.timers.text_align(nana::align::left);
     m.timers.editable(false);
-    m.timers.enable_caret();
     nana::drawing(m.timers).draw_diehard([&](nana::paint::graphics& gp) {
         auto size = gp.text_extent_size("0");
         auto n_chars = gp.width() / size.width;
@@ -76,10 +75,17 @@ pipepp::gui::pipe_detail_panel::pipe_detail_panel(nana::window owner, const nana
     m.values.append_header("Value", header_div);
     m.values.events().checked([&](nana::arg_listbox const& arg) {
         if (arg.item.checked() == false) {
-            auto unchecked_notify = m.board_ref->debug_data_unchecked;
+            auto& unchecked_notify = m.board_ref->debug_data_unchecked;
             if (unchecked_notify) {
                 auto proxy = m.pipeline.lock()->get_pipe(m.pipe);
                 unchecked_notify(proxy.name(), arg.item.value<execution_context_data::debug_data_entity>());
+            }
+        }
+        else {
+            auto& notify = m.board_ref->debug_data_subscriber;
+            if (notify) {
+                auto proxy = m.pipeline.lock()->get_pipe(m.pipe);
+                notify(proxy.name(), arg.item.value<execution_context_data::debug_data_entity>());
             }
         }
     });
@@ -237,7 +243,7 @@ void pipepp::gui::pipe_detail_panel::update(std::shared_ptr<execution_context_da
 
             fmt::format_to(
               std::back_inserter(text),
-              " {0:<{3}}{1:.<{4}}{2:.>15.4f} ms\n", "",
+              "|{0:<{3}}{1:.<{4}}{2:.>15.4f} ms\n", "",
               tm.name, 1000.0 * std::chrono::duration<double>{tm.elapsed}.count(),
               left_indent, left_chars - left_indent);
 
@@ -249,14 +255,14 @@ void pipepp::gui::pipe_detail_panel::update(std::shared_ptr<execution_context_da
         m.timers.reset(text, true);
         m.timers.append("\n", true);
         m.timers.caret_pos(pos);
-        m.timers.append("+", true);
+        m.timers.append(" ", true);
     }
 
     // -- 디버그 옵션 빌드
     // pipeline_board 탐색
     auto subscr_ptr = m.board_ref ? &m.board_ref->debug_data_subscriber : nullptr;
     m.values.auto_draw(false);
-    auto showing = m.values.first_visible();
+    // auto showing = m.values.first_visible();
     auto list = m.values.at(0);
     for (auto& dbg : data->debug_data) {
         // 이름 및 카테고리로 탐색
@@ -283,7 +289,7 @@ void pipepp::gui::pipe_detail_panel::update(std::shared_ptr<execution_context_da
     }
 
     try {
-        m.values.scroll(false, showing);
+        //    m.values.scroll(false, showing);
     } catch (std::exception&) {}
     m.values.auto_draw(true);
 }

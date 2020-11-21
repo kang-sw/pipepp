@@ -210,6 +210,8 @@ void pipepp::gui::option_panel::_update_enterbox(bool trig_modify)
         API::refresh_window(m.items);
 
         if (on_dirty) { on_dirty(m.selected_proxy.key()); }
+
+        m.input_enter.select(true);
     }
 }
 

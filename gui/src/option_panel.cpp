@@ -264,7 +264,7 @@ void pipepp::gui::option_panel::reload(std::weak_ptr<impl__::pipeline_base> pl, 
     for (auto category_pair : option->categories()) {
         nana::drawerbase::treebox::item_proxy item;
         auto& key = category_pair.first;
-        auto category = category_pair.second;
+        auto category = category_pair.second.empty() ? "Misc" : category_pair.second;
         std::string name;
 
         for (; !category.empty();) {

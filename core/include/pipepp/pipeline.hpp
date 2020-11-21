@@ -84,6 +84,10 @@ public:
     bool is_valid() const { return pipeline_.expired() == false; }
     bool is_optional() const { return pipe_.is_optional_input(); }
 
+    // executor conditions
+    size_t num_executors() const { return pipe_.num_executors(); }
+    void executor_conditions(std::vector<executor_condition_t>& out) const { pipe_.executor_conditions(out); }
+
     // return latest output interval
     auto output_interval() const { return pipe_.output_interval(); }
     auto output_latency() const { return pipe_.output_latency(); }

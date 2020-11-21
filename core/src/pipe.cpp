@@ -272,6 +272,21 @@ void pipepp::impl__::pipe_base::_connect_output_to_impl(pipe_base* other, pipepp
     assert(other->input_links_.size() == other->input_slot_.ready_conds_.size());
 }
 
+void pipepp::impl__::pipe_base::executor_conditions(std::vector<executor_condition_t>& conds) const
+{
+    conds.resize(num_executors());
+    for (auto i : kangsw::iota(conds.size())) {
+        auto& exec = *executor_slots_[i];
+
+        if (exec._is_busy()) {
+            conds[i] = _pending_output_slot_index() == i ? executor_condition_t::output : executor_condition_t::busy;
+        }
+        else {
+            conds[i] = executor_condition_t::idle;
+        }
+    }
+}
+
 void pipepp::impl__::pipe_base::launch(size_t num_executors, std::function<std::unique_ptr<executor_base>()>&& factory)
 {
     if (is_launched()) {

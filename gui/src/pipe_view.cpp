@@ -1,20 +1,16 @@
 #include <chrono>
-#include "nana/gui/drawing.hpp"
-#include "nana/gui/place.hpp"
-#include "nana/gui/widgets/button.hpp"
-#include "nana/gui/widgets/label.hpp"
-#include "nana/paint/graphics.hpp"
-#include "pipepp/gui/pipe_detail_panel.hpp"
-#include "pipepp/gui/pipe_view.hpp"
-
+#include "fmt/format.h"
 #include "kangsw/misc.hxx"
 #include "kangsw/zip.hxx"
 #include "nana/basic_types.hpp"
 #include "nana/gui/detail/general_events.hpp"
+#include "nana/gui/drawing.hpp"
+#include "nana/gui/place.hpp"
 #include "nana/gui/programming_interface.hpp"
-#include "nana/gui/widgets/checkbox.hpp"
-#include "nana/gui/widgets/group.hpp"
-#include "nana/gui/widgets/textbox.hpp"
+#include "nana/gui/widgets/button.hpp"
+#include "nana/paint/graphics.hpp"
+#include "pipepp/gui/pipe_detail_panel.hpp"
+#include "pipepp/gui/pipe_view.hpp"
 #include "pipepp/pipeline.hpp"
 
 using clock_type = std::chrono::system_clock;
@@ -40,6 +36,12 @@ struct pipepp::gui::pipe_view::data_type {
     double label_dur_latency = 0;
 
     nana::panel<true> executor_notes{self};
+    struct
+    {
+        std::vector<executor_condition_t> front = {};
+        std::vector<executor_condition_t> back = {};
+        kangsw::spinlock lock;
+    } exec_conditions = {};
 
     clock_type::time_point latest_exec_receive;
     bool upper_node_paused = false;
@@ -115,11 +117,48 @@ pipepp::gui::pipe_view::pipe_view(const nana::window& wd, const nana::rectangle&
     });
 
     nana::drawing(m.executor_notes).draw_diehard([&](nana::paint::graphics& gp) {
+        auto bgcol = bgcolor();
         gp.gradual_rectangle(
-          nana::rectangle{{1, 1}, gp.size() + nana::size(-1, -1)}, nana::color(87, 76, 86), nana::colors::floral_white, true);
-        gp.round_rectangle(
+          //nana::rectangle{{1, 1}, gp.size() + nana::size(-1, -1)},
+          nana::rectangle{{}, gp.size()},
+          nana::color(87, 76, 86), bgcol, true);
+
+        int top = 0, bottom = gp.size().height - 0;
+        int left = 0, right = gp.size().width - 0;
+
+        if (!(right < left || bottom < top)) {
+            std::lock_guard _lck{m.exec_conditions.lock};
+            auto& cond = m.exec_conditions.front;
+
+            auto divider = std::max<int>(1, cond.size());
+            auto step_w = (right - left + divider - 1) / divider;
+            for (auto i : kangsw::iota(cond.size())) {
+                nana::rectangle rect;
+                rect.y = top;
+                rect.height = bottom - top;
+                rect.width = step_w - 1;
+                rect.x = left + step_w * i;
+                if (rect.x + rect.width > right) {
+                    rect.width -= (rect.x + rect.width) - right;
+                }
+
+                nana::color color;
+                switch (cond[i]) {
+                    case executor_condition_t::idle: color = nana::color(45, 45, 45); break;
+                    case executor_condition_t::busy: color = nana::colors::orange; break;
+                    case executor_condition_t::output: color = nana::colors::deep_sky_blue; break;
+                    default: color = nana::colors::red;
+                }
+
+                // gp.rectangle(r, true, color);
+                gp.gradual_rectangle(rect, color, bgcol, true);
+                // gp.rectangle(r, false, nana::colors::dim_gray);
+            }
+        }
+
+        /*gp.round_rectangle(
           nana::rectangle{{}, gp.size()}, 2, 2,
-          nana::colors::black, false, nana::colors::dim_gray);
+          nana::colors::black, false, nana::colors::dim_gray);*/
     });
 
     events().destroy([&](nana::arg_destroy const& a) {
@@ -140,7 +179,7 @@ void pipepp::gui::pipe_view::reset_view(std::weak_ptr<impl__::pipeline_base> pip
 
     auto proxy = pl->get_pipe(m.pipe);
     m.button.caption(proxy.name());
-    m.button.bgcolor(nana::colors::antique_white);
+    _refresh_btn_color(false);
 }
 
 void pipepp::gui::pipe_view::update()
@@ -164,7 +203,7 @@ void pipepp::gui::pipe_view::update()
           kangsw::zip(lst_tm, lst_tget, lst_lerp)) {
             auto dur = std::chrono::duration<double>(time).count() * 1000.0;
             *base = std::lerp(*base, dur, 0.33);
-            *tget = kangsw::format("%10.4f ms", *base);
+            *tget = fmt::format("{0:>10.4f} ms", *base);
         }
         nana::drawing(m.label).update();
 
@@ -178,7 +217,7 @@ void pipepp::gui::pipe_view::update()
         m.latest_exec_receive = clock_type::now();
         auto has_any_paused_input = [&](auto recurse, impl__::pipe_proxy_base const& prx) -> bool {
             if (prx.is_paused()) { return true; }
-            for (auto index : kangsw::iota{(int)prx.num_input_nodes()}) {
+            for (auto index : kangsw::iota(prx.num_input_nodes())) {
                 if (recurse(recurse, prx.get_input_node(index))) {
                     return true;
                 }
@@ -188,6 +227,15 @@ void pipepp::gui::pipe_view::update()
 
         m.upper_node_paused = has_any_paused_input(has_any_paused_input, proxy);
         nana::drawing(m.label).update();
+    }
+
+    {
+        auto& conds = m.exec_conditions;
+        proxy.executor_conditions(conds.back);
+        std::lock_guard{m.exec_conditions.lock}, std::swap(conds.front, conds.back);
+        if (conds.front != conds.back) {
+            nana::drawing(m.executor_notes).update();
+        }
     }
 }
 

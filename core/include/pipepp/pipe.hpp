@@ -76,6 +76,12 @@ private:
     std::chrono::system_clock::time_point launched_;
 };
 
+enum class executor_condition_t : uint8_t {
+    idle,
+    busy,
+    output
+};
+
 namespace impl__ {
 
 /** 기본 실행기. */
@@ -206,6 +212,7 @@ public:
         fence_index_t fence_index() const { return fence_index_; }
         bool _is_executor_busy() const { return fence_index_ != fence_index_t::none; }
         bool _is_output_order() const { return index_ == owner_._pending_output_slot_index(); }
+        bool _is_busy() const { return timer_scope_.has_value(); }
 
     public:
         struct launch_args_t {
@@ -301,9 +308,14 @@ public:
 
     /** 상태 점검 */
     bool is_optional_input() const { return input_slot_.is_optional_; }
+    size_t num_executors() const { return executor_slots_.size(); }
+    void executor_conditions(std::vector<executor_condition_t>& conds) const;
 
     /** 출력 인터벌 반환 */
-    auto output_interval() const { return latest_interval_.load(std::memory_order_relaxed); }
+    auto output_interval() const
+    {
+        return latest_interval_.load(std::memory_order_relaxed);
+    }
     auto output_latency() const { return latest_output_latency_.load(std::memory_order_relaxed); }
 
 public:

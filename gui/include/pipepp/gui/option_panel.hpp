@@ -1,7 +1,11 @@
 #pragma once
 #include "nana/gui/widgets/panel.hpp"
-#include "nana/gui/widgets/treebox.hpp"
 #include "pipepp/options.hpp"
+
+namespace nana {
+struct arg_treebox;
+struct arg_listbox;
+} // namespace nana
 
 namespace nana {
 namespace drawerbase {
@@ -37,6 +41,9 @@ private:
     void _expand(bool expanded);
     void _refresh_item(nana::drawerbase::treebox::item_proxy& item);
     void _cb_tree_selected(nana::arg_treebox const& a);
+    void _cb_json_list_selected(nana::arg_listbox const& a);
+    void _assign_enterbox_events();
+    void _update_check_button();
 
 private:
     struct body_type;

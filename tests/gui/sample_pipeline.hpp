@@ -11,6 +11,7 @@ struct my_executor_0 {
     PIPEPP_OPTION_2(bool, initial_flag, false, "MyCategory.Flags", "Inital flag type check");
     PIPEPP_OPTION_2(int, initial_int, 15, "MyCategory.Integers", "Initial integer type check");
     PIPEPP_OPTION_2(int, wait_ms, 150, "MyCategory.Integers", "Initial integer type check");
+    PIPEPP_OPTION(values, std::vector<int>({1, 2, 3, 4, 5}), "Else.Integers", "Initial integer type check");
 
     using input_type = int;
     using output_type = int;

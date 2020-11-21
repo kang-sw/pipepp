@@ -83,7 +83,11 @@ pipepp::gui::pipe_detail_panel::pipe_detail_panel(nana::window owner, const nana
         }
     });
 
-    m.option.on_dirty = [&]<typename Ty_>(Ty_&& key) { m.board_ref->option_changed(m.pipe, std::forward<Ty_>(key)); };
+    m.option.on_dirty = [&]<typename Ty_>(Ty_&& key) {
+        if (m.board_ref->option_changed) {
+            m.board_ref->option_changed(m.pipe, std::forward<Ty_>(key));
+        }
+    };
 }
 
 pipepp::gui::pipe_detail_panel::~pipe_detail_panel() = default;

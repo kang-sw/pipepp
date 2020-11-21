@@ -37,6 +37,8 @@ public:
      */
     void reload(std::weak_ptr<impl__::pipeline_base> pl, impl__::option_base* option);
 
+    void vertical(bool do_vertical = true);
+
 private:
     void _expand(bool expanded);
     void _refresh_item(nana::drawerbase::treebox::item_proxy& item);

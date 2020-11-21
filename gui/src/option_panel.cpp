@@ -34,6 +34,8 @@ struct pipepp::gui::option_panel::body_type {
     button input_enter_check{input};
 
     nana::treebox::item_proxy selected_proxy;
+
+    bool is_vertical = false;
 };
 
 struct option_tree_arg {
@@ -56,12 +58,6 @@ pipepp::gui::option_panel::option_panel(nana::window wd, bool visible)
     m.layout["INPUT"] << m.input;
 
     m.input.bgcolor(nana::colors::dim_gray);
-    m.input_layout.div(
-      "vert gap=2"
-      "<TITLE weight=20>"
-      "<DESC margin=[1,0,1,0] weight=30%>"
-      "<LIST margin=2>"
-      "<INPUT weight=20 arrange=[variable, 20]>");
 
     m.input_layout["TITLE"] << m.input_title;
     m.input_layout["DESC"] << m.input_descr;
@@ -91,6 +87,8 @@ pipepp::gui::option_panel::option_panel(nana::window wd, bool visible)
 
     m.input_array_object_list.events().selected([&](auto& arg) { _cb_json_list_selected(arg); });
     _assign_enterbox_events();
+
+    vertical(false);
 }
 
 pipepp::gui::option_panel::~option_panel() = default;
@@ -243,7 +241,7 @@ void pipepp::gui::option_panel::_update_check_button(bool operate)
         return;
     }
     m.input_enter_check.bgcolor(status ? colors::black : colors::white);
-    _update_enterbox(true);
+    _update_enterbox(operate);
 }
 
 void pipepp::gui::option_panel::reload(std::weak_ptr<impl__::pipeline_base> pl, impl__::option_base* option)
@@ -292,12 +290,42 @@ void pipepp::gui::option_panel::reload(std::weak_ptr<impl__::pipeline_base> pl, 
     }
 }
 
+void pipepp::gui::option_panel::vertical(bool do_vertical)
+{
+    auto& m = *impl_;
+    m.is_vertical = do_vertical;
+
+    if (do_vertical) {
+        m.input_layout.div(
+          "<"
+          "  vert gap=2"
+          "  <TITLE weight=20>"
+          "  <DESC margin=[1,0,1,0] weight=30%>"
+          ">"
+          "<"
+          "  vert gap=2"
+          "  <LIST margin=2>"
+          "  <INPUT weight=20 arrange=[variable, 20]>"
+          ">");
+    }
+    else {
+        m.input_layout.div(
+          "vert gap=2"
+          "<TITLE weight=20>"
+          "<DESC margin=[1,0,1,0] weight=30%>"
+          "<LIST margin=2>"
+          "<INPUT weight=20 arrange=[variable, 20]>");
+    }
+
+    m.input_layout.collocate();
+}
+
 void pipepp::gui::option_panel::_expand(bool expanded)
 {
     auto& m = *impl_;
 
     if (expanded) {
-        m.layout.div("<MAIN margin=[0,4,0,0]><INPUT> margin=4 gap=4");
+        m.layout.div(fmt::format("{1} {0}", "<MAIN margin=[0,4,0,0]><INPUT> margin=4 gap=4", m.is_vertical ? "vert" : ""));
     }
     else {
         m.layout.div("<MAIN margin=4>");

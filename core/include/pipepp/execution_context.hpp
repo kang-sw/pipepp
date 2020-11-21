@@ -119,14 +119,13 @@ public: // methods
     /**
      * 옵션의 더티 여부 확인 및 플래그 제거
      */
-    bool is_option_dirty() const { return option_dirty_.test(std::memory_order::relaxed); }
-    void clear_option_dirty_flag() { option_dirty_.clear(std::memory_order::relaxed); }
+    bool consume_option_dirty_flag() { return !inv_opt_dirty_.test_and_set(std::memory_order::relaxed); }
 
 public:                    // internal public methods
     void _clear_records(); // invoke() 이전 호출
     void _internal__set_option(impl__::option_base const* opt) { options_ = opt; }
     void _swap_data_buff(); // invoke() 이후 호출
-    void _mark_dirty() { option_dirty_.test_and_set(std::memory_order::relaxed); }
+    void _mark_dirty() { inv_opt_dirty_.clear(std::memory_order::relaxed); }
 
     /**
      * 읽기 버퍼를 추출합니다.
@@ -146,7 +145,7 @@ private:
     kangsw::spinlock swap_lock_;
     std::atomic_flag rd_buf_valid_;
 
-    std::atomic_flag option_dirty_;
+    std::atomic_flag inv_opt_dirty_;
 
     size_t category_level_ = 0;
     std::vector<kangsw::hash_index> category_id_;

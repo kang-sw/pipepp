@@ -46,6 +46,9 @@ private:
     void _assign_enterbox_events();
     void _update_check_button(bool operate = false);
 
+public:
+    std::function<void(std::string_view)> on_dirty;
+
 private:
     struct body_type;
     std::unique_ptr<body_type> impl_;

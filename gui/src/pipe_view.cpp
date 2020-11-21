@@ -11,6 +11,7 @@
 #include "nana/paint/graphics.hpp"
 #include "pipepp/gui/pipe_detail_panel.hpp"
 #include "pipepp/gui/pipe_view.hpp"
+
 #include "pipepp/pipeline.hpp"
 
 using clock_type = std::chrono::system_clock;
@@ -274,8 +275,11 @@ void pipepp::gui::pipe_view::open_details(const nana::window& wd)
         parent_rect.position(nana::API::cursor_position());
         parent_rect.width = 480;
         parent_rect.height = 640;
+        parent_rect.x -= parent_rect.width;
+        parent_rect.y -= 5;
+
         nana::appearance appear;
-        appear.floating = true;
+        appear.floating = false;
         appear.decoration = true;
         appear.maximize = false;
         appear.minimize = true;

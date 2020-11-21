@@ -213,7 +213,7 @@ public:
         fence_index_t fence_index() const { return fence_index_; }
         bool _is_executor_busy() const { return fence_index_ != fence_index_t::none; }
         bool _is_output_order() const { return index_ == owner_._pending_output_slot_index(); }
-        bool _is_busy() const { return timer_scope_.has_value(); }
+        bool _is_busy() const { return timer_scope_total_.has_value(); }
 
     public:
         struct launch_args_t {
@@ -273,7 +273,8 @@ public:
         std::any cached_input_;
         std::any cached_output_;
 
-        std::optional<execution_context::timer_scope_indicator> timer_scope_;
+        std::optional<execution_context::timer_scope_indicator> timer_scope_total_;
+        std::optional<execution_context::timer_scope_indicator> timer_scope_link_;
 
         size_t index_;
     };

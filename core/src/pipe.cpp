@@ -89,7 +89,7 @@ void pipepp::impl__::pipe_base::executor_slot::_launch_callback()
     pipe_error exec_res;
 
     PIPEPP_REGISTER_CONTEXT(context_write());
-    timer_scope_ = context_write().timer_scope("Total Execution Time");
+    timer_scope_total_ = context_write().timer_scope("Total Execution Time");
 
     PIPEPP_ELAPSE_BLOCK("A. Executor Run Time")
     {
@@ -107,6 +107,7 @@ void pipepp::impl__::pipe_base::executor_slot::_launch_callback()
         }
     }
 
+    timer_scope_link_ = context_write().timer_scope("C. Linker Overhead");
     if (owner_.output_links_.empty() == false) {
         workers().add_task(&executor_slot::_output_link_callback, this, 0, exec_res > pipe_error::warning);
     }
@@ -126,7 +127,8 @@ void pipepp::impl__::pipe_base::executor_slot::_perform_post_output()
     auto constexpr RELAXED = std::memory_order_relaxed;
     // -- 연결된 모든 출력을 처리한 경우입니다.
     // 타이머 관련 로직 처리
-    timer_scope_.reset();
+    timer_scope_link_.reset();
+    timer_scope_total_.reset();
     owner_._refresh_interval_timer();
     owner_._update_latest_latency(fence_object_->launch_time_point());
 

@@ -5,6 +5,7 @@
 
 #include "fmt/format.h"
 #include "nana/basic_types.hpp"
+#include "nana/gui/drawing.hpp"
 #include "nana/gui/msgbox.hpp"
 #include "nana/gui/programming_interface.hpp"
 #include "nana/gui/widgets/listbox.hpp"
@@ -47,8 +48,8 @@ pipepp::gui::pipe_detail_panel::pipe_detail_panel(nana::window owner, const nana
     div(""
         "margin=2"
         "<vert"
-        "   <w_timers weight=25% margin=[0,0,2,0]>"
-        "   <w_vals margin=[0,0,2,0]>"
+        "   <w_timers weight=200 margin=[0,0,2,0]>"
+        "   <w_vals weight=150 margin=[0,0,2,0]>"
         "   <w_opts weight=40%>"
         ">");
 
@@ -63,6 +64,11 @@ pipepp::gui::pipe_detail_panel::pipe_detail_panel(nana::window owner, const nana
     m.timers.text_align(nana::align::left);
     m.timers.editable(false);
     m.timers.enable_caret();
+    nana::drawing(m.timers).draw_diehard([&](nana::paint::graphics& gp) {
+        auto size = gp.text_extent_size("0");
+        auto n_chars = gp.width() / size.width;
+        num_timer_text_view_horizontal_chars = n_chars;
+    });
 
     auto header_div = m.values.size().width * 48 / 100;
     m.values.checkable(true);
@@ -201,8 +207,8 @@ void pipepp::gui::pipe_detail_panel::update(std::shared_ptr<execution_context_da
     // -- 타이머 문자열 빌드
     {
         auto pos = m.timers.text_position().front();
+        size_t horizontal_chars = num_timer_text_view_horizontal_chars - 8;
 
-        size_t horizontal_chars = num_timer_text_view_horizontal_chars;
         std::string text;
         text.reserve(1024);
         auto& timers = data->timers;

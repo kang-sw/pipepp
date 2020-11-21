@@ -112,7 +112,7 @@ pipepp::gui::pipe_view::pipe_view(const nana::window& wd, const nana::rectangle&
     _label_events();
 
     m.button.events().click([&](nana::arg_click const& arg) {
-        details() == nullptr ? open_details(*this) : close_details();
+        details() == nullptr ? open_details(*this) : details()->focus();
         _refresh_btn_color(!!details());
     });
 
@@ -271,19 +271,22 @@ void pipepp::gui::pipe_view::open_details(const nana::window& wd)
     auto& m = *impl_;
     if (m.detail_view == nullptr || m.detail_view->empty()) {
         nana::rectangle parent_rect;
-        nana::API::get_window_rectangle(this->parent(), parent_rect);
+        parent_rect.position(nana::API::cursor_position());
         parent_rect.width = 480;
         parent_rect.height = 640;
         nana::appearance appear;
-        appear.floating = false;
+        appear.floating = true;
         appear.decoration = true;
         appear.maximize = false;
-        appear.minimize = false;
-        appear.sizable = false;
-        appear.taskbar = true;
+        appear.minimize = true;
+        appear.sizable = true;
+        appear.taskbar = false;
 
         auto p = m.detail_view
           = std::make_shared<pipe_detail_panel>(wd, parent_rect, appear);
+
+        p->icon({});
+        p->move(parent_rect.position());
 
         p->reset_pipe(m.pipeline, m.pipe);
         if (m.exec_data) { p->update(m.exec_data); }

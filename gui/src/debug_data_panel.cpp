@@ -77,6 +77,7 @@ public:
                 }
                 owner_._refresh_layout();
                 relocate();
+                refresh();
             }
             else {
                 colapsed_or_subscribed_ = !colapsed_or_subscribed_;
@@ -272,6 +273,7 @@ protected:
 private:
     void _perform_subscribe(bool handle_unchecked = false)
     {
+        if (is_timer_slot()) { return; }
         if (colapsed_or_subscribed_) {
             auto subscriber = m.board_ref->debug_data_subscriber;
             if (subscriber) {

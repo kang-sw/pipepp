@@ -1,4 +1,5 @@
 #include "pipepp/gui/debug_data_panel.hpp"
+#include <iterator>
 #include <variant>
 
 #include "fmt/format.h"
@@ -11,6 +12,7 @@
 #include "nana/gui/widgets/textbox.hpp"
 #include "nana/gui/widgets/treebox.hpp"
 #include "pipepp/gui/basic_utility.hpp"
+#include "pipepp/gui/pipeline_board.hpp"
 #include "pipepp/pipeline.hpp"
 
 using namespace nana;
@@ -46,57 +48,54 @@ public:
     std::unordered_map<kangsw::hash_index, std::weak_ptr<inline_widget>> timers;
 };
 
-class pipepp::gui::inline_widget : public panel<true>, public std::enable_shared_from_this<inline_widget> {
+class pipepp::gui::inline_widget : public panel<false>, public std::enable_shared_from_this<inline_widget> {
     inline static size_t ID_GEN = 0;
 
 public:
-    inline_widget(debug_data_panel& owner, unsigned level = 0)
-        : panel<true>(owner.m.self, true)
+    inline_widget(debug_data_panel& owner, unsigned lv = 0)
+        : panel<false>(owner.m.self, true)
+        , level(lv)
         , owner_(owner)
         , m(owner.m)
-        , level_(level)
     {
-        layout_.div(fmt::format("TEXT margin=[0,0,0,{}]", m.indent * level_));
+        layout_.div(fmt::format("TEXT margin=[0,0,0,{}]", m.indent * level));
         layout_.collocate();
         layout_["TEXT"] << text_;
 
-        text_.transparent(true);
+        // text_.transparent(true);
         text_.caption("hell, world!");
         text_.typeface(DEFAULT_DATA_FONT);
-        text_.text_align(align::right);
 
-        const static nana::color category_colors[] = {
-          nana::colors::white,
-          nana::colors::light_gray,
-          nana::colors::light_blue,
-          nana::colors::sky_blue,
-          nana::colors::blue,
-          nana::colors::blue_violet,
-          nana::colors::light_pink,
-          nana::colors::light_yellow,
-          nana::colors::light_green,
-          nana::colors::lawn_green,
-          nana::colors::gray,
-        };
-        const size_t max_category = *(&category_colors + 1) - category_colors - 1;
-        text_.fgcolor(category_colors[std::min<int>(max_category, level)]);
-        bgcolor(colors::black);
+        text_.bgcolor(colors::black);
 
         // -- Events
         events().mouse_wheel([&](arg_wheel const& a) { m.scroll.make_scroll(!a.upwards); });
         text_.events().click([&](auto&&) {
             if (is_timer_slot()) {
-                colapsed_ = !colapsed_;
-                owner_._update_scroll();
+                if (children_.empty() == false) {
+                    colapsed_or_subscribed_ = !colapsed_or_subscribed_;
+                }
+                owner_._refresh_layout();
                 relocate();
+            }
+            else {
+                colapsed_or_subscribed_ = !colapsed_or_subscribed_;
+                _perform_subscribe();
             }
         });
 
         drawing{text_}.draw_diehard([&](paint::graphics& gp) {
             {
                 auto singlechar_extent = gp.text_extent_size("a");
-                text_extent_ = size().width / std::max<int>(1, singlechar_extent.width);
+                text_extent_ = text_.size().width / std::max<int>(1, singlechar_extent.width);
             }
+
+            auto fg = text_.fgcolor();
+            auto extent = gp.text_extent_size(string_);
+
+            auto size = text_.size();
+            point draw_pt(size.width - extent.width, (size.height - extent.height) / 2);
+            gp.string(draw_pt, string_, fg);
         });
     }
 
@@ -108,19 +107,104 @@ public:
         root_height_ = root;
         auto height = root + !colapse * m.elem_height;
         for (auto& w : children_) {
-            height = w->update_root_height(height, colapse || colapsed_);
+            height = w->update_root_height(height, colapse || colapsed_or_subscribed_);
         }
 
         return height;
     }
 
-    void relocate()
-    {
-        m.root->move(m.root->pos());
-    }
+    void relocate() { m.root->move(m.root->pos()); }
 
     void refresh()
     {
+        using std::string;
+        using namespace fmt;
+        using insert = std::back_insert_iterator<string>;
+
+        thread_local static string str_left;
+        thread_local static string str_right;
+        str_left.clear(), str_right.clear();
+
+        if (is_timer_slot()) {
+            auto& data = std::get<timer_data_desc>(slot_);
+            using namespace std::chrono;
+
+            format_to(insert(str_left), "| {}", data.name);
+            format_to(insert(str_right), "{0:.4f} ms", duration<double, std::milli>{data.elapsed}.count());
+
+            // timer color set
+            const static nana::color category_colors[] = {
+              colors::white,
+              colors::light_gray,
+              colors::light_blue,
+              colors::sky_blue,
+              color{111, 111, 161},
+              colors::blue_violet,
+              colors::light_pink,
+              colors::light_yellow,
+              colors::light_green,
+              colors::lawn_green,
+              colors::gray,
+            };
+            const size_t max_category = *(&category_colors + 1) - category_colors - 1;
+            text_.fgcolor(
+              is_obsolete()
+                ? colors::dim_gray
+                : category_colors[std::min<int>(max_category, level)]);
+
+            text_.bgcolor(colapsed_or_subscribed_ ? colors(0x333333) : colors::black);
+        }
+        else if (is_debug_slot()) {
+            auto& data = std::get<debug_data_desc>(slot_);
+            format_to(insert(str_left), "* {0}", data.name);
+
+            std::visit(
+              [&]<typename T0>(T0&& arg) {
+                  using type = std::decay_t<T0>;
+
+                  if constexpr (std::is_same_v<std::any, type>)
+                      str_right = arg.type().name();
+                  else if constexpr (std::is_same_v<std::string, type>)
+                      str_right = arg;
+                  else if constexpr (std::is_same_v<bool, type>)
+                      str_right = (arg ? "true" : "false");
+                  else
+                      str_right = std::to_string(arg);
+              },
+              data.data);
+
+            if (str_right.size() + str_left.size() > text_extent_) {
+                str_right.erase(text_extent_ / 3);
+                str_right.append("...");
+                if (str_right.size() + str_left.size() > text_extent_) {
+                    str_left.erase(std::max(0, text_extent_ - (int)str_right.size() - 4));
+                    str_left.append("...");
+                }
+            }
+
+            text_.fgcolor(colapsed_or_subscribed_ ? colors::yellow : colors::lawn_green);
+            text_.bgcolor(colapsed_or_subscribed_ ? colors::dark_green : colors::black);
+        }
+
+        size_t n_dots = std::max<int>(0, text_extent_ - (int)str_left.size() - (int)str_right.size());
+        string_.clear(), string_.reserve(text_extent_ + 10);
+        format_to(insert(string_), "{2}{0:^{1}}{3}", "", n_dots, str_left, str_right);
+        API::refresh_window(text_);
+    }
+
+    void make_obsolete()
+    {
+        sibling_order_ = npos;
+        for (auto& w : children_) { w->make_obsolete(); }
+    }
+
+    bool is_obsolete() const { return sibling_order_ == npos; }
+    void sibling_order(size_t v) { sibling_order_ = v; }
+
+    void reorder()
+    {
+        using ptr_t = std::shared_ptr<inline_widget> const&;
+        std::sort(children_.begin(), children_.end(), [](ptr_t a, ptr_t b) { return a->sibling_order_ < b->sibling_order_; });
     }
 
     void width(unsigned v)
@@ -129,22 +213,53 @@ public:
         for (auto& w : children_) { w->width(v); }
     }
 
-    template <typename Dt_ = timer_data_desc>
-    auto put(Dt_&& data)
+    auto name()
     {
+        std::string_view name;
+        std::visit([&](auto&& v) { name = v.name; }, slot_);
+        return name;
+    }
+
+    template <typename Dt_ = timer_data_desc>
+    auto append(Dt_&& data)
+    {
+        assert(is_timer_slot());
+
         auto r = _create();
         r->slot_ = std::forward<Dt_>(data);
+
+        // Category name build
+        std::vector<std::string_view> cat_names;
+        for (auto rt = root_.lock(); rt; rt = rt->root_.lock()) {
+            cat_names.emplace_back(rt->name());
+        }
+
+        size_t sum = 0;
+        for (auto& s : cat_names) { sum += s.size(); }
+        r->category_.reserve(sum + 4 * cat_names.size() + 2);
+        for (auto& s : cat_names) { r->category_.append(s), r->category_.append("::"); }
+
         return r;
     }
 
-    bool is_timer_slot() const
+    template <typename Dt_ = timer_data_desc>
+    void put(Dt_&& data)
     {
-        return slot_.index() == 0;
+        slot_ = std::forward<Dt_>(data);
+        _perform_subscribe();
     }
 
-    bool is_debug_slot() const
+    bool is_timer_slot() const { return slot_.index() == 0; }
+    bool is_debug_slot() const { return !is_timer_slot(); }
+
+    std::shared_ptr<inline_widget> find_debug_slot(std::string_view s) const
     {
-        return !is_timer_slot();
+        for (auto& w : children_) {
+            if (w->is_timer_slot()) { continue; }
+            if (std::get<debug_data_desc>(w->slot_).name == s) { return w; }
+        }
+
+        return {};
     }
 
 protected:
@@ -155,29 +270,44 @@ protected:
     }
 
 private:
+    void _perform_subscribe()
+    {
+        if (colapsed_or_subscribed_) {
+            auto subscriber = m.board_ref->debug_data_subscriber;
+            if (subscriber) {
+                auto& data = std::get<debug_data_desc>(slot_);
+                colapsed_or_subscribed_ = subscriber(category_, data);
+            }
+        }
+    }
+
     auto _create()
     {
-        auto& r = children_.emplace_back(std::make_shared<inline_widget>(owner_, level_ + 1));
+        auto& r = children_.emplace_back(std::make_shared<inline_widget>(owner_, level + 1));
         r->root_ = weak_from_this();
         return r;
     }
 
 public:
     size_t const id = ID_GEN++;
+    unsigned const level;
 
 private:
     debug_data_panel& owner_;
     debug_data_panel::data_type& m;
 
     place layout_{*this};
-    label text_{*this};
+    panel<true> text_{*this};
 
     int root_height_ = 0;
-    unsigned level_ = 0;
-    bool colapsed_ = false;
+    bool colapsed_or_subscribed_ = false;
     int text_extent_ = 0;
 
+    size_t sibling_order_ = false;
+
     std::variant<timer_data_desc, debug_data_desc> slot_;
+    std::string string_;
+    std::string category_;
 
     std::weak_ptr<inline_widget> root_;
     std::vector<std::shared_ptr<inline_widget>> children_;
@@ -192,6 +322,7 @@ pipepp::gui::debug_data_panel::debug_data_panel(window wd, bool visible)
     bgcolor(colors::black);
     m.root = std::make_shared<inline_widget>(*this);
 
+    auto font = DEFAULT_DATA_FONT;
     //for (auto i : kangsw::iota{10}) {
     //    auto v = m.root->append();
     //    for (auto j : kangsw::iota{10}) {
@@ -201,12 +332,10 @@ pipepp::gui::debug_data_panel::debug_data_panel(window wd, bool visible)
 
     // -- Events assign
     events().resized([&](arg_resized const& s) {
-        m.root->width(s.width - m.scroll_width);
         m.scroll.move(s.width - m.scroll_width, 0);
         m.scroll.size({m.scroll_width, s.height});
 
-        _update_scroll();
-        m.root->relocate();
+        _refresh_layout();
     });
 
     m.scroll.events().value_changed([&](arg_scroll const& arg) {
@@ -242,12 +371,65 @@ void pipepp::gui::debug_data_panel::_reset_pipe(std::weak_ptr<detail::pipeline_b
 void pipepp::gui::debug_data_panel::_update(std::shared_ptr<execution_context_data> data)
 {
     m.data = data;
+    std::map<int, std::shared_ptr<inline_widget>> root_stack;
+    std::map<int, int> sibling_stack;
+    root_stack[0] = m.root;
+    sibling_stack[1] = 0;
+
+    auto& timers = data->timers;
+
+    m.root->make_obsolete();
+    m.root->sibling_order(0);
+    m.root->put(timers[0]);
+    m.root->refresh();
+    for (auto index : kangsw::iota{(size_t)1, timers.size()}) {
+        auto& tm = timers[index];
+
+        // Category ID 기반으로 탐색 및 삽입 시도
+        auto [it, is_new] = m.timers.try_emplace(tm.category_id);
+
+        // 카테고리에 새로 삽입
+        if (is_new) {
+            auto root = root_stack.at(tm.category_level - 1);
+            it->second = root->append(tm);
+        }
+        else {
+            // 이미 존재하는 엔터티를 업데이트하는 경우, 동 레벨 카테고리의 이전 sibling을 방문,
+            //
+            it->second.lock()->put(tm);
+        }
+
+        auto ptr = it->second.lock();
+        root_stack[tm.category_level] = ptr;
+        sibling_stack[tm.category_level + 1] = 0;                  // 다음 단계의 카테고리 인덱스 초기화
+        ptr->sibling_order(sibling_stack.at(tm.category_level)++); // 현재 단계의 카테고리 인덱스 증가
+        ptr->refresh();
+    }
+
+    std::map<kangsw::hash_index, int> sibling_stack_dbg;
+    for (auto& dt : data->debug_data) {
+        auto root_widget = m.timers.at(dt.category_id).lock();
+        decltype(root_widget) widget = root_widget->find_debug_slot(dt.name);
+
+        if (widget)
+            widget->put(dt);
+        else
+            widget = root_widget->append(dt);
+
+        widget->sibling_order(sibling_stack_dbg[dt.category_id]++);
+        widget->refresh();
+    }
+
+    m.root->reorder();
+    _refresh_layout();
 }
 
-void pipepp::gui::debug_data_panel::_update_scroll()
+void pipepp::gui::debug_data_panel::_refresh_layout()
 {
+    m.root->width(size().width - m.scroll_width);
     m.scroll.range(size().height);
     m.scroll.amount(m.root->update_root_height());
     m.scroll.step(m.elem_height);
     m.scroll.value(m.scroll.value());
+    m.root->relocate();
 }

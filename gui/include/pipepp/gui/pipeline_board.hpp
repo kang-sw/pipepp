@@ -94,8 +94,8 @@ public:
     /**
      *
      */
-    std::function<bool(std::string const&, execution_context_data::debug_data_entity const&)> debug_data_subscriber;
-    std::function<void(std::string const&, execution_context_data::debug_data_entity const&)> debug_data_unchecked;
+    std::function<bool(std::string_view, execution_context_data::debug_data_entity const&)> debug_data_subscriber;
+    std::function<void(std::string_view, execution_context_data::debug_data_entity const&)> debug_data_unchecked;
     std::function<void(pipe_id_t id, std::string_view key)> option_changed;
 
     nana::color main_connection_line_color = nana::colors::black;

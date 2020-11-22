@@ -31,7 +31,7 @@ public:
     void _update(std::shared_ptr<execution_context_data>);
 
 private:
-    void _update_scroll();
+    void _refresh_layout();
 
 private:
     friend struct inline_widget;

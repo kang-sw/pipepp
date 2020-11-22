@@ -46,6 +46,7 @@ pipepp::gui::pipe_detail_panel::pipe_detail_panel(nana::window owner, const nana
     auto hnd_pipe_board = nana::API::get_parent_window(owner);
     auto pipe_board = dynamic_cast<pipeline_board*>(nana::API::get_widget(hnd_pipe_board));
     m.board_ref = pipe_board;
+    m.debug_data._set_board_ref(m.board_ref);
 
     div(""
         "margin=2"

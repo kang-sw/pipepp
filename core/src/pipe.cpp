@@ -213,6 +213,15 @@ pipepp::impl__::pipe_base::tweak_t pipepp::impl__::pipe_base::get_prelaunch_twea
     };
 }
 
+pipepp::impl__::pipe_base::const_tweak_t pipepp::impl__::pipe_base::read_tweaks() const
+{
+    return const_tweak_t{
+      .selective_input = &mode_selectie_input_,
+      .selective_output = &mode_selective_output_,
+      .is_optional = &input_slot_.is_optional_,
+    };
+}
+
 void pipepp::impl__::pipe_base::_connect_output_to_impl(pipe_base* other, pipepp::impl__::pipe_base::output_link_adapter_type adapter)
 {
     if (is_launched() || other->is_launched()) {

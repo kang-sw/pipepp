@@ -54,14 +54,21 @@ void pipepp::gui::pipe_view::_label_events()
 
     nana::drawing(m.label).draw_diehard([&](nana::paint::graphics& gp) {
         auto proxy = impl_->pipeline.lock()->get_pipe(impl_->pipe);
+        auto tweak = proxy.tweaks();
         auto backcolor = proxy.is_paused()
                            ? nana::colors::dark_red
                            : m.upper_node_paused
                                ? nana::colors::yellow
-                               : nana::color(85, 65, 85);
+                               : tweak.selective_input
+                                   ? nana::color(43, 100, 64)
+                                   : nana::color(64, 33, 64);
+
+        auto bottomcolor = tweak.selective_output
+                             ? nana::color(35, 48, 121)
+                             : nana::color(35, 35, 35);
 
         gp.gradual_rectangle(
-          nana::rectangle{{1, 1}, gp.size() + nana::size(-1, -1)}, backcolor, nana::color(35, 35, 35), true);
+          nana::rectangle{{1, 1}, gp.size() + nana::size(-1, -1)}, backcolor, bottomcolor, true);
         gp.round_rectangle(
           nana::rectangle{{}, gp.size()}, 3, 3,
           nana::colors::black, false, backcolor);
@@ -101,7 +108,7 @@ pipepp::gui::pipe_view::pipe_view(const nana::window& wd, const nana::rectangle&
 {
     auto& m = *impl_;
 
-    m.layout.div("vert<MAIN weight=20><<INTERVAL> weight=60><EXEC_COND>");
+    m.layout.div("vert<MAIN weight=23><INTERVAL weight=60 margin=[0,1,0,1]><EXEC_COND margin=[0,1,0,1]>");
     m.layout["MAIN"] << m.button;
     m.layout["INTERVAL"] << m.label;
     m.layout["EXEC_COND"] << m.executor_notes;
@@ -228,7 +235,7 @@ void pipepp::gui::pipe_view::update()
             return false;
         };
 
-        m.upper_node_paused = has_any_paused_input(has_any_paused_input, proxy);
+        m.upper_node_paused = has_any_paused_input(has_any_paused_input, proxy) || proxy.recently_aborted();
         nana::drawing(m.label).update();
     }
 
@@ -251,20 +258,21 @@ void pipepp::gui::pipe_view::_refresh_btn_color(bool detail_open)
 {
     auto& m = *impl_;
     auto proxy = m.pipeline.lock()->get_pipe(m.pipe);
-    if (detail_open) {
-        if (proxy.is_paused()) {
-            m.button.bgcolor(nana::colors::pale_violet_red);
+
+    if (proxy.is_paused()) {
+        if (detail_open) {
+            m.button.bgcolor(nana::colors::orange_red);
         }
         else {
-            m.button.bgcolor(nana::colors::light_green);
+            m.button.bgcolor(nana::colors::dark_red);
         }
     }
     else {
-        if (proxy.is_paused()) {
-            m.button.bgcolor(nana::colors::dim_gray);
+        if (detail_open) {
+            m.button.bgcolor(nana::colors::cadet_blue);
         }
         else {
-            m.button.bgcolor(nana::colors::antique_white);
+            m.button.bgcolor(nana::colors::alice_blue);
         }
     }
 }

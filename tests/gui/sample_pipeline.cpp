@@ -50,8 +50,8 @@ std::shared_ptr<my_pipeline_type> build_pipeline()
     _1.link_output(_4, pipepp::link_as_is);
     _2.link_output(_4, pipepp::link_as_is);
 
-    _4.prelaunch_tweaks().selective_input = true;
-    _0.prelaunch_tweaks().selective_output = true;
+    _4.configure_tweaks().selective_input = true;
+    _0.configure_tweaks().selective_output = true;
 
     return pipe;
 }

@@ -108,7 +108,8 @@ public:
     // mark dirty
     void mark_option_dirty() { pipe().mark_dirty(); }
 
-    auto prelaunch_tweaks() { return pipe().get_prelaunch_tweaks(); }
+    auto configure_tweaks() { return pipe().get_prelaunch_tweaks(); }
+    auto tweaks() { return pipe().read_tweaks(); }
 
 protected:
     std::weak_ptr<pipeline_base> pipeline_;

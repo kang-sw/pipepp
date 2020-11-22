@@ -135,8 +135,15 @@ public:
         kangsw::ptr_proxy<bool> selective_output;
         kangsw::ptr_proxy<bool> is_optional;
     };
+    struct const_tweak_t {
+        kangsw::ptr_proxy<const bool> selective_input;
+        kangsw::ptr_proxy<const bool> selective_output;
+        kangsw::ptr_proxy<const bool> is_optional;
+    };
+
     /** pre launch tweak È¹µæ */
     tweak_t get_prelaunch_tweaks();
+    const_tweak_t read_tweaks() const;
 
     class input_slot_t {
         friend class pipe_base;

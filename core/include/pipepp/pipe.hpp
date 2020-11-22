@@ -23,6 +23,7 @@ class pipeline_base;
 enum class pipe_error {
     ok,
     warning,
+    abort,
     error,
     fatal
 };
@@ -78,9 +79,10 @@ private:
 
 enum class executor_condition_t : uint8_t {
     idle,
+    idle_aborted,
     idle_output,
     busy,
-    output
+    busy_output
 };
 
 namespace impl__ {
@@ -214,6 +216,7 @@ public:
         bool _is_executor_busy() const { return fence_index_ != fence_index_t::none; }
         bool _is_output_order() const { return index_ == owner_._pending_output_slot_index(); }
         bool _is_busy() const { return timer_scope_total_.has_value(); }
+        auto latest_exec_result() const { return latest_execution_result_.load(std::memory_order_relaxed); }
 
     public:
         struct launch_args_t {

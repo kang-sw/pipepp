@@ -284,10 +284,14 @@ void pipepp::impl__::pipe_base::executor_conditions(std::vector<executor_conditi
         auto& exec = *executor_slots_[i];
 
         if (exec._is_busy()) {
-            conds[i] = _pending_output_slot_index() == i ? executor_condition_t::output : executor_condition_t::busy;
+            conds[i] = _pending_output_slot_index() == i ? executor_condition_t::busy_output : executor_condition_t::busy;
         }
         else {
-            conds[i] = _pending_output_slot_index() == i ? executor_condition_t::idle_output : executor_condition_t::idle;
+            conds[i] = _pending_output_slot_index() == i
+                         ? executor_condition_t::idle_output
+                         : exec.latest_exec_result() > pipe_error::warning
+                             ? executor_condition_t::idle_aborted
+                             : executor_condition_t::idle;
         }
     }
 }

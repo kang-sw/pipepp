@@ -147,7 +147,9 @@ pipepp::gui::pipe_view::pipe_view(const nana::window& wd, const nana::rectangle&
                 switch (cond[i]) {
                     case executor_condition_t::idle: color = nana::color(45, 45, 45); break;
                     case executor_condition_t::busy: color = nana::colors::yellow; break;
-                    case executor_condition_t::output: color = nana::colors::orange; break;
+                    case executor_condition_t::busy_output: color = nana::colors::orange; break;
+                    case executor_condition_t::idle_aborted: color = nana::colors::red; break;
+                    case executor_condition_t::idle_output: [[fallthrough]];
                     default: color = nana::colors::lawn_green;
                 }
 

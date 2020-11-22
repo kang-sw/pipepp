@@ -6,7 +6,6 @@
 #include "fmt/format.h"
 #include "nana/basic_types.hpp"
 #include "nana/gui/drawing.hpp"
-#include "nana/gui/msgbox.hpp"
 #include "nana/gui/programming_interface.hpp"
 #include "nana/gui/widgets/listbox.hpp"
 #include "nana/gui/widgets/textbox.hpp"
@@ -14,6 +13,7 @@
 #include "nana/paint/graphics.hpp"
 #include "pipepp/execution_context.hpp"
 #include "pipepp/gui/basic_utility.hpp"
+#include "pipepp/gui/debug_data_panel.hpp"
 #include "pipepp/gui/option_panel.hpp"
 #include "pipepp/gui/pipeline_board.hpp"
 #include "pipepp/pipeline.hpp"
@@ -33,6 +33,7 @@ struct pipepp::gui::pipe_detail_panel::data_type {
 
     nana::textbox timers{self};
     option_panel option{self, true};
+    debug_data_panel debug_data{self, true};
     nana::listbox values{self};
 };
 
@@ -49,14 +50,14 @@ pipepp::gui::pipe_detail_panel::pipe_detail_panel(nana::window owner, const nana
     div(""
         "margin=2"
         "<vert"
-        "   <w_timers weight=200 margin=[0,0,2,0]>"
-        "   <w_vals weight=150 margin=[0,0,2,0]>"
-        "   <w_opts weight=40%>"
+        // "   <w_timers weight=200 margin=[0,0,2,0]>"
+        "   <w_vals margin=[0,0,2,0]>"
+        "   <w_opts>"
         ">");
 
     (*this)["w_timers"] << m.timers;
     (*this)["w_opts"] << m.option;
-    (*this)["w_vals"] << m.values;
+    (*this)["w_vals"] << m.debug_data;
     collocate();
 
     m.timers.bgcolor(nana::colors::black);
@@ -109,6 +110,8 @@ pipepp::gui::pipe_detail_panel::~pipe_detail_panel() = default;
 void pipepp::gui::pipe_detail_panel::reset_pipe(std::weak_ptr<detail::pipeline_base> pl, pipe_id_t id)
 {
     auto& m = *impl_;
+    m.debug_data._reset_pipe(pl, id);
+
     m.pipeline = pl;
     m.pipe = id;
 
@@ -148,6 +151,8 @@ nana::listbox::oresolver& operator<<(
 void pipepp::gui::pipe_detail_panel::update(std::shared_ptr<execution_context_data> data)
 {
     auto& m = *impl_;
+    m.debug_data._update(std::move(data));
+    return;
     auto proxy = m.pipeline.lock()->get_pipe(m.pipe);
 
     // -- 타이머 문자열 빌드

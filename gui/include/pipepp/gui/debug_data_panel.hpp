@@ -13,18 +13,28 @@ struct execution_context_data;
 namespace pipepp::gui {
 class pipeline_board;
 
-class debug_data_panel : nana::panel<false> {
-    using super = nana::panel<false>;
+class debug_data_panel : public nana::panel<true> {
+    using super = nana::panel<true>;
 
 public:
-    debug_data_panel(nana::window wd, bool visible, pipeline_board* board_ref);
+    debug_data_panel(nana::window wd, bool visible);
     ~debug_data_panel();
 
+    void _set_board_ref(pipeline_board* ref);
+
 public:
-    void reset_pipe(std::weak_ptr<detail::pipeline_base> pl, pipe_id_t id);
-    void update(std::shared_ptr<execution_context_data>);
+    void scroll_width(size_t v);
+    void elem_height(size_t v);
+
+public:
+    void _reset_pipe(std::weak_ptr<detail::pipeline_base> pl, pipe_id_t id);
+    void _update(std::shared_ptr<execution_context_data>);
 
 private:
+    void _update_scroll();
+
+private:
+    friend struct inline_widget;
     struct data_type;
     std::unique_ptr<data_type> impl_;
     data_type& m;

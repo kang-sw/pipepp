@@ -8,11 +8,11 @@
 
 namespace pipepp {
 namespace impl__ {
-template <typename Exec_, typename Ty_, size_t>
+template <typename Exec_, typename Ty_>
 struct _option_instance;
 
 class option_base final {
-    template <typename Exec_, typename Ty_, size_t>
+    template <typename Exec_, typename Ty_>
     friend struct _option_instance;
 
 public:
@@ -72,7 +72,7 @@ void option_base::reset_as_default()
     names_ = _opt_spec<Exec_>().init_names_;
 }
 
-template <typename Exec_, typename Ty_, size_t>
+template <typename Exec_, typename Ty_>
 struct _option_instance {
     using spec_type = option_specification<Exec_>;
     using value_type = Ty_;
@@ -107,20 +107,15 @@ struct _option_instance {
 /**
  * PIPEPP_DEFINE_OPTION(TYPE, NAME, DEFAULT_VALUE [, CATEGORY[, DESCRIPTION]])
  */
-#define PIPEPP_OPTION_2(TYPE, NAME, DEFAULT_VALUE, ...)     \
-    inline static const ::pipepp::impl__::_option_instance< \
-      ___executor_type___, TYPE, kangsw::fnv1a(#NAME)>      \
+#define PIPEPP_OPTION_2(TYPE, NAME, DEFAULT_VALUE, ...)                               \
+    inline static const ::pipepp::impl__::_option_instance<___executor_type___, TYPE> \
       NAME{DEFAULT_VALUE, #NAME, ##__VA_ARGS__};
 
-#define PIPEPP_OPTION(NAME, DEFAULT_VALUE, ...)                           \
-    inline static const ::pipepp::impl__::_option_instance<               \
-      ___executor_type___, decltype(DEFAULT_VALUE), kangsw::fnv1a(#NAME)> \
-      NAME{DEFAULT_VALUE, #NAME, ##__VA_ARGS__};
+#define PIPEPP_OPTION(NAME, DEFAULT_VALUE, ...) \
+    PIPEPP_OPTION_2(decltype(DEFAULT_VALUE), NAME, DEFAULT_VALUE, __VA_ARGS__)
 
-#define PIPEPP_OPTION_CAT(NAME, DEFAULT_VALUE, ...)                       \
-    inline static const ::pipepp::impl__::_option_instance<               \
-      ___executor_type___, decltype(DEFAULT_VALUE), kangsw::fnv1a(#NAME)> \
-      NAME{DEFAULT_VALUE, #NAME, ___category___, ##__VA_ARGS__};
+#define PIPEPP_OPTION_CAT(NAME, DEFAULT_VALUE, ...) \
+    PIPEPP_OPTION(NAME, DEFAULT_VALUE, ___category___, __VA_ARGS__)
 
 #define PIPEPP_DECLARE_OPTION_CLASS(EXECUTOR) using ___executor_type___ = EXECUTOR;
 #define PIPEPP_DECLARE_OPTION_CATEGORY(CATEGORY) inline static const std::string ___category___ = (CATEGORY);

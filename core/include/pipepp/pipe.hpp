@@ -133,7 +133,10 @@ public:
     struct tweak_t {
         kangsw::ptr_proxy<bool> selective_input;
         kangsw::ptr_proxy<bool> selective_output;
+        kangsw::ptr_proxy<bool> is_optional;
     };
+    /** pre launch tweak 획득 */
+    tweak_t get_prelaunch_tweaks();
 
     class input_slot_t {
         friend class pipe_base;
@@ -356,9 +359,6 @@ public:
 
     /** 출력 핸들러 추가 */
     void add_output_handler(output_handler_type handler) { output_handlers_.emplace_back(std::move(handler)); };
-
-    /** pre launch tweak 획득 */
-    tweak_t get_prelaunch_tweaks();
 
 private:
     /** this출력->to입력 방향으로 연결합니다. */

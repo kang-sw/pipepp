@@ -171,7 +171,7 @@ public:
     template <typename LnkFn_, typename FactoryFn_, typename... FactoryArgs_>
     pipe_proxy<SharedData_, typename std::invoke_result_t<FactoryFn_, FactoryArgs_...>::element_type::executor_type>
     create_and_link_output(
-      std::string name, bool optional_input, size_t num_executors, LnkFn_&& linker, FactoryFn_&& factory, FactoryArgs_&&... args);
+      std::string name, size_t num_executors, LnkFn_&& linker, FactoryFn_&& factory, FactoryArgs_&&... args);
 
     // 2. simple linkage
     template <typename Dest_, typename LnkFn_>
@@ -333,7 +333,7 @@ private:
 template <typename SharedData_, typename Exec_>
 template <typename LnkFn_, typename FactoryFn_, typename... FactoryArgs_>
 pipe_proxy<SharedData_, typename std::invoke_result_t<FactoryFn_, FactoryArgs_...>::element_type::executor_type>
-pipe_proxy<SharedData_, Exec_>::create_and_link_output(std::string name, bool optional_input, size_t num_executors, LnkFn_&& linker, FactoryFn_&& factory, FactoryArgs_&&... args)
+pipe_proxy<SharedData_, Exec_>::create_and_link_output(std::string name, size_t num_executors, LnkFn_&& linker, FactoryFn_&& factory, FactoryArgs_&&... args)
 {
     using factory_invoke_type = std::invoke_result_t<FactoryFn_, FactoryArgs_...>;
     using executor_type = typename factory_invoke_type::element_type;
@@ -341,7 +341,7 @@ pipe_proxy<SharedData_, Exec_>::create_and_link_output(std::string name, bool op
 
     auto pl = _lock();
     auto& ref = pl->template _create_pipe<destination_type>(
-      std::move(name), optional_input, num_executors,
+      std::move(name), false, num_executors,
       std::forward<FactoryFn_>(factory), std::forward<FactoryArgs_>(args)...);
 
     pipe_proxy<shared_data_type, destination_type> dest(pipeline_, ref);

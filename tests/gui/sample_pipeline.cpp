@@ -6,8 +6,8 @@ std::shared_ptr<my_pipeline_type> build_pipeline()
 
     auto _0 = pipe->front();
 
-#define pew(FROM, TO) auto TO = FROM.create_and_link_output(#TO, false, 3, pipepp::link_as_is, &pipepp::make_executor<my_executor_0>);
-#define pew_opt(FROM, TO) auto TO = FROM.create_and_link_output(#TO, false, 3, pipepp::link_as_is, &pipepp::make_executor<my_executor_0>);
+#define pew(FROM, TO) auto TO = FROM.create_and_link_output(#TO, 3, pipepp::link_as_is, &pipepp::make_executor<my_executor_0>);
+#define pew_opt(FROM, TO) auto TO = FROM.create_and_link_output(#TO, 3, pipepp::link_as_is, &pipepp::make_executor<my_executor_0>);
     /*pew(_0, _1);
     pew(_0, _2);
     pew(_0, _3);

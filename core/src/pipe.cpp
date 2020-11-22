@@ -209,6 +209,7 @@ pipepp::impl__::pipe_base::tweak_t pipepp::impl__::pipe_base::get_prelaunch_twea
     return tweak_t{
       .selective_input = &mode_selectie_input_,
       .selective_output = &mode_selective_output_,
+      .is_optional = &input_slot_.is_optional_,
     };
 }
 

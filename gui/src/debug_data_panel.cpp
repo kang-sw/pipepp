@@ -116,6 +116,12 @@ public:
 
     void relocate() { m.root->move(m.root->pos()); }
 
+    void refresh_recursive()
+    {
+        refresh();
+        for (auto& w : children_) { w->refresh_recursive(); }
+    }
+
     void refresh()
     {
         using std::string;
@@ -130,7 +136,7 @@ public:
             auto& data = std::get<timer_data_desc>(slot_);
             using namespace std::chrono;
 
-            format_to(insert(str_left), "| {}", data.name);
+            format_to(insert(str_left), "| {} ", data.name);
             format_to(insert(str_right), "{0:.4f} ms", duration<double, std::milli>{data.elapsed}.count());
 
             // timer color set
@@ -157,7 +163,7 @@ public:
         }
         else if (is_debug_slot()) {
             auto& data = std::get<debug_data_desc>(slot_);
-            format_to(insert(str_left), "* {0}", data.name);
+            format_to(insert(str_left), "[{0}] ", data.name);
 
             std::visit(
               [&]<typename T0>(T0&& arg) {
@@ -174,17 +180,20 @@ public:
               },
               data.data);
 
-            if (str_right.size() + str_left.size() > text_extent_) {
-                str_right.erase(text_extent_ / 3);
-                str_right.append("...");
-                if (str_right.size() + str_left.size() > text_extent_) {
-                    str_left.erase(std::max(0, text_extent_ - (int)str_right.size() - 4));
-                    str_left.append("...");
-                }
-            }
-
             text_.fgcolor(colapsed_or_subscribed_ ? colors::yellow : colors::lawn_green);
             text_.bgcolor(colapsed_or_subscribed_ ? colors::dark_green : colors::black);
+        }
+
+        if (str_right.size() + str_left.size() > text_extent_) {
+            auto& longer = str_right.size() > str_left.size() ? str_right : str_left;
+            auto& shorter = str_right.size() < str_left.size() ? str_right : str_left;
+
+            longer.erase(std::clamp(text_extent_ - (int)shorter.size() - 3, 3, (int)longer.size()));
+            longer.append("...");
+            if (str_right.size() + str_left.size() > text_extent_) {
+                shorter.erase(std::clamp(text_extent_ - (int)longer.size() - 3, 0, (int)shorter.size()));
+                shorter.append("...");
+            }
         }
 
         size_t n_dots = std::max<int>(0, text_extent_ - (int)str_left.size() - (int)str_right.size());
@@ -332,12 +341,6 @@ pipepp::gui::debug_data_panel::debug_data_panel(window wd, bool visible)
     m.root = std::make_shared<inline_widget>(*this);
 
     auto font = DEFAULT_DATA_FONT;
-    //for (auto i : kangsw::iota{10}) {
-    //    auto v = m.root->append();
-    //    for (auto j : kangsw::iota{10}) {
-    //        v->append();
-    //    }
-    //}
 
     // -- Events assign
     events().resized([&](arg_resized const& s) {
@@ -412,7 +415,6 @@ void pipepp::gui::debug_data_panel::_update(std::shared_ptr<execution_context_da
         root_stack[tm.category_level] = ptr;
         sibling_stack[tm.category_level + 1] = 0;                  // 다음 단계의 카테고리 인덱스 초기화
         ptr->sibling_order(sibling_stack.at(tm.category_level)++); // 현재 단계의 카테고리 인덱스 증가
-        ptr->refresh();
     }
 
     std::map<kangsw::hash_index, int> sibling_stack_dbg;
@@ -426,7 +428,6 @@ void pipepp::gui::debug_data_panel::_update(std::shared_ptr<execution_context_da
             widget = root_widget->append(dt);
 
         widget->sibling_order(sibling_stack_dbg[dt.category_id]++);
-        widget->refresh();
     }
 
     m.root->reorder();
@@ -441,4 +442,5 @@ void pipepp::gui::debug_data_panel::_refresh_layout()
     m.scroll.step(m.elem_height);
     m.scroll.value(m.scroll.value());
     m.root->relocate();
+    m.root->refresh_recursive();
 }

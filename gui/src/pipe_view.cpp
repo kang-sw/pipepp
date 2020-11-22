@@ -12,12 +12,14 @@
 #include "pipepp/gui/pipe_detail_panel.hpp"
 #include "pipepp/gui/pipe_view.hpp"
 
+#include "pipepp/gui/pipeline_board.hpp"
 #include "pipepp/pipeline.hpp"
 
 using clock_type = std::chrono::system_clock;
 
 struct pipepp::gui::pipe_view::data_type {
     pipe_view& self;
+    pipeline_board* board_ref;
 
     std::weak_ptr<impl__::pipeline_base> pipeline;
     pipe_id_t pipe;
@@ -92,6 +94,9 @@ void pipepp::gui::pipe_view::_label_events()
             proxy.is_paused() ? proxy.unpause() : proxy.pause();
             _refresh_btn_color(!!details());
             nana::drawing(m.label).update();
+
+            auto& dirty = m.board_ref->option_changed;
+            if (dirty) { dirty(m.pipe, {}); }
         }
     });
 
@@ -107,6 +112,8 @@ pipepp::gui::pipe_view::pipe_view(const nana::window& wd, const nana::rectangle&
     , impl_(std::make_unique<data_type>(*this))
 {
     auto& m = *impl_;
+    auto pipe_board = dynamic_cast<pipeline_board*>(nana::API::get_widget(wd));
+    m.board_ref = pipe_board;
 
     m.layout.div("vert<MAIN weight=23><INTERVAL weight=60 margin=[0,1,0,1]><EXEC_COND margin=[0,1,0,1]>");
     m.layout["MAIN"] << m.button;

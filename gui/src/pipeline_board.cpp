@@ -30,7 +30,7 @@ struct pipepp::gui::pipeline_board::data_type {
     pipeline_board& self;
     nana::drawing drawing{self};
 
-    std::weak_ptr<impl__::pipeline_base> pipe;
+    std::weak_ptr<detail::pipeline_base> pipe;
 
     double zoom;
     nana::point center;
@@ -119,7 +119,7 @@ void pipepp::gui::pipeline_board::_clear_views()
     m.all_points.clear();
 }
 
-void pipepp::gui::pipeline_board::_calc_hierarchical_node_positions(pipepp::impl__::pipe_proxy_base root_proxy, std::unordered_multimap<pipepp::pipe_id_t, pipepp::pipe_id_t>& connections, std::map<pipepp::pipe_id_t, nana::size>& positions)
+void pipepp::gui::pipeline_board::_calc_hierarchical_node_positions(pipepp::detail::pipe_proxy_base root_proxy, std::unordered_multimap<pipepp::pipe_id_t, pipepp::pipe_id_t>& connections, std::map<pipepp::pipe_id_t, nana::size>& positions)
 {
     // 1. 계층 구조 계산 방식
     //      1. 루트 프록시부터 자손 프록시로 iterate해 마주치는 모든 id를 hierarchy_occurences의
@@ -133,7 +133,7 @@ void pipepp::gui::pipeline_board::_calc_hierarchical_node_positions(pipepp::impl
     //        단, 상기한 바와 같이 먼저 max_hierarchy가 일치해야 합니다.
     //
     using namespace std;
-    using impl__::pipe_proxy_base;
+    using detail::pipe_proxy_base;
     set<pipe_id_t> visit_mask;
     auto recursive_build_tree
       = [&](auto& recall, pipe_proxy_base const& proxy, size_t width, size_t hierarchy) -> size_t {
@@ -193,7 +193,7 @@ void pipepp::gui::pipeline_board::_m_typeface(const nana::paint::font& font)
     }
 }
 
-void pipepp::gui::pipeline_board::reset_pipeline(std::shared_ptr<pipepp::impl__::pipeline_base> pipeline)
+void pipepp::gui::pipeline_board::reset_pipeline(std::shared_ptr<pipepp::detail::pipeline_base> pipeline)
 {
     // TODO
     // 0. 이미 존재하는 pipe_view 개체를 모두 소거합니다.

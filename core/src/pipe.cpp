@@ -4,7 +4,7 @@
 #include "kangsw/misc.hxx"
 #include "pipepp/pipe.hpp"
 
-std::optional<bool> pipepp::impl__::pipe_base::input_slot_t::can_submit_input(fence_index_t output_fence) const
+std::optional<bool> pipepp::detail::pipe_base::input_slot_t::can_submit_input(fence_index_t output_fence) const
 {
     auto active = active_input_fence();
     if (output_fence < active) {
@@ -21,7 +21,7 @@ std::optional<bool> pipepp::impl__::pipe_base::input_slot_t::can_submit_input(fe
     return is_idle && output_fence == active;
 }
 
-void pipepp::impl__::pipe_base::input_slot_t::_prepare_next()
+void pipepp::detail::pipe_base::input_slot_t::_prepare_next()
 {
     using namespace kangsw::enum_arithmetic;
     for (auto& e : ready_conds_) { e = input_link_state::none; }
@@ -29,7 +29,7 @@ void pipepp::impl__::pipe_base::input_slot_t::_prepare_next()
     this->active_input_fence_object_.reset();
 }
 
-void pipepp::impl__::pipe_base::input_slot_t::_propagate_fence_abortion(fence_index_t pending_fence, size_t output_link_index)
+void pipepp::detail::pipe_base::input_slot_t::_propagate_fence_abortion(fence_index_t pending_fence, size_t output_link_index)
 {
     using namespace std::chrono_literals;
 
@@ -59,7 +59,7 @@ void pipepp::impl__::pipe_base::input_slot_t::_propagate_fence_abortion(fence_in
     }
 }
 
-void pipepp::impl__::pipe_base::executor_slot::_launch_async(launch_args_t arg)
+void pipepp::detail::pipe_base::executor_slot::_launch_async(launch_args_t arg)
 {
     std::lock_guard destruction_guard{owner_.destruction_guard_};
 
@@ -73,12 +73,12 @@ void pipepp::impl__::pipe_base::executor_slot::_launch_async(launch_args_t arg)
     owner_._thread_pool().add_task(&executor_slot::_launch_callback, this);
 }
 
-kangsw::timer_thread_pool& pipepp::impl__::pipe_base::executor_slot::workers()
+kangsw::timer_thread_pool& pipepp::detail::pipe_base::executor_slot::workers()
 {
     return owner_._thread_pool();
 }
 
-void pipepp::impl__::pipe_base::executor_slot::_launch_callback()
+void pipepp::detail::pipe_base::executor_slot::_launch_callback()
 {
     using namespace kangsw::literals;
 
@@ -122,7 +122,7 @@ void pipepp::impl__::pipe_base::executor_slot::_launch_callback()
     }
 }
 
-void pipepp::impl__::pipe_base::executor_slot::_perform_post_output()
+void pipepp::detail::pipe_base::executor_slot::_perform_post_output()
 {
     if (!_is_output_order()) {
         using namespace std::literals;
@@ -153,7 +153,7 @@ void pipepp::impl__::pipe_base::executor_slot::_perform_post_output()
     owner_.destruction_guard_.unlock();
 }
 
-void pipepp::impl__::pipe_base::executor_slot::_perform_output_link(size_t output_index, bool aborting)
+void pipepp::detail::pipe_base::executor_slot::_perform_output_link(size_t output_index, bool aborting)
 {
     for (; output_index < owner_.output_links_.size();) {
         assert(_is_output_order());
@@ -203,7 +203,7 @@ void pipepp::impl__::pipe_base::executor_slot::_perform_output_link(size_t outpu
     _perform_post_output();
 }
 
-pipepp::impl__::pipe_base::tweak_t pipepp::impl__::pipe_base::get_prelaunch_tweaks()
+pipepp::detail::pipe_base::tweak_t pipepp::detail::pipe_base::get_prelaunch_tweaks()
 {
     if (is_launched()) { throw pipe_exception("tweak must be editted before launch!"); }
     return tweak_t{
@@ -213,7 +213,7 @@ pipepp::impl__::pipe_base::tweak_t pipepp::impl__::pipe_base::get_prelaunch_twea
     };
 }
 
-pipepp::impl__::pipe_base::const_tweak_t pipepp::impl__::pipe_base::read_tweaks() const
+pipepp::detail::pipe_base::const_tweak_t pipepp::detail::pipe_base::read_tweaks() const
 {
     return const_tweak_t{
       .selective_input = &mode_selectie_input_,
@@ -222,7 +222,7 @@ pipepp::impl__::pipe_base::const_tweak_t pipepp::impl__::pipe_base::read_tweaks(
     };
 }
 
-void pipepp::impl__::pipe_base::_connect_output_to_impl(pipe_base* other, pipepp::impl__::pipe_base::output_link_adapter_type adapter)
+void pipepp::detail::pipe_base::_connect_output_to_impl(pipe_base* other, pipepp::detail::pipe_base::output_link_adapter_type adapter)
 {
     if (is_launched() || other->is_launched()) {
         throw pipe_link_exception("pipe already launched");
@@ -302,7 +302,7 @@ void pipepp::impl__::pipe_base::_connect_output_to_impl(pipe_base* other, pipepp
     assert(other->input_links_.size() == other->input_slot_.ready_conds_.size());
 }
 
-void pipepp::impl__::pipe_base::executor_conditions(std::vector<executor_condition_t>& conds) const
+void pipepp::detail::pipe_base::executor_conditions(std::vector<executor_condition_t>& conds) const
 {
     conds.resize(num_executors());
     for (auto i : kangsw::iota(conds.size())) {
@@ -323,14 +323,14 @@ void pipepp::impl__::pipe_base::executor_conditions(std::vector<executor_conditi
     }
 }
 
-void pipepp::impl__::pipe_base::mark_dirty()
+void pipepp::detail::pipe_base::mark_dirty()
 {
     for (auto& exec_ptr : executor_slots_) {
         exec_ptr->context_write()._mark_dirty();
     }
 }
 
-void pipepp::impl__::pipe_base::launch(size_t num_executors, std::function<std::unique_ptr<executor_base>()>&& factory)
+void pipepp::detail::pipe_base::launch(size_t num_executors, std::function<std::unique_ptr<executor_base>()>&& factory)
 {
     if (is_launched()) {
         throw pipe_exception("this pipe is already launched!");
@@ -348,13 +348,13 @@ void pipepp::impl__::pipe_base::launch(size_t num_executors, std::function<std::
     input_slot_.active_input_fence_.store((fence_index_t)1, std::memory_order_relaxed);
 }
 
-void pipepp::impl__::pipe_base::_rotate_output_order(executor_slot* ref)
+void pipepp::detail::pipe_base::_rotate_output_order(executor_slot* ref)
 {
     assert(ref == executor_slots_[_pending_output_slot_index()].get());
     output_exec_slot_.fetch_add(1);
 }
 
-void pipepp::impl__::pipe_base::_refresh_interval_timer()
+void pipepp::detail::pipe_base::_refresh_interval_timer()
 {
     constexpr auto RELAXED = std::memory_order_relaxed;
     auto tp = latest_output_tp_.load(RELAXED);
@@ -362,13 +362,13 @@ void pipepp::impl__::pipe_base::_refresh_interval_timer()
     latest_output_tp_.compare_exchange_strong(tp, system_clock::now());
 }
 
-void pipepp::impl__::pipe_base::_update_latest_latency(system_clock::time_point launched)
+void pipepp::detail::pipe_base::_update_latest_latency(system_clock::time_point launched)
 {
     constexpr auto RELAXED = std::memory_order_relaxed;
     latest_output_latency_.store(system_clock::now() - launched, RELAXED);
 }
 
-void pipepp::impl__::pipe_base::input_slot_t::_supply_input_to_active_executor(bool is_initial_call)
+void pipepp::detail::pipe_base::input_slot_t::_supply_input_to_active_executor(bool is_initial_call)
 {
     if (is_initial_call) {
         owner_.destruction_guard_.lock();
@@ -397,7 +397,7 @@ void pipepp::impl__::pipe_base::input_slot_t::_supply_input_to_active_executor(b
     owner_.destruction_guard_.unlock();
 }
 
-bool pipepp::impl__::pipe_base::input_slot_t::_submit_input(fence_index_t output_fence, pipepp::pipe_id_t input_pipe, std::function<void(std::any&)> const& input_manip, std::shared_ptr<pipepp::base_shared_context> const& fence_obj, bool abort_current)
+bool pipepp::detail::pipe_base::input_slot_t::_submit_input(fence_index_t output_fence, pipepp::pipe_id_t input_pipe, std::function<void(std::any&)> const& input_manip, std::shared_ptr<pipepp::base_shared_context> const& fence_obj, bool abort_current)
 {
     std::lock_guard lock{cached_input_.second};
     std::lock_guard destruction_guard{owner_.destruction_guard_};
@@ -483,7 +483,7 @@ bool pipepp::impl__::pipe_base::input_slot_t::_submit_input(fence_index_t output
     return true;
 }
 
-bool pipepp::impl__::pipe_base::input_slot_t::_submit_input_direct(std::any&& input, std::shared_ptr<pipepp::base_shared_context> fence_object)
+bool pipepp::detail::pipe_base::input_slot_t::_submit_input_direct(std::any&& input, std::shared_ptr<pipepp::base_shared_context> fence_object)
 {
     if (owner_.is_paused()) { return false; }
 
@@ -506,7 +506,7 @@ bool pipepp::impl__::pipe_base::input_slot_t::_submit_input_direct(std::any&& in
     return true;
 }
 
-bool pipepp::impl__::pipe_base::input_slot_t::_can_submit_input_direct() const
+bool pipepp::detail::pipe_base::input_slot_t::_can_submit_input_direct() const
 {
     return owner_._active_exec_slot()._is_executor_busy() == false;
 }

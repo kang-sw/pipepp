@@ -16,7 +16,7 @@ class item_proxy;
 } // namespace nana
 
 namespace pipepp {
-namespace impl__ {
+namespace detail {
 class pipeline_base;
 }
 } // namespace pipepp
@@ -35,7 +35,7 @@ public:
      * \param pl Pipeline pointer to manage object lifetime
      * \param option Option reference
      */
-    void reload(std::weak_ptr<impl__::pipeline_base> pl, impl__::option_base* option);
+    void reload(std::weak_ptr<detail::pipeline_base> pl, detail::option_base* option);
 
     void vertical(bool do_vertical = true);
 

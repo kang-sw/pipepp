@@ -16,7 +16,7 @@
 #include "pipepp/options.hpp"
 
 namespace pipepp {
-namespace impl__ {
+namespace detail {
 class pipeline_base;
 }
 
@@ -67,14 +67,14 @@ enum class pipe_id_t : size_t { none = -1 };
 
 /** fence shared data의 기본 상속형입니다. */
 struct base_shared_context {
-    friend class impl__::pipeline_base;
+    friend class detail::pipeline_base;
     virtual ~base_shared_context() = default;
     auto& option() const noexcept { return global_options_; }
-    operator impl__::option_base const &() const { return *global_options_; }
+    operator detail::option_base const &() const { return *global_options_; }
     auto launch_time_point() const { return launched_; }
 
 private:
-    impl__::option_base const* global_options_;
+    detail::option_base const* global_options_;
     std::chrono::system_clock::time_point launched_;
 };
 
@@ -86,7 +86,7 @@ enum class executor_condition_t : uint8_t {
     busy_output
 };
 
-namespace impl__ {
+namespace detail {
 
 /** 기본 실행기. */
 class executor_base {
@@ -462,13 +462,13 @@ void pipe_base::launch_by(size_t num_executors, Fn_&& factory, Args_&&... args)
         args...)); // Intentionally not forwarded to prevent move assignment
 }
 
-} // namespace impl__
+} // namespace detail
 /**
  * 독립된 알고리즘 실행기 하나를 정의합니다.
  * 파이프에 공급하는 모든 실행기는 이 클래스를 상속해야 합니다.
  */
 template <typename Exec_>
-class executor final : public impl__::executor_base {
+class executor final : public detail::executor_base {
 public:
     using executor_type = Exec_;
     using input_type = typename executor_type::input_type;

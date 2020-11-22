@@ -8,7 +8,7 @@
 #include "pipepp/pipe.hpp"
 
 namespace pipepp {
-namespace impl__ {
+namespace detail {
 
 class pipeline_base : public std::enable_shared_from_this<pipeline_base> {
 protected:
@@ -121,13 +121,13 @@ inline decltype(auto) pipeline_base::get_first()
     return pipe_proxy_base(weak_from_this(), *pipes_.front());
 }
 
-inline decltype(auto) pipepp::impl__::pipeline_base::get_pipe(pipe_id_t id)
+inline decltype(auto) pipepp::detail::pipeline_base::get_pipe(pipe_id_t id)
 {
     auto index = id_mapping_.at(id);
     return pipe_proxy_base(weak_from_this(), *pipes_.at(index));
 }
 
-inline auto pipepp::impl__::pipeline_base::get_pipe(std::string_view s)
+inline auto pipepp::detail::pipeline_base::get_pipe(std::string_view s)
 {
     std::optional<pipe_proxy_base> rval;
 
@@ -141,13 +141,13 @@ inline auto pipepp::impl__::pipeline_base::get_pipe(std::string_view s)
     return std::move(rval);
 }
 
-} // namespace impl__
+} // namespace detail
 
 // template <typename SharedData_, typename InitialExec_>
 // class pipeline;
 
 template <typename SharedData_, typename Exec_>
-class pipe_proxy final : public impl__::pipe_proxy_base {
+class pipe_proxy final : public detail::pipe_proxy_base {
     template <typename, typename>
     friend class pipeline;
     template <typename, typename>
@@ -161,7 +161,7 @@ public:
     using pipeline_type = pipeline<SharedData_, Exec_>;
 
 private:
-    pipe_proxy(const std::weak_ptr<impl__::pipeline_base>& pipeline, impl__::pipe_base& pipe_ref)
+    pipe_proxy(const std::weak_ptr<detail::pipeline_base>& pipeline, detail::pipe_base& pipe_ref)
         : pipe_proxy_base(pipeline, pipe_ref)
     {
     }
@@ -219,7 +219,7 @@ pipe_proxy<SharedData_, Exec_>::add_output_handler(Fn_&& handler)
 }
 
 template <typename SharedData_, typename InitialExec_>
-class pipeline final : public impl__::pipeline_base {
+class pipeline final : public detail::pipeline_base {
     template <typename, typename>
     friend class pipe_proxy;
 
@@ -229,7 +229,7 @@ public:
     using input_type = typename initial_executor_type::input_type;
     using initial_proxy_type = pipe_proxy<shared_data_type, initial_executor_type>;
 
-    using factory_return_type = std::unique_ptr<impl__::executor_base>;
+    using factory_return_type = std::unique_ptr<detail::executor_base>;
     ~pipeline() { sync(); }
 
 private:
@@ -237,14 +237,14 @@ private:
     auto& _create_pipe(std::string initial_pipe_name, bool is_optional, size_t num_execs, Fn_&& exec_factory, Args_&&... args)
     {
         if (num_execs == 0) { throw pipe_exception("invalid number of executors"); }
-        auto fn = std::ranges::find_if(pipes_, [&initial_pipe_name](std::unique_ptr<impl__::pipe_base> const& pipe) {
+        auto fn = std::ranges::find_if(pipes_, [&initial_pipe_name](std::unique_ptr<detail::pipe_base> const& pipe) {
             return pipe->name() == initial_pipe_name;
         });
         if (fn != pipes_.end()) { throw pipe_exception("name duplication detected"); }
 
         auto index = pipes_.size();
         auto& pipe = pipes_.emplace_back(
-          std::make_unique<impl__::pipe_base>(
+          std::make_unique<detail::pipe_base>(
             std::move(initial_pipe_name), is_optional));
         pipe->_set_thread_pool_reference(&workers_);
         pipe->options().reset_as_default<Exec_>();
@@ -290,7 +290,7 @@ public:
     initial_proxy_type front()
     {
         return initial_proxy_type{
-          std::static_pointer_cast<impl__::pipeline_base>(shared_from_this()),
+          std::static_pointer_cast<detail::pipeline_base>(shared_from_this()),
           *pipes_.front()};
     }
 

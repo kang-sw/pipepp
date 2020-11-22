@@ -24,7 +24,7 @@ public:
     /**
      * 파이프 프록시로 위젯 뷰를 리셋합니다.
      */
-    void reset_view(std::weak_ptr<impl__::pipeline_base> pipeline, pipe_id_t pipe);
+    void reset_view(std::weak_ptr<detail::pipeline_base> pipeline, pipe_id_t pipe);
 
     /**
      * 뷰 업데이트

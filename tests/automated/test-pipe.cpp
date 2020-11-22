@@ -62,7 +62,7 @@ public:
 TEST_CASE("pipe initialization", "[.]")
 {
     for (auto ITER = 0; ITER < 5; ++ITER) {
-        using namespace impl__;
+        using namespace detail;
         using namespace std::chrono_literals;
         kangsw::timer_thread_pool workers{1024, 2};
 

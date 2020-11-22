@@ -12,7 +12,7 @@ struct arg_listbox;
 namespace pipepp {
 struct execution_context_data;
 enum class pipe_id_t : unsigned long long;
-namespace impl__ {
+namespace detail {
 class pipeline_base;
 }
 } // namespace pipepp
@@ -29,7 +29,7 @@ public:
     ~pipe_detail_panel();
 
 public:
-    void reset_pipe(std::weak_ptr<impl__::pipeline_base> pl, pipe_id_t id);
+    void reset_pipe(std::weak_ptr<detail::pipeline_base> pl, pipe_id_t id);
     void update(std::shared_ptr<execution_context_data>);
 
 public:

@@ -27,7 +27,7 @@ struct pipepp::gui::pipe_detail_panel::data_type {
     pipe_detail_panel& self;
     pipeline_board* board_ref;
 
-    std::weak_ptr<impl__::pipeline_base> pipeline;
+    std::weak_ptr<detail::pipeline_base> pipeline;
     pipe_id_t pipe;
 
     nana::textbox timers{self};
@@ -105,7 +105,7 @@ pipepp::gui::pipe_detail_panel::pipe_detail_panel(nana::window owner, const nana
 
 pipepp::gui::pipe_detail_panel::~pipe_detail_panel() = default;
 
-void pipepp::gui::pipe_detail_panel::reset_pipe(std::weak_ptr<impl__::pipeline_base> pl, pipe_id_t id)
+void pipepp::gui::pipe_detail_panel::reset_pipe(std::weak_ptr<detail::pipeline_base> pl, pipe_id_t id)
 {
     auto& m = *impl_;
     m.pipeline = pl;

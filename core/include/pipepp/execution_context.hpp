@@ -10,9 +10,9 @@
 #include "kangsw/spinlock.hxx"
 
 namespace pipepp {
-namespace impl__ {
+namespace detail {
 class option_base;
-} // namespace impl__
+} // namespace detail
 
 /**
  * 전역 string table을 얻어옵니다. 모든 execution_context는 이 함수를 사용.
@@ -95,7 +95,7 @@ public:
 
 public: // accessor
     auto const& option() const { return *options_; }
-    operator impl__::option_base const &() const { return *options_; }
+    operator detail::option_base const &() const { return *options_; }
 
 public: // methods
     /**
@@ -123,7 +123,7 @@ public: // methods
 
 public:                    // internal public methods
     void _clear_records(); // invoke() 이전 호출
-    void _internal__set_option(impl__::option_base const* opt) { options_ = opt; }
+    void _internal__set_option(detail::option_base const* opt) { options_ = opt; }
     void _swap_data_buff(); // invoke() 이후 호출
     void _mark_dirty() { inv_opt_dirty_.clear(std::memory_order::relaxed); }
 
@@ -138,7 +138,7 @@ private: // private methods
     auto& _wr() { return context_data_[front_data_buffer_]; }
 
 private:
-    class impl__::option_base const* options_ = {};
+    class detail::option_base const* options_ = {};
 
     std::array<std::shared_ptr<execution_context_data>, 2> context_data_;
     bool front_data_buffer_ = false;

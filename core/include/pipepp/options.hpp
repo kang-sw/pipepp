@@ -7,7 +7,7 @@
 #include "nlohmann/json.hpp"
 
 namespace pipepp {
-namespace impl__ {
+namespace detail {
 template <typename Exec_, typename Ty_>
 struct _option_instance;
 using verify_function_t = std::function<bool(nlohmann::json&)>;
@@ -125,14 +125,14 @@ struct _option_instance {
     std::string const key_;
 };
 
-} // namespace impl__
+} // namespace detail
 } // namespace pipepp
 
 /**
  * PIPEPP_DEFINE_OPTION(TYPE, NAME, DEFAULT_VALUE [, CATEGORY[, DESCRIPTION]])
  */
 #define PIPEPP_OPTION_2(TYPE, NAME, DEFAULT_VALUE, ...)                               \
-    inline static const ::pipepp::impl__::_option_instance<___executor_type___, TYPE> \
+    inline static const ::pipepp::detail::_option_instance<___executor_type___, TYPE> \
       NAME{DEFAULT_VALUE, #NAME, ##__VA_ARGS__};
 
 #define PIPEPP_OPTION(NAME, DEFAULT_VALUE, ...) \

@@ -21,7 +21,7 @@ struct pipepp::gui::pipe_view::data_type {
     pipe_view& self;
     pipeline_board* board_ref;
 
-    std::weak_ptr<impl__::pipeline_base> pipeline;
+    std::weak_ptr<detail::pipeline_base> pipeline;
     pipe_id_t pipe;
 
     std::shared_ptr<execution_context_data> exec_data;
@@ -185,7 +185,7 @@ pipepp::gui::pipe_view::pipe_view(const nana::window& wd, const nana::rectangle&
 
 pipepp::gui::pipe_view::~pipe_view() = default;
 
-void pipepp::gui::pipe_view::reset_view(std::weak_ptr<impl__::pipeline_base> pipeline, pipe_id_t pipe)
+void pipepp::gui::pipe_view::reset_view(std::weak_ptr<detail::pipeline_base> pipeline, pipe_id_t pipe)
 {
     auto& m = *impl_;
     m.pipeline = pipeline;
@@ -232,7 +232,7 @@ void pipepp::gui::pipe_view::update()
     }
     else if (clock_type::now() - m.latest_exec_receive > 500ms) {
         m.latest_exec_receive = clock_type::now();
-        auto has_any_paused_input = [&](auto recurse, impl__::pipe_proxy_base const& prx) -> bool {
+        auto has_any_paused_input = [&](auto recurse, detail::pipe_proxy_base const& prx) -> bool {
             if (prx.is_paused()) { return true; }
             for (auto index : kangsw::iota(prx.num_input_nodes())) {
                 if (recurse(recurse, prx.get_input_node(index))) {

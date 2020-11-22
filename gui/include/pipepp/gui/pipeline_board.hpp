@@ -4,7 +4,7 @@
 #include "pipepp/pipeline.hpp"
 
 namespace pipepp {
-namespace impl__ {
+namespace detail {
 class pipeline_base;
 }
 } // namespace pipepp
@@ -77,7 +77,7 @@ public:
     /**
      * 인터페이스 할 파이프라인을 지정합니다.
      */
-    void reset_pipeline(std::shared_ptr<impl__::pipeline_base> pipeline);
+    void reset_pipeline(std::shared_ptr<detail::pipeline_base> pipeline);
 
     /**
      * 파이프라인 뷰 정보 업데이트 신호 보내기
@@ -103,7 +103,7 @@ public:
 
 private:
     void _clear_views();
-    void _calc_hierarchical_node_positions(impl__::pipe_proxy_base root_proxy, std::unordered_multimap<pipepp::pipe_id_t, pipepp::pipe_id_t>& connections, std::map<pipepp::pipe_id_t, nana::size>& positions);
+    void _calc_hierarchical_node_positions(detail::pipe_proxy_base root_proxy, std::unordered_multimap<pipepp::pipe_id_t, pipepp::pipe_id_t>& connections, std::map<pipepp::pipe_id_t, nana::size>& positions);
     void _update_widget_pos();
 
 protected:

@@ -17,8 +17,8 @@ using namespace nana;
 
 struct pipepp::gui::option_panel::body_type {
     option_panel& self;
-    impl__::option_base* option = {};
-    std::weak_ptr<impl__::pipeline_base> pipeline;
+    detail::option_base* option = {};
+    std::weak_ptr<detail::pipeline_base> pipeline;
 
     /* WIDGETS */
     place layout{self};
@@ -255,7 +255,7 @@ void pipepp::gui::option_panel::_update_check_button(bool operate)
     _update_enterbox(operate);
 }
 
-void pipepp::gui::option_panel::reload(std::weak_ptr<impl__::pipeline_base> pl, impl__::option_base* option)
+void pipepp::gui::option_panel::reload(std::weak_ptr<detail::pipeline_base> pl, detail::option_base* option)
 {
     auto& m = *impl_;
     m.option = option;

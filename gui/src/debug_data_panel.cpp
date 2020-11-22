@@ -180,7 +180,7 @@ public:
               },
               data.data);
 
-            text_.fgcolor(colapsed_or_subscribed_ ? colors::yellow : colors::lawn_green);
+            text_.fgcolor(is_obsolete() ? colors::dim_gray : colapsed_or_subscribed_ ? colors::yellow : colors::lawn_green);
             text_.bgcolor(colapsed_or_subscribed_ ? colors::dark_green : colors::black);
         }
 

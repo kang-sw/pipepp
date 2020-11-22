@@ -70,7 +70,7 @@ void pipepp::gui::pipe_view::_label_events()
             auto extent = gp.text_extent_size(text);
             nana::point str_draw_pos = {};
             str_draw_pos.y = slot * (extent.height + 2) + 3;
-            str_draw_pos.x = m.label.size().width - 5 - extent.width;
+            str_draw_pos.x = m.label.size().width * 94 / 100 - extent.width;
             gp.string(str_draw_pos, text, color);
         };
 
@@ -196,7 +196,7 @@ void pipepp::gui::pipe_view::update()
         m.exec_data = proxy.consume_execution_result();
         // auto time = m.exec_data->timers[0].elapsed;
 
-        auto lst_tm = {proxy.output_interval(), m.exec_data->timers[0].elapsed, proxy.output_latency()};
+        auto lst_tm = {proxy.output_interval(), m.exec_data->timers[1].elapsed, proxy.output_latency()};
         auto lst_tget = {&m.label_text_interval, &m.label_text_exec, &m.label_text_latency};
         auto lst_lerp = {&m.label_dur_interval, &m.label_dur_exec, &m.label_dur_latency};
         for (

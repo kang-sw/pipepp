@@ -12,7 +12,7 @@ namespace impl__ {
 
 class pipeline_base : public std::enable_shared_from_this<pipeline_base> {
 protected:
-    pipeline_base() = default;
+    pipeline_base();
     virtual ~pipeline_base() = default;
 
 public:

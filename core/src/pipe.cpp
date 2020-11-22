@@ -98,8 +98,13 @@ void pipepp::impl__::pipe_base::executor_slot::_launch_callback()
           std::memory_order_relaxed);
     }
 
+    // 출력 순서까지 대기
+    using namespace std::literals;
+    PIPEPP_ELAPSE_BLOCK("B. Await for output order")
+    while (!_is_output_order()) { std::this_thread::sleep_for(50us); }
+
     // 먼저, 연결된 일반 핸들러를 모두 처리합니다.
-    PIPEPP_ELAPSE_BLOCK("B. Output Handler Overhead")
+    PIPEPP_ELAPSE_BLOCK("C. Output Handler Overhead")
     {
         auto fence_obj = fence_object_.get();
         for (auto& fn : owner_.output_handlers_) {
@@ -107,9 +112,10 @@ void pipepp::impl__::pipe_base::executor_slot::_launch_callback()
         }
     }
 
-    timer_scope_link_ = context_write().timer_scope("C. Linker Overhead");
+    timer_scope_link_ = context_write().timer_scope("D. Linker Overhead");
     if (owner_.output_links_.empty() == false) {
-        workers().add_task(&executor_slot::_output_link_callback, this, 0, exec_res > pipe_error::warning);
+        // workers().add_task(&executor_slot::_output_link_callback, this, 0, exec_res > pipe_error::warning);
+        _output_link_callback(0, exec_res > pipe_error::warning);
     }
     else {
         _perform_post_output();
@@ -149,49 +155,46 @@ void pipepp::impl__::pipe_base::executor_slot::_perform_post_output()
 
 void pipepp::impl__::pipe_base::executor_slot::_output_link_callback(size_t output_index, bool aborting)
 {
-    auto& link = owner_.output_links_[output_index];
-    auto& slot = link.pipe->input_slot_;
-    using namespace std::chrono;
-    auto delay = 0us;
+    for (; output_index < owner_.output_links_.size();) {
+        assert(_is_output_order());
 
-    if (link.pipe->is_launched() == false) {
-        throw pipe_exception("linked pipe is not launched yet!");
-    }
+        auto& link = owner_.output_links_[output_index];
+        auto& slot = link.pipe->input_slot_;
+        using namespace std::chrono;
+        auto delay = 0us;
 
-    if (!_is_output_order()) {
-        // 만약 이 실행기의 출력 순서가 아직 오지 않았다면, 단순히 대기합니다.
-        delay = 50us;
-    }
-    else if (auto check = slot.can_submit_input(fence_index_); check.has_value()) {
-        auto input_manip = [this, &link](std::any& out) {
-            link.handler(*fence_object_, cached_output_, out);
-        };
+        if (link.pipe->is_launched() == false) {
+            throw pipe_exception("linked pipe is not launched yet!");
+        }
 
-        // 만약 optional인 경우, 입력이 준비되지 않았다면 abort에 true를 지정해,
-        //현재 입력 fence를 즉시 취소합니다.
-        bool const abort_optional = aborting || (slot.is_optional_ && !*check);
-        bool const can_try_submit = *check || abort_optional;
-        if (can_try_submit && slot._submit_input(fence_index_, owner_.id(), input_manip, fence_object_, abort_optional)) {
-            // no need to retry.
-            // go to next index.
+        if (auto check = slot.can_submit_input(fence_index_); check.has_value()) {
+            auto input_manip = [this, &link](std::any& out) {
+                link.handler(*fence_object_, cached_output_, out);
+            };
+
+            // 만약 optional인 경우, 입력이 준비되지 않았다면 abort에 true를 지정해,
+            //현재 입력 fence를 즉시 취소합니다.
+            bool const abort_optional = aborting || (slot.is_optional_ && !*check);
+            bool const can_try_submit = *check || abort_optional;
+            if (can_try_submit && slot._submit_input(fence_index_, owner_.id(), input_manip, fence_object_, abort_optional)) {
+                // no need to retry.
+                // go to next index.
+                ++output_index;
+            }
+            else {
+                // Retry after short delay.
+                delay = 200us;
+            }
+        }
+        else { // simply discards current output link
             ++output_index;
         }
-        else {
-            // Retry after short delay.
-            delay = 200us;
-        }
-    }
-    else { // simply discards current output link
-        ++output_index;
-    }
 
-    if (output_index < owner_.output_links_.size()) {
         // 다음 출력 콜백을 예약합니다.
-        workers().add_timer(delay, &executor_slot::_output_link_callback, this, output_index, aborting);
+        // workers().add_timer(delay, &executor_slot::_output_link_callback, this, output_index, aborting);
+        if (delay > 0us) { std::this_thread::sleep_for(delay); }
     }
-    else {
-        _perform_post_output();
-    }
+    _perform_post_output();
 }
 
 void pipepp::impl__::pipe_base::_connect_output_to_impl(pipe_base* other, pipepp::impl__::pipe_base::output_link_adapter_type adapter)

@@ -2,6 +2,12 @@
 #include <mutex>
 #include "pipepp/pipeline.hpp"
 
+pipepp::impl__::pipeline_base::pipeline_base()
+{
+    using namespace std::literals;
+    workers_.max_task_interval_time = 100us;
+}
+
 void pipepp::impl__::pipeline_base::sync()
 {
     for (bool is_busy = true; is_busy;) {

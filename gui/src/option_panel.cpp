@@ -195,8 +195,6 @@ void pipepp::gui::option_panel::_update_enterbox(bool trig_modify)
         correct = false;
     }
 
-    widget.bgcolor(correct ? colors::light_green : colors::orange_red);
-
     if (trig_modify && correct) {
         for (auto& index : selections) {
             auto sel = m.input_array_object_list.at(index);
@@ -204,6 +202,12 @@ void pipepp::gui::option_panel::_update_enterbox(bool trig_modify)
             value->merge_patch(parsed_json);
 
             sel.text(1, value->dump());
+        }
+        auto& key = m.selected_proxy.key();
+        if (!m.option->verify(key)) {
+            m.selected_proxy.select(false);
+            m.selected_proxy.select(true);
+            return;
         }
 
         _refresh_item(m.selected_proxy);
@@ -213,6 +217,8 @@ void pipepp::gui::option_panel::_update_enterbox(bool trig_modify)
 
         m.input_enter.select(true);
     }
+
+    widget.bgcolor(correct ? colors::light_green : colors::orange_red);
 }
 
 void pipepp::gui::option_panel::_assign_enterbox_events()

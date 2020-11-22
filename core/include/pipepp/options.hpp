@@ -10,6 +10,7 @@ namespace pipepp {
 namespace impl__ {
 template <typename Exec_, typename Ty_>
 struct _option_instance;
+using verify_function_t = std::function<bool(nlohmann::json&)>;
 
 class option_base final {
     template <typename Exec_, typename Ty_>
@@ -37,11 +38,24 @@ public:
     auto& categories() const { return categories_; }
     auto& names() const { return names_; }
 
+    bool verify(std::string const& n, nlohmann::json& arg) const
+    {
+        return verifiers_.at(n)(arg);
+    }
+
+    bool verify(std::string const& n)
+    {
+        auto& json = value().at(n);
+        auto& verify = verifiers_.at(n);
+        return verify(json);
+    }
+
 private:
     nlohmann::json options_;
     std::map<std::string, std::string> descriptions_;
     std::map<std::string, std::string> categories_;
     std::map<std::string, std::string> names_;
+    std::map<std::string, verify_function_t> verifiers_;
     mutable std::shared_mutex lock_;
 };
 
@@ -54,6 +68,7 @@ public:
     std::map<std::string, std::string> init_descs_;
     std::map<std::string, std::string> init_categories_;
     std::map<std::string, std::string> init_names_;
+    std::map<std::string, verify_function_t> init_verifies_;
 };
 
 template <typename Exec_>
@@ -70,6 +85,7 @@ void option_base::reset_as_default()
     categories_ = _opt_spec<Exec_>().init_categories_;
     descriptions_ = _opt_spec<Exec_>().init_descs_;
     names_ = _opt_spec<Exec_>().init_names_;
+    verifiers_ = _opt_spec<Exec_>().init_verifies_;
 }
 
 template <typename Exec_, typename Ty_>
@@ -77,15 +93,29 @@ struct _option_instance {
     using spec_type = option_specification<Exec_>;
     using value_type = Ty_;
 
-    _option_instance(Ty_&& init_value, std::string name, std::string category = "", std::string desc = "", std::function<void(Ty_&)> constr = {})
+    _option_instance(Ty_&& init_value, std::string name, std::string category = "", std::string desc = "", std::function<void(Ty_&, bool&)> verifier = {})
         : key_(category + name)
-        , constr_(constr ? std::move(constr) : [](auto&) {})
     {
         if (_opt_spec<Exec_>().init_values_.contains(key_)) throw;
+        if (!verifier) {
+            verifier = [](auto&, bool&) {};
+        }
+
+        verify_function_t verify = [fn = std::move(verifier)](nlohmann::json& arg) -> bool {
+            bool is_valid = true;
+            Ty_ value = arg;
+
+            fn(value, is_valid);
+            if (!is_valid) { arg = value; }
+
+            return is_valid;
+        };
+
         _opt_spec<Exec_>().init_values_[key_] = std::forward<Ty_>(init_value);
         _opt_spec<Exec_>().init_categories_[key_] = std::move(category);
         _opt_spec<Exec_>().init_descs_[key_] = std::move(desc);
         _opt_spec<Exec_>().init_names_[key_] = std::move(name);
+        _opt_spec<Exec_>().init_verifies_[key_] = std::move(verify);
     }
 
     template <typename RTy_>
@@ -94,11 +124,10 @@ struct _option_instance {
     {
         Ty_ value;
         o.lock_read(), value = o.options_[key_].get<Ty_>();
-        return constr_(value), value;
+        return value;
     }
 
     std::string const key_;
-    std::function<void(Ty_&)> const constr_;
 };
 
 } // namespace impl__

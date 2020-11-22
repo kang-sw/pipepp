@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "kangsw/misc.hxx"
+#include "kangsw/ptr_proxy.hxx"
 #include "kangsw/thread_pool.hxx"
 #include "kangsw/thread_utility.hxx"
 #include "pipepp/execution_context.hpp"
@@ -129,6 +130,11 @@ public:
     }
 
 public:
+    struct tweak_t {
+        kangsw::ptr_proxy<bool> selective_input;
+        kangsw::ptr_proxy<bool> selective_output;
+    };
+
     class input_slot_t {
         friend class pipe_base;
 
@@ -260,7 +266,7 @@ public:
          */
         void _launch_callback(); // 파라미터는 나중에 추가
         void _perform_post_output();
-        void _output_link_callback(size_t output_index, bool aborting);
+        void _perform_output_link(size_t output_index, bool aborting);
 
     private:
         pipe_base& owner_;
@@ -310,6 +316,7 @@ public:
     bool is_paused() const { return paused_.load(std::memory_order_relaxed); }
     void pause() { paused_.store(true, std::memory_order_relaxed); }
     void unpause() { paused_.store(false, std::memory_order_relaxed); }
+    bool recently_aborted() const { return recently_input_aborted_.load(std::memory_order::relaxed); }
 
     /** 상태 점검 */
     bool is_optional_input() const { return input_slot_.is_optional_; }
@@ -350,6 +357,9 @@ public:
     /** 출력 핸들러 추가 */
     void add_output_handler(output_handler_type handler) { output_handlers_.emplace_back(std::move(handler)); };
 
+    /** pre launch tweak 획득 */
+    tweak_t get_prelaunch_tweaks();
+
 private:
     /** this출력->to입력 방향으로 연결합니다. */
     void _connect_output_to_impl(pipe_base* other, output_link_adapter_type adapter);
@@ -369,6 +379,9 @@ public:
     size_t _slot_active() const { return active_exec_slot_.load() % executor_slots_.size(); }
     void _refresh_interval_timer();
     void _update_latest_latency(system_clock::time_point launched);
+    bool _is_selective_input() const { return mode_selectie_input_; }
+    bool _is_selective_output() const { return mode_selective_output_; }
+    void _update_abort_received(bool abort) { recently_input_aborted_.store(abort, std::memory_order::relaxed); }
 
 private:
     kangsw::timer_thread_pool& _thread_pool() const { return *ref_workers_; }
@@ -404,6 +417,13 @@ private:
 
     /** 일시 정지 처리 */
     std::atomic_bool paused_;
+
+    /** 상태 플래그 */
+    std::atomic_bool recently_input_aborted_;
+
+    /** 설정 플래그 */
+    bool mode_selective_output_ = false;
+    bool mode_selectie_input_ = false;
 
     //---GUARD--//
     kangsw::destruction_guard destruction_guard_;

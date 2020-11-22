@@ -103,9 +103,12 @@ public:
     bool is_paused() const { return pipe().is_paused(); }
     void pause() { pipe().pause(); }
     void unpause() { pipe().unpause(); }
+    bool recently_aborted() const { return pipe().recently_aborted(); }
 
     // mark dirty
     void mark_option_dirty() { pipe().mark_dirty(); }
+
+    auto prelaunch_tweaks() { return pipe().get_prelaunch_tweaks(); }
 
 protected:
     std::weak_ptr<pipeline_base> pipeline_;

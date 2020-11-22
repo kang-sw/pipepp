@@ -115,7 +115,7 @@ void pipepp::impl__::pipe_base::executor_slot::_launch_callback()
     timer_scope_link_ = context_write().timer_scope("D. Linker Overhead");
     if (owner_.output_links_.empty() == false) {
         // workers().add_task(&executor_slot::_output_link_callback, this, 0, exec_res > pipe_error::warning);
-        _output_link_callback(0, exec_res > pipe_error::warning);
+        _perform_output_link(0, exec_res > pipe_error::warning);
     }
     else {
         _perform_post_output();
@@ -153,7 +153,7 @@ void pipepp::impl__::pipe_base::executor_slot::_perform_post_output()
     owner_.destruction_guard_.unlock();
 }
 
-void pipepp::impl__::pipe_base::executor_slot::_output_link_callback(size_t output_index, bool aborting)
+void pipepp::impl__::pipe_base::executor_slot::_perform_output_link(size_t output_index, bool aborting)
 {
     for (; output_index < owner_.output_links_.size();) {
         assert(_is_output_order());
@@ -180,6 +180,12 @@ void pipepp::impl__::pipe_base::executor_slot::_output_link_callback(size_t outp
                 // no need to retry.
                 // go to next index.
                 ++output_index;
+
+                if (!link.pipe->is_paused() && owner_._is_selective_output() && !aborting && !slot.is_optional_) {
+                    // Optional 출력이 아닌 출력 노드에 대해, 성공적으로 입력을 제출한 경우입니다.
+                    // selective 출력이 활성화되었다면, 나머지 출력 링크를 버립니다.
+                    aborting = true;
+                }
             }
             else {
                 // Retry after short delay.
@@ -195,6 +201,15 @@ void pipepp::impl__::pipe_base::executor_slot::_output_link_callback(size_t outp
         if (delay > 0us) { std::this_thread::sleep_for(delay); }
     }
     _perform_post_output();
+}
+
+pipepp::impl__::pipe_base::tweak_t pipepp::impl__::pipe_base::get_prelaunch_tweaks()
+{
+    if (is_launched()) { throw pipe_exception("tweak must be editted before launch!"); }
+    return tweak_t{
+      .selective_input = &mode_selectie_input_,
+      .selective_output = &mode_selective_output_,
+    };
 }
 
 void pipepp::impl__::pipe_base::_connect_output_to_impl(pipe_base* other, pipepp::impl__::pipe_base::output_link_adapter_type adapter)
@@ -288,7 +303,9 @@ void pipepp::impl__::pipe_base::executor_conditions(std::vector<executor_conditi
         }
         else {
             conds[i] = _pending_output_slot_index() == i
-                         ? executor_condition_t::idle_output
+                         ? recently_aborted()
+                             ? executor_condition_t::idle_aborted
+                             : executor_condition_t::idle_output
                          : exec.latest_exec_result() > pipe_error::warning
                              ? executor_condition_t::idle_aborted
                              : executor_condition_t::idle;
@@ -405,7 +422,9 @@ bool pipepp::impl__::pipe_base::input_slot_t::_submit_input(fence_index_t output
         throw pipe_input_exception("duplicated input submit request ... something's wrong!");
     }
 
-    if (abort_current || owner_.is_paused()) {
+    bool const should_abort_input = abort_current || owner_.is_paused();
+    owner_._update_abort_received(should_abort_input);
+    if (should_abort_input) {
         // 현재 입력 슬롯의 펜스를 invalidate합니다.
 
         // 연결된 각각의 출력 링크에 새로운 인덱스를 전파합니다.
@@ -435,7 +454,7 @@ bool pipepp::impl__::pipe_base::input_slot_t::_submit_input(fence_index_t output
                    input_link_state::valid)
         == ready_conds_.size();
 
-    if (is_all_input_link_ready) {
+    if (owner_._is_selective_input() || is_all_input_link_ready) {
         _supply_input_to_active_executor();
     }
     return true;

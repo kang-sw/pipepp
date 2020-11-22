@@ -138,7 +138,7 @@ struct _option_instance {
 #define PIPEPP_OPTION(NAME, DEFAULT_VALUE, ...) \
     PIPEPP_OPTION_2(decltype(DEFAULT_VALUE), NAME, DEFAULT_VALUE, __VA_ARGS__)
 
-#define PIPEPP_OPTION_CAT(NAME, DEFAULT_VALUE, ...) \
+#define PIPEPP_CATEGORY_OPTION(NAME, DEFAULT_VALUE, ...) \
     PIPEPP_OPTION(NAME, DEFAULT_VALUE, ___category___, __VA_ARGS__)
 
 #define PIPEPP_DECLARE_OPTION_CLASS(EXECUTOR) using ___executor_type___ = EXECUTOR;

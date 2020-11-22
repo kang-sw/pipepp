@@ -17,4 +17,6 @@ struct localization {
         return r.load(path), std::move(r);
     }
 };
+
+static const nana::paint::font DEFAULT_DATA_FONT{"consolas", 10.0};
 } // namespace pipepp::gui

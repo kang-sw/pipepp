@@ -11,6 +11,7 @@
 #include "nana/gui/widgets/treebox.hpp"
 #include "nana/paint/graphics.hpp"
 #include "nlohmann/json_fwd.hpp"
+#include "pipepp/gui/basic_utility.hpp"
 #include "pipepp/pipeline.hpp"
 
 using namespace nana;
@@ -42,8 +43,6 @@ struct option_tree_arg {
     std::string key;
 };
 
-static auto const CONSOLAS = paint::font{"consolas", 11.0};
-
 pipepp::gui::option_panel::option_panel(nana::window wd, bool visible)
     : super(wd, visible)
     , impl_(std::make_unique<body_type>(*this))
@@ -51,7 +50,7 @@ pipepp::gui::option_panel::option_panel(nana::window wd, bool visible)
     auto& m = *impl_;
     bgcolor(colors::dim_gray);
 
-    m.items.typeface(CONSOLAS);
+    m.items.typeface(DEFAULT_DATA_FONT);
     m.items.events().selected([&](auto& arg) { _cb_tree_selected(arg); });
 
     m.layout["MAIN"] << m.items;
@@ -65,7 +64,7 @@ pipepp::gui::option_panel::option_panel(nana::window wd, bool visible)
     m.input_layout["INPUT"] << m.input_enter;
     m.input_layout.collocate();
 
-    m.input_title.typeface(CONSOLAS);
+    m.input_title.typeface(DEFAULT_DATA_FONT);
     m.input_title.bgcolor(colors::black);
     m.input_title.fgcolor(colors::white);
     m.input_title.text_align(align::center, align_v::center);
@@ -77,11 +76,11 @@ pipepp::gui::option_panel::option_panel(nana::window wd, bool visible)
     m.input_descr.bgcolor(colors::light_gray);
 
     m.input_enter.multi_lines(false);
-    m.input_enter.typeface(CONSOLAS);
+    m.input_enter.typeface(DEFAULT_DATA_FONT);
     m.input_enter.bgcolor(colors::dim_gray);
     m.input_enter.editable(false);
 
-    m.input_array_object_list.typeface(CONSOLAS);
+    m.input_array_object_list.typeface(DEFAULT_DATA_FONT);
     m.input_array_object_list.append_header("Key", 80);
     m.input_array_object_list.append_header("Value", 120);
 

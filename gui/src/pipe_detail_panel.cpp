@@ -13,6 +13,7 @@
 #include "nana/gui/widgets/treebox.hpp"
 #include "nana/paint/graphics.hpp"
 #include "pipepp/execution_context.hpp"
+#include "pipepp/gui/basic_utility.hpp"
 #include "pipepp/gui/option_panel.hpp"
 #include "pipepp/gui/pipeline_board.hpp"
 #include "pipepp/pipeline.hpp"
@@ -60,7 +61,7 @@ pipepp::gui::pipe_detail_panel::pipe_detail_panel(nana::window owner, const nana
 
     m.timers.bgcolor(nana::colors::black);
     m.timers.fgcolor(nana::color{}.from_rgb(0, 255, 0));
-    m.timers.typeface(nana::paint::font{"consolas", 10.0});
+    m.timers.typeface(DEFAULT_DATA_FONT);
     m.timers.text_align(nana::align::left);
     m.timers.editable(false);
     nana::drawing(m.timers).draw_diehard([&](nana::paint::graphics& gp) {

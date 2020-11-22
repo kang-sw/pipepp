@@ -25,8 +25,8 @@ public:
     void update(std::shared_ptr<execution_context_data>);
 
 private:
-    struct implementation;
-    std::unique_ptr<implementation> impl_;
-    implementation& m;
+    struct data_type;
+    std::unique_ptr<data_type> impl_;
+    data_type& m;
 };
 } // namespace pipepp::gui

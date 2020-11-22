@@ -80,7 +80,7 @@ public:
             }
             else {
                 colapsed_or_subscribed_ = !colapsed_or_subscribed_;
-                _perform_subscribe();
+                _perform_subscribe(true);
             }
         });
 
@@ -270,13 +270,20 @@ protected:
     }
 
 private:
-    void _perform_subscribe()
+    void _perform_subscribe(bool handle_unchecked = false)
     {
         if (colapsed_or_subscribed_) {
             auto subscriber = m.board_ref->debug_data_subscriber;
             if (subscriber) {
                 auto& data = std::get<debug_data_desc>(slot_);
                 colapsed_or_subscribed_ = subscriber(category_, data);
+            }
+        }
+        else if (handle_unchecked && !colapsed_or_subscribed_) {
+            auto uncheck_handler = m.board_ref->debug_data_unchecked;
+            if (uncheck_handler) {
+                auto& data = std::get<debug_data_desc>(slot_);
+                uncheck_handler(category_, data);
             }
         }
     }

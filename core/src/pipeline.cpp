@@ -31,12 +31,17 @@ nlohmann::json pipepp::impl__::pipeline_base::export_options()
 {
     nlohmann::json opts;
     auto _lck = options().lock_read();
-    opts["shared"] = options().value();
-    auto& opts_pipe_section = opts["pipes"];
+    opts["___shared"] = options().value();
+    auto& opts_pipe_section = opts["___pipes"];
+    auto& opts_suspend = opts["___suspended"];
 
     for (auto& pipe : pipes_) {
         auto& opts_pipe = opts_pipe_section[pipe->name()];
         opts_pipe = pipe->options().value();
+
+        if (pipe->is_paused()) {
+            opts_suspend[pipe->name()];
+        }
     }
 
     return opts;
@@ -46,8 +51,9 @@ void pipepp::impl__::pipeline_base::import_options(nlohmann::json const& in)
 {
     // 재귀적으로 옵션을 대입합니다.
     auto _lck = options().lock_write();
-    options().value().merge_patch(in["shared"]);
-    auto& pipes_in = in["pipes"];
+    options().value().merge_patch(in["___shared"]);
+    auto& pipes_in = in["___pipes"];
+    auto& opts_suspend = in["___suspended"];
 
     using nlohmann::json;
     auto update = [](auto& recurse, json& l, json const& r) -> void {
@@ -80,6 +86,13 @@ void pipepp::impl__::pipeline_base::import_options(nlohmann::json const& in)
 
         update(update, opts, it_found.value());
         pipe->mark_dirty();
+
+        if (opts_suspend.contains(pipe->name())) {
+            pipe->pause();
+        }
+        else {
+            pipe->unpause();
+        }
     }
 }
 

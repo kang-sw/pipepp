@@ -77,12 +77,12 @@ public:
                 }
                 owner_._refresh_layout();
                 relocate();
-                refresh();
             }
             else {
                 colapsed_or_subscribed_ = !colapsed_or_subscribed_;
                 _perform_subscribe(true);
             }
+            refresh();
         });
 
         drawing{text_}.draw_diehard([&](paint::graphics& gp) {

@@ -98,6 +98,11 @@ public:
             point draw_pt(size.width - extent.width, (size.height - extent.height) / 2);
             gp.string(draw_pt, string_, fg);
         });
+
+        events().destroy([&](arg_destroy const& d) {
+            colapsed_or_subscribed_ = false;
+            _perform_subscribe(true);
+        });
     }
 
 public:

@@ -32,9 +32,6 @@ public:
     void reset_pipe(std::weak_ptr<impl__::pipeline_base> pl, pipe_id_t id);
     void update(std::shared_ptr<execution_context_data>);
 
-private:
-    void _cb_option_arg_selected(nana::arg_listbox const&);
-
 public:
     size_t num_timer_text_view_horizontal_chars = 58;
 

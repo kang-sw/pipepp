@@ -93,22 +93,17 @@ struct _option_instance {
     using spec_type = option_specification<Exec_>;
     using value_type = Ty_;
 
-    _option_instance(Ty_&& init_value, std::string name, std::string category = "", std::string desc = "", std::function<void(Ty_&, bool&)> verifier = {})
+    _option_instance(
+      Ty_&& init_value, std::string name, std::string category = "", std::string desc = "", std::function<bool(Ty_&)> verifier = [](auto&) { return true; })
         : key_(category + name)
     {
         if (_opt_spec<Exec_>().init_values_.contains(key_)) throw;
-        if (!verifier) {
-            verifier = [](auto&, bool&) {};
-        }
 
         verify_function_t verify = [fn = std::move(verifier)](nlohmann::json& arg) -> bool {
-            bool is_valid = true;
             Ty_ value = arg;
 
-            fn(value, is_valid);
-            if (!is_valid) { arg = value; }
-
-            return is_valid;
+            if (!fn(value)) { return arg = value, false; }
+            return true;
         };
 
         _opt_spec<Exec_>().init_values_[key_] = std::forward<Ty_>(init_value);

@@ -196,6 +196,7 @@ void pipepp::gui::option_panel::_update_enterbox(bool trig_modify)
     }
 
     if (trig_modify && correct) {
+        auto _lck = m.option->lock_write();
         for (auto& index : selections) {
             auto sel = m.input_array_object_list.at(index);
             auto value = sel.value<json*>();

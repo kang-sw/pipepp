@@ -105,68 +105,6 @@ pipepp::gui::pipe_detail_panel::pipe_detail_panel(nana::window owner, const nana
 
 pipepp::gui::pipe_detail_panel::~pipe_detail_panel() = default;
 
-void pipepp::gui::pipe_detail_panel::_cb_option_arg_selected(nana::arg_listbox const& arg)
-{
-    auto& m = *impl_;
-    auto sel = arg.item.pos();
-
-    // 옵션 선택 시, 다이얼로그 및 설명을 띄웁니다.
-    auto pl = m.pipeline.lock();
-    if (pl == nullptr) { return; }
-
-    auto& opts = pl->get_pipe(m.pipe).options();
-    auto key = arg.item.text(COLUMN_CATEGORY) + arg.item.text(COLUMN_NAME);
-    auto val = arg.item.text(COLUMN_VALUE);
-    auto& json = opts.value().at(key);
-
-    // Boolean 형식인 경우, 특별히 체크박스 자체가 값을 나타냅니다.
-    if (json.type() == nlohmann::detail::value_t::boolean) {
-        if (arg.item.checked() == (bool)json) { return; }
-        auto _lck0 = opts.lock_write();
-        json = arg.item.checked();
-        arg.item.text(COLUMN_VALUE, json.dump());
-    }
-    else {
-        if (arg.item.checked() == false) { return; }
-
-        auto desc = opts.description().at(key);
-        nana::inputbox ib{*this, desc, key};
-
-        nlohmann::json json_parsed;
-        nana::inputbox::text value{"Value", val};
-
-        // verification ...
-        // 1. parsing에 성공해야 합니다.
-        // 2. 요소 속성이 일치해야 합니다.
-        ib.verify([&](nana::window handle) {
-            auto input_str = value.value();
-            try {
-                json_parsed = nlohmann::json::parse(input_str);
-                if (strcmp(json_parsed.type_name(), json.type_name()) != 0) {
-                    auto _ = (nana::msgbox{*this, "Error "} << "Type mismatch").show();
-                    return false;
-                }
-            } catch (std::exception e) {
-                auto _ = (nana::msgbox{*this, "Error ", nana::msgbox::ok} << "Parse Failed").show();
-                return false;
-            }
-
-            return true;
-        });
-
-        if (ib.show(value)) {
-            auto _lck0 = opts.lock_write();
-            json = json_parsed;
-            arg.item.text(COLUMN_VALUE, json.dump());
-        }
-
-        arg.item.check(false);
-    }
-
-    auto& notify = m.board_ref->option_changed;
-    if (notify) { notify(m.pipe, key); }
-}
-
 void pipepp::gui::pipe_detail_panel::reset_pipe(std::weak_ptr<impl__::pipeline_base> pl, pipe_id_t id)
 {
     auto& m = *impl_;

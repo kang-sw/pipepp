@@ -228,6 +228,8 @@ void pipepp::gui::option_panel::_assign_enterbox_events()
     m.input_enter.events().text_changed([&](arg_textbox const& arg) { _update_enterbox(false); });
     m.input_enter.events().key_press([&](arg_keyboard const& arg) {
         if (arg.key == keyboard::enter) { _update_enterbox(true); }
+        if (arg.key == keyboard::os_arrow_down) { m.input_array_object_list.move_select(false); }
+        if (arg.key == keyboard::os_arrow_up) { m.input_array_object_list.move_select(true); }
     });
     m.input_enter_check.events().click([&](auto&&) {
         _update_check_button(true);

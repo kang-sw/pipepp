@@ -34,6 +34,7 @@ struct execution_context_data {
 
 public:
     struct timer_entity {
+        size_t order;
         std::string_view name;
         kangsw::hash_index category_id;
         size_t category_level;
@@ -41,6 +42,7 @@ public:
     };
 
     struct debug_data_entity {
+        size_t order;
         std::string_view name;
         kangsw::hash_index category_id;
         size_t category_level;
@@ -159,6 +161,7 @@ void execution_context::store_debug_data(kangsw::hash_pack hp, Ty_&& value)
     entity.category_level = category_level_;
     entity.name = string_pool()(hp).second;
     entity.category_id = category_id_.back();
+    entity.order = _wr()->debug_data.size() + _wr()->timers.size();
     auto& data = entity.data;
 
     if constexpr (std::is_same_v<bool, type>) {

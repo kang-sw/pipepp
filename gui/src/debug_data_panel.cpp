@@ -41,7 +41,7 @@ public:
     /********* property *********/
     unsigned scroll_width = 20;
     unsigned elem_height = 20;
-    unsigned indent = 10;
+    unsigned indent = 2;
 
     /********* data     *********/
     std::shared_ptr<execution_context_data> data;
@@ -58,7 +58,7 @@ public:
         , owner_(owner)
         , m(owner.m)
     {
-        layout_.div(fmt::format("TEXT margin=[0,0,0,{}]", m.indent * level));
+        layout_.div(fmt::format("TEXT"));
         layout_.collocate();
         layout_["TEXT"] << text_;
 
@@ -86,16 +86,14 @@ public:
         });
 
         drawing{text_}.draw_diehard([&](paint::graphics& gp) {
-            {
-                auto singlechar_extent = gp.text_extent_size("a");
-                text_extent_ = text_.size().width / std::max<int>(1, singlechar_extent.width);
-            }
+            auto singlechar_extent = gp.text_extent_size("a");
+            text_extent_ = text_.size().width / std::max<int>(1, singlechar_extent.width) - 1;
 
             auto fg = text_.fgcolor();
             auto extent = gp.text_extent_size(string_);
 
             auto size = text_.size();
-            point draw_pt(size.width - extent.width, (size.height - extent.height) / 2);
+            point draw_pt(size.width - extent.width - singlechar_extent.width, (size.height - extent.height) / 2);
             gp.string(draw_pt, string_, fg);
         });
 
@@ -141,7 +139,7 @@ public:
             auto& data = std::get<timer_data_desc>(slot_);
             using namespace std::chrono;
 
-            format_to(insert(str_left), "| {} ", data.name);
+            format_to(insert(str_left), "{0:>{1}}| {2} ", "", level * m.indent, data.name);
             format_to(insert(str_right), "{0:.4f} ms", duration<double, std::milli>{data.elapsed}.count());
 
             // timer color set
@@ -168,7 +166,7 @@ public:
         }
         else if (is_debug_slot()) {
             auto& data = std::get<debug_data_desc>(slot_);
-            format_to(insert(str_left), "[{0}] ", data.name);
+            format_to(insert(str_left), "{0:>{1}}[{2}]", "", level * m.indent, data.name);
 
             std::visit(
               [&]<typename T0>(T0&& arg) {
@@ -220,6 +218,7 @@ public:
     {
         using ptr_t = std::shared_ptr<inline_widget> const&;
         std::sort(children_.begin(), children_.end(), [](ptr_t a, ptr_t b) { return a->sibling_order_ < b->sibling_order_; });
+        for (auto& w : children_) { w->reorder(); }
     }
 
     void width(unsigned v)
@@ -389,9 +388,7 @@ void pipepp::gui::debug_data_panel::_update(std::shared_ptr<execution_context_da
 {
     m.data = data;
     std::map<int, std::shared_ptr<inline_widget>> root_stack;
-    std::map<int, int> sibling_stack;
     root_stack[0] = m.root;
-    sibling_stack[1] = 0;
 
     auto& timers = data->timers;
 
@@ -418,11 +415,10 @@ void pipepp::gui::debug_data_panel::_update(std::shared_ptr<execution_context_da
 
         auto ptr = it->second.lock();
         root_stack[tm.category_level] = ptr;
-        sibling_stack[tm.category_level + 1] = 0;                  // 다음 단계의 카테고리 인덱스 초기화
-        ptr->sibling_order(sibling_stack.at(tm.category_level)++); // 현재 단계의 카테고리 인덱스 증가
+        // sibling_stack[tm.category_level + 1] = 0; // 다음 단계의 카테고리 인덱스 초기화
+        ptr->sibling_order(tm.order); // 현재 단계의 카테고리 인덱스 증가
     }
 
-    std::map<kangsw::hash_index, int> sibling_stack_dbg;
     for (auto& dt : data->debug_data) {
         auto root_widget = m.timers.at(dt.category_id).lock();
         decltype(root_widget) widget = root_widget->find_debug_slot(dt.name);
@@ -432,7 +428,7 @@ void pipepp::gui::debug_data_panel::_update(std::shared_ptr<execution_context_da
         else
             widget = root_widget->append(dt);
 
-        widget->sibling_order(sibling_stack_dbg[dt.category_id]++);
+        widget->sibling_order(dt.order);
     }
 
     m.root->reorder();

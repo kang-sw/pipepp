@@ -458,6 +458,8 @@ void pipe_base::connect_output_to(pipe_base& other, Fn_&& fn)
 
         // clang-format off
         if constexpr (std::is_invocable_v<Fn_, SD, PO, NI>) { fn_(sd, po, ni); }
+        else if constexpr (std::is_invocable_v<Fn_>) { fn_(); }
+        else if constexpr (std::is_invocable_v<Fn_, NI>) { fn_(ni); }
         else if constexpr (std::is_invocable_v<Fn_, SD, NI>) { fn_(sd, ni); }
         else if constexpr (std::is_invocable_v<Fn_, PO, NI>) { fn_(po, ni); }
         else if constexpr (std::is_invocable_v<Fn_, EC, PO, NI>) { fn_(ec, po, ni); }

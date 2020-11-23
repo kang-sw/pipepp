@@ -170,6 +170,8 @@ public:
     /**
      * AVAILABLE LINKER SIGNATURES
      *
+     *  (                                                           )\n
+     *  (Next Input                                                 )\n
      *  (SharedData,    Prev Output,    Next Input                  )\n
      *  (SharedData,    Next Input                                  )\n
      *  (Prev Output,   Next Input                                  )\n
@@ -184,6 +186,8 @@ public:
     /**
      * AVAILABLE LINKER SIGNATURES
      *
+     *  (                                                           )\n
+     *  (Next Input                                                 )\n
      *  (SharedData,    Prev Output,    Next Input                  )\n
      *  (SharedData,    Next Input                                  )\n
      *  (Prev Output,   Next Input                                  )\n
@@ -196,6 +200,7 @@ public:
     /**
      * AVAILABLE OUTPUT HANDLER SIGNATURES
      *
+     *   (                                                      )\n
      *   (Pipe Err,     SharedData,     Result                  )\n
      *   (SharedData                                            )\n
      *   (SharedData,   Exec Context                            )\n
@@ -247,6 +252,7 @@ pipe_proxy<SharedData_, Exec_>::add_output_handler(Fn_&& handler)
 
         bool const okay = e <= pipe_error::warning;
         // clang-format off
+        if constexpr (std::is_invocable_v<Fn_>) { if(okay) fn_(); }
         if constexpr (std::is_invocable_v<Fn_, PE, SD, OUT>) { fn_(e, sd, out); }
         else if constexpr (std::is_invocable_v<Fn_, SD>) { if (okay) { fn_(sd); } }
         else if constexpr (std::is_invocable_v<Fn_, SD, EC>) { if (okay) { fn_(sd, ec); } }

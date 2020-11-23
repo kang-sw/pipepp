@@ -1,5 +1,6 @@
 #include <bitset>
 #include <cassert>
+#include "fmt/format.h"
 #include "kangsw/enum_arithmetic.hxx"
 #include "kangsw/misc.hxx"
 #include "pipepp/pipe.hpp"
@@ -155,6 +156,7 @@ void pipepp::detail::pipe_base::executor_slot::_perform_post_output()
 
 void pipepp::detail::pipe_base::executor_slot::_perform_output_link(size_t output_index, bool aborting)
 {
+    PIPEPP_REGISTER_CONTEXT(context_write());
     for (; output_index < owner_.output_links_.size();) {
         assert(_is_output_order());
 
@@ -163,6 +165,7 @@ void pipepp::detail::pipe_base::executor_slot::_perform_output_link(size_t outpu
         using namespace std::chrono;
         auto delay = 0us;
 
+        PIPEPP_ELAPSE_SCOPE_DYNAMIC(fmt::format(":: [{}]", link.pipe->name()).c_str());
         if (link.pipe->is_launched() == false) {
             throw pipe_exception("linked pipe is not launched yet!");
         }

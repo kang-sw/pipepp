@@ -303,8 +303,8 @@ void pipepp::gui::pipe_view::open_details(const nana::window& wd)
     if (m.detail_view == nullptr || m.detail_view->empty()) {
         nana::rectangle parent_rect;
         parent_rect.position(nana::API::cursor_position());
-        parent_rect.width = 480;
-        parent_rect.height = 640;
+        parent_rect.width = 640;
+        parent_rect.height = 480;
         parent_rect.x -= parent_rect.width;
         parent_rect.y -= 5;
 

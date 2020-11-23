@@ -95,7 +95,7 @@ struct _option_instance {
 
     _option_instance(
       Ty_&& init_value, std::string name, std::string category = "", std::string desc = "", std::function<bool(Ty_&)> verifier = [](auto&) { return true; })
-        : key_(category + name)
+        : key_(category + "." + name)
     {
         if (_opt_spec<Exec_>().init_values_.contains(key_)) throw;
 

@@ -167,18 +167,43 @@ private:
     }
 
 public:
-    // link to
-    // 1. creation
+    /**
+     * AVAILABLE LINKER SIGNATURES
+     *
+     *  (SharedData,    Prev Output,    Next Input                  )\n
+     *  (SharedData,    Next Input                                  )\n
+     *  (Prev Output,   Next Input                                  )\n
+     *  (Exec Context,  Prev Output,    Next Input                  )\n
+     *  (Shared Data,   Exec Context,   Prev Output,    Next Input  )\n
+     */
     template <typename LnkFn_, typename FactoryFn_, typename... FactoryArgs_>
     pipe_proxy<SharedData_, typename std::invoke_result_t<FactoryFn_, FactoryArgs_...>::element_type::executor_type>
     create_and_link_output(
       std::string name, size_t num_executors, LnkFn_&& linker, FactoryFn_&& factory, FactoryArgs_&&... args);
 
-    // 2. simple linkage
+    /**
+     * AVAILABLE LINKER SIGNATURES
+     *
+     *  (SharedData,    Prev Output,    Next Input                  )\n
+     *  (SharedData,    Next Input                                  )\n
+     *  (Prev Output,   Next Input                                  )\n
+     *  (Exec Context,  Prev Output,    Next Input                  )\n
+     *  (Shared Data,   Exec Context,   Prev Output,    Next Input  )\n
+     */
     template <typename Dest_, typename LnkFn_>
     pipe_proxy<shared_data_type, Dest_> link_output(pipe_proxy<shared_data_type, Dest_> dest, LnkFn_&& linker);
 
-    // simple output handler
+    /**
+     * AVAILABLE OUTPUT HANDLER SIGNATURES
+     *
+     *   (Pipe Err,     SharedData,     Result                  )\n
+     *   (SharedData                                            )\n
+     *   (SharedData,   Exec Context                            )\n
+     *   (Pipe Err,     Result                                  )\n
+     *   (SharedData,   Result                                  )\n
+     *   (SharedData,   Exec Context,   Result                  )\n
+     *   (Pipe Err,     SharedData,     Exec Context,   Result  )\n
+     */
     template <typename Fn_>
     pipe_proxy& add_output_handler(Fn_&& handler);
 
@@ -211,12 +236,30 @@ template <typename Fn_>
 pipe_proxy<SharedData_, Exec_>&
 pipe_proxy<SharedData_, Exec_>::add_output_handler(Fn_&& handler)
 {
-    auto wrapper = [fn_ = std::move(handler)](pipe_error e, base_shared_context& s, std::any const& o) {
-        fn_(e, static_cast<SharedData_&>(s), std::any_cast<output_type const&>(o));
+    auto wrapper = [fn_ = std::move(handler)](pipe_error e, base_shared_context& s, execution_context& ec, std::any const& o) {
+        auto& sd = static_cast<SharedData_&>(s);
+        auto& out = std::any_cast<output_type const&>(o);
+
+        using PE = pipe_error;
+        using SD = SharedData_&;
+        using EC = execution_context&;
+        using OUT = output_type const&;
+
+        bool const okay = e <= pipe_error::warning;
+        // clang-format off
+        if constexpr (std::is_invocable_v<Fn_, PE, SD, OUT>) { fn_(e, sd, out); }
+        else if constexpr (std::is_invocable_v<Fn_, SD>) { if (okay) { fn_(sd); } }
+        else if constexpr (std::is_invocable_v<Fn_, SD, EC>) { if (okay) { fn_(sd, ec); } }
+        else if constexpr (std::is_invocable_v<Fn_, PE, OUT>) { fn_(e, o); }
+        else if constexpr (std::is_invocable_v<Fn_, SD, OUT>) { if (okay) { fn_(sd, out); } }
+        else if constexpr (std::is_invocable_v<Fn_, SD, EC, OUT>) { if (okay) { fn_(sd, ec, out); } }
+        else if constexpr (std::is_invocable_v<Fn_, PE, SD, EC, OUT>) { fn_(e, sd, ec, out); }
+        else { static_assert(false, "No invocable method"); }
+        // clang-format on
     };
     pipe().add_output_handler(std::move(wrapper));
     return *this;
-}
+} // namespace pipepp
 
 template <typename SharedData_, typename InitialExec_>
 class pipeline final : public detail::pipeline_base {

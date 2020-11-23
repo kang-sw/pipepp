@@ -108,7 +108,7 @@ void pipepp::detail::pipe_base::executor_slot::_launch_callback()
     {
         auto fence_obj = fence_object_.get();
         for (auto& fn : owner_.output_handlers_) {
-            fn(exec_res, *fence_obj, cached_output_);
+            fn(exec_res, *fence_obj, context_write(), cached_output_);
         }
     }
 
@@ -169,7 +169,7 @@ void pipepp::detail::pipe_base::executor_slot::_perform_output_link(size_t outpu
 
         if (auto check = slot.can_submit_input(fence_index_); check.has_value()) {
             auto input_manip = [this, &link](std::any& out) {
-                link.handler(*fence_object_, cached_output_, out);
+                link.handler(*fence_object_, context_write(), cached_output_, out);
             };
 
             // 만약 optional인 경우, 입력이 준비되지 않았다면 abort에 true를 지정해,

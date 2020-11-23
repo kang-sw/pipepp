@@ -433,22 +433,7 @@ bool pipepp::detail::pipe_base::input_slot_t::_submit_input(fence_index_t output
     }
 
     bool const should_abort_input = abort_current || owner_.is_paused();
-    owner_._update_abort_received(should_abort_input);
-    //if (should_abort_input) {
-    //    // 현재 입력 슬롯의 펜스를 invalidate합니다.
-
-    //    // 연결된 각각의 출력 링크에 새로운 인덱스를 전파합니다.
-    //    // 기본 개념은, 현재 인덱스를 기다리고 있는 출력 링크의 입력 인덱스를 넘기는 것이므로,
-    //    //현재 입력 펜스 인덱스를 캡쳐해 전달합니다.
-    //    if (owner_.output_links_.empty() == false) {
-    //        owner_.destruction_guard_.lock();
-    //        owner_._thread_pool().add_task(&input_slot_t::_propagate_fence_abortion, this, active_input_fence(), 0);
-    //    }
-
-    //    // 다음 인덱스로 넘어갑니다.
-    //    _prepare_next();
-    //    return true;
-    //}
+    owner_._update_abort_received(false);
 
     // fence object가 비어 있다면, 채웁니다.
     if (active_input_fence_object_ == nullptr) {
@@ -476,6 +461,7 @@ bool pipepp::detail::pipe_base::input_slot_t::_submit_input(fence_index_t output
         }
 
         // 다음 인덱스로 넘어갑니다.
+        owner_._update_abort_received(true);
         _prepare_next();
     }
 

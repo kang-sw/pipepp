@@ -292,7 +292,7 @@ void pipepp::gui::pipe_view::_refresh_btn_color(bool detail_open)
     auto proxy = m.pipeline.lock()->get_pipe(m.pipe);
 
     m.title_layer_color = detail_open ? nana::color(141, 131, 123) : nana::color(84, 53, 84);
-    m.title.bgcolor(proxy.is_paused() || proxy.recently_aborted() ? nana::colors::dark_red : nana::color(43, 121, 61));
+    m.title.bgcolor(m.upper_node_paused ? nana::colors::dark_red : nana::color(43, 121, 61));
 
     nana::API::refresh_window(m.title);
 }

@@ -61,7 +61,7 @@ pipepp::gui::option_panel::option_panel(nana::window wd, bool visible)
     m.input_layout["TITLE"] << m.input_title;
     m.input_layout["DESC"] << m.input_descr;
     m.input_layout["LIST"] << m.input_array_object_list;
-    m.input_layout["INPUT"] << m.input_enter;
+    m.input_layout["INPUT"] << m.input_enter_check << m.input_enter;
     m.input_layout.collocate();
 
     m.input_title.typeface(DEFAULT_DATA_FONT);
@@ -70,6 +70,7 @@ pipepp::gui::option_panel::option_panel(nana::window wd, bool visible)
     m.input_title.text_align(align::center, align_v::center);
 
     m.input_descr.borderless(true);
+    m.input_descr.typeface(DEFAULT_DATA_FONT);
     m.input_descr.multi_lines(true);
     m.input_descr.editable(false);
     m.input_descr.focus_behavior(widgets::skeletons::text_focus_behavior::none);
@@ -85,7 +86,7 @@ pipepp::gui::option_panel::option_panel(nana::window wd, bool visible)
     m.input_array_object_list.append_header("Value", 120);
 
     m.input_array_object_list.events().selected([&](auto& arg) { _cb_json_list_selected(arg); });
-    _assign_enterbox_events();
+    _assign_events();
 
     vertical(false);
 }
@@ -120,8 +121,9 @@ void pipepp::gui::option_panel::_cb_tree_selected(nana::arg_treebox const& a)
     m.selected_proxy = a.item;
     _expand(true);
     auto& value = opts.value().at(key);
+    auto& name = opts.names().at(key);
     m.input_title.caption(opts.names().at(key));
-    m.input_descr.reset(fmt::format("<{} [{}]>\n", value.type_name(), value.size()));
+    m.input_descr.reset(fmt::format("({}\t: {})\n", name, value.type_name()));
     m.input_descr.append(opts.description().at(key), true);
 
     auto& list = m.input_array_object_list;
@@ -150,13 +152,11 @@ void pipepp::gui::option_panel::_cb_json_list_selected(nana::arg_listbox const& 
 
     m.input_enter.editable(true);
     m.input_enter.focus();
-    m.input_layout.erase(m.input_enter_check);
     if (selections.size() == 1) {
         auto item = m.input_array_object_list.at(selections.front());
         m.input_enter.reset(item.text(1));
 
         if (item.value<nlohmann::json*>()->is_boolean()) {
-            m.input_layout["INPUT"] << m.input_enter_check;
             _update_check_button();
         }
     }
@@ -221,7 +221,7 @@ void pipepp::gui::option_panel::_update_enterbox(bool trig_modify)
     widget.bgcolor(correct ? colors::light_green : colors::orange_red);
 }
 
-void pipepp::gui::option_panel::_assign_enterbox_events()
+void pipepp::gui::option_panel::_assign_events()
 {
     auto& m = *impl_;
     m.input_enter.events().text_changed([&](arg_textbox const& arg) { _update_enterbox(false); });
@@ -232,6 +232,16 @@ void pipepp::gui::option_panel::_assign_enterbox_events()
     });
     m.input_enter_check.events().click([&](auto&&) {
         _update_check_button(true);
+    });
+
+    m.input_array_object_list.events().resized([&](auto&&) {
+        auto& list = m.input_array_object_list;
+        auto& cat0 = list.column_at(0);
+        auto& cat1 = list.column_at(1);
+
+        auto w = list.size().width - 30;
+        cat0.width(w * 40 / 100);
+        cat1.width(w * 60 / 100);
     });
 }
 
@@ -309,22 +319,19 @@ void pipepp::gui::option_panel::vertical(bool do_vertical)
         m.input_layout.div(
           "<"
           "  vert gap=2"
-          "  <TITLE weight=20>"
-          "  <DESC margin=[1,0,1,0] weight=30%>"
-          ">"
-          "<"
-          "  vert gap=2"
+          // "  <TITLE weight=20>"
+          "  <DESC margin=[1,0,1,0] weight=25%>"
           "  <LIST margin=2>"
-          "  <INPUT weight=20 arrange=[variable, 20]>"
+          "  <INPUT weight=25 arrange=[20, variable]>"
           ">");
     }
     else {
         m.input_layout.div(
           "vert gap=2"
-          "<TITLE weight=20>"
-          "<DESC margin=[1,0,1,0] weight=30%>"
+          // "<TITLE weight=20>"
+          "<DESC margin=[1,0,1,0] weight=25%>"
           "<LIST margin=2>"
-          "<INPUT weight=20 arrange=[variable, 20]>");
+          "<INPUT weight=25 arrange=[20, variable]>");
     }
 
     m.input_layout.collocate();

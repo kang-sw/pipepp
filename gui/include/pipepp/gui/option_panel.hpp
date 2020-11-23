@@ -45,7 +45,7 @@ private:
     void _cb_tree_selected(nana::arg_treebox const& a);
     void _cb_json_list_selected(nana::arg_listbox const& a);
     void _update_enterbox(bool trig_modify);
-    void _assign_enterbox_events();
+    void _assign_events();
     void _update_check_button(bool operate = false);
 
 public:

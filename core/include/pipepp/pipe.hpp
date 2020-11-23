@@ -119,7 +119,7 @@ struct pipe_id_gen {
  */
 class pipe_base final : public std::enable_shared_from_this<pipe_base> {
 public:
-    using output_link_adapter_type = std::function<void(base_shared_context const&, std::any const& output, std::any& input)>;
+    using output_link_adapter_type = std::function<void(base_shared_context&, std::any const& output, std::any& input)>;
     using output_handler_type = std::function<void(pipe_error, base_shared_context&, std::any const&)>;
     using system_clock = std::chrono::system_clock;
 
@@ -439,14 +439,14 @@ private:
 template <typename Shared_, typename PrevOut_, typename NextIn_, typename Fn_>
 void pipe_base::connect_output_to(pipe_base& other, Fn_&& fn)
 {
-    auto wrapper = [fn_ = std::move(fn)](base_shared_context const& shared, std::any const& prev_out, std::any& next_in) -> void {
+    auto wrapper = [fn_ = std::move(fn)](base_shared_context& shared, std::any const& prev_out, std::any& next_in) -> void {
         if (next_in.type() != typeid(NextIn_)) {
             next_in.emplace<NextIn_>();
         }
         if (prev_out.type() != typeid(PrevOut_)) {
             throw pipe_input_exception("argument type does not match");
         }
-        fn_(static_cast<Shared_ const&>(shared), std::any_cast<PrevOut_ const&>(prev_out), std::any_cast<NextIn_&>(next_in));
+        fn_(static_cast<Shared_&>(shared), std::any_cast<PrevOut_ const&>(prev_out), std::any_cast<NextIn_&>(next_in));
     };
 
     _connect_output_to_impl(&other, wrapper);

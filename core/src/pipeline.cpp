@@ -51,6 +51,7 @@ void pipepp::detail::pipeline_base::import_options(nlohmann::json const& in)
 {
     // 재귀적으로 옵션을 대입합니다.
     auto _lck = options().lock_write();
+    if (!in.contains("___shared") || !in.contains("___pipes") || !in.contains("___suspended")) { return; }
     options().value().merge_patch(in["___shared"]);
     auto& pipes_in = in["___pipes"];
     auto& opts_suspend = in["___suspended"];

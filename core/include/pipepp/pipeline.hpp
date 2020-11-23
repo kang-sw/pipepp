@@ -398,6 +398,6 @@ pipe_proxy<SharedData_, Exec_>::create_and_link_output(std::string name, size_t 
     return link_output(dest, std::forward<LnkFn_>(linker));
 }
 
-static constexpr auto link_as_is = [](auto, auto& prev_out, auto& next_in) { next_in = prev_out; };
+static constexpr auto link_as_is = [](auto&&, execution_context&, auto&& prev_out, auto&& next_in) { next_in = std::forward<decltype(prev_out)>(prev_out); };
 
 } // namespace pipepp

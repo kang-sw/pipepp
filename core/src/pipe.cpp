@@ -344,7 +344,7 @@ void pipepp::detail::pipe_base::launch(size_t num_executors, std::function<std::
     }
 
     // 각 슬롯 인스턴스는 동일한 실행기를 가져야 하므로, 팩토리 함수를 받아와서 생성합니다.
-    for (auto index : kangsw::counter_range(num_executors)) {
+    for (auto index : kangsw::iota(num_executors)) {
         executor_slots_.emplace_back(std::make_unique<executor_slot>(*this, factory(), index, &options()));
     }
 

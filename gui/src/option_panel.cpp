@@ -131,7 +131,7 @@ void pipepp::gui::option_panel::_cb_tree_selected(nana::arg_treebox const& a)
     list.auto_draw(false);
     auto cat = list.at(0);
     for (auto& json_value : value.items()) {
-        cat.append({json_value.key(), json_value.value().dump()});
+        cat.append({!json_value.key().empty() ? json_value.key() : "<Default>", json_value.value().dump()});
         auto item = cat.back();
         item.value(&json_value.value());
     }
@@ -159,8 +159,7 @@ void pipepp::gui::option_panel::_cb_json_list_selected(nana::arg_listbox const& 
         if (item.value<nlohmann::json*>()->is_boolean()) {
             _update_check_button();
         }
-    }
-    else {
+    } else {
         m.input_enter.reset("...");
     }
 
@@ -207,15 +206,15 @@ void pipepp::gui::option_panel::_update_enterbox(bool trig_modify)
         if (!m.option->verify(key)) {
             m.selected_proxy.select(false);
             m.selected_proxy.select(true);
-            return;
+            correct = false;
+        } else {
+            _refresh_item(m.selected_proxy);
+            API::refresh_window(m.items);
+
+            if (on_dirty) { on_dirty(m.selected_proxy.key()); }
+
+            m.input_enter.select(true);
         }
-
-        _refresh_item(m.selected_proxy);
-        API::refresh_window(m.items);
-
-        if (on_dirty) { on_dirty(m.selected_proxy.key()); }
-
-        m.input_enter.select(true);
     }
 
     widget.bgcolor(correct ? colors::light_green : colors::orange_red);
@@ -252,12 +251,10 @@ void pipepp::gui::option_panel::_update_check_button(bool operate)
     if (m.input_enter.text() == "true") {
         if (operate) { m.input_enter.reset("false"); }
         status = operate ? false : true;
-    }
-    else if (m.input_enter.text() == "false") {
+    } else if (m.input_enter.text() == "false") {
         if (operate) { m.input_enter.reset("true"); }
         status = operate ? true : false;
-    }
-    else {
+    } else {
         return;
     }
     m.input_enter_check.bgcolor(status ? colors::black : colors::white);
@@ -294,8 +291,7 @@ void pipepp::gui::option_panel::reload(std::weak_ptr<detail::pipeline_base> pl, 
                 category_name = category.substr(0, first_dot);
                 name += category_name;
                 category = category.substr(first_dot);
-            }
-            else {
+            } else {
                 category_name = category;
                 name = category;
                 category = {};
@@ -333,8 +329,7 @@ void pipepp::gui::option_panel::_expand(bool expanded)
 
     if (expanded) {
         m.layout.div(fmt::format("{1} {0}", "<MAIN margin=[0,4,0,0]><INPUT> margin=4 gap=4", m.is_vertical ? "vert" : ""));
-    }
-    else {
+    } else {
         m.layout.div("<MAIN margin=4>");
     }
 

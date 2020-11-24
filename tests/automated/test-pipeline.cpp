@@ -82,7 +82,7 @@ TEST_CASE("pipeline compilation", "")
     std::atomic_int ordering = 0;
 
     using pipeline_type = pipeline<my_shared_data, exec_0>;
-    auto pl = pipeline_type::create("0.0", 64, &exec_0::factory);
+    auto pl = pipeline_type::make("0.0", 64, &exec_0::factory);
     auto _0 = pl->front();
     auto _1_0
       = _0.create_and_link_output(

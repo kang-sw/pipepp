@@ -191,10 +191,6 @@ public:
     create_and_link_output(
       std::string name, size_t num_executors, LnkFn_&& linker, FactoryFn_&& factory, FactoryArgs_&&... args);
 
-    template <typename FactoryFn_, typename... FactoryArgs_>
-    pipe_proxy<SharedData_, typename std::invoke_result_t<FactoryFn_, FactoryArgs_...>::element_type::executor_type>
-    create(std::string name, size_t num_executors, FactoryFn_&& factory, FactoryArgs_&&... args);
-
     /**
      * AVAILABLE LINKER SIGNATURES
      *
@@ -334,9 +330,13 @@ private:
         global_options_.reset_as_default<shared_data_type>();
     }
 
+    template <typename FactoryFn_, typename... FactoryArgs_>
+    pipe_proxy<SharedData_, typename std::invoke_result_t<FactoryFn_, FactoryArgs_...>::element_type::executor_type>
+    createp(std::string name, size_t num_executors, FactoryFn_&& factory, FactoryArgs_&&... args);
+
 public:
     template <typename Fn_, typename... Args_>
-    static std::shared_ptr<pipeline> create(std::string initial_pipe_name, size_t num_initial_exec, Fn_&& factory, Args_&&... factory_args)
+    static std::shared_ptr<pipeline> make(std::string initial_pipe_name, size_t num_initial_exec, Fn_&& factory, Args_&&... factory_args)
     {
         return std::shared_ptr<pipeline>{
           new pipeline(
@@ -377,30 +377,30 @@ protected:
 private:
 };
 
-template <typename SharedData_, typename Exec_>
-template <typename LnkFn_, typename FactoryFn_, typename... FactoryArgs_>
-pipe_proxy<SharedData_, typename std::invoke_result_t<FactoryFn_, FactoryArgs_...>::element_type::executor_type>
-pipe_proxy<SharedData_, Exec_>::create_and_link_output(std::string name, size_t num_executors, LnkFn_&& linker, FactoryFn_&& factory, FactoryArgs_&&... args)
-{
-    auto dest = create(std::move(name), num_executors, std::forward<FactoryFn_>(factory), std::forward<FactoryArgs_>(args)...);
-    return link_output(dest, std::forward<LnkFn_>(linker));
-}
-
-template <typename SharedData_, typename Exec_>
+template <typename SharedData_, typename InitialExec_>
 template <typename FactoryFn_, typename... FactoryArgs_>
 pipe_proxy<SharedData_, typename std::invoke_result_t<FactoryFn_, FactoryArgs_...>::element_type::executor_type>
-pipe_proxy<SharedData_, Exec_>::create(std::string name, size_t num_executors, FactoryFn_&& factory, FactoryArgs_&&... args)
+pipeline<SharedData_, InitialExec_>::createp(std::string name, size_t num_executors, FactoryFn_&& factory, FactoryArgs_&&... args)
 {
     using factory_invoke_type = std::invoke_result_t<FactoryFn_, FactoryArgs_...>;
     using executor_type = typename factory_invoke_type::element_type;
     using destination_type = typename executor_type::executor_type;
 
-    auto pl = _lock();
-    auto& ref = pl->template _create_pipe<destination_type>(
+    auto& ref = _create_pipe<destination_type>(
       std::move(name), false, num_executors,
       std::forward<FactoryFn_>(factory), std::forward<FactoryArgs_>(args)...);
 
-    return {pipeline_, ref};
+    return {weak_from_this(), ref};
+}
+
+template <typename SharedData_, typename Exec_>
+template <typename LnkFn_, typename FactoryFn_, typename... FactoryArgs_>
+pipe_proxy<SharedData_, typename std::invoke_result_t<FactoryFn_, FactoryArgs_...>::element_type::executor_type>
+pipe_proxy<SharedData_, Exec_>::create_and_link_output(std::string name, size_t num_executors, LnkFn_&& linker, FactoryFn_&& factory, FactoryArgs_&&... args)
+{
+    auto pl = _lock();
+    auto dest = pl->createp(std::move(name), num_executors, std::forward<FactoryFn_>(factory), std::forward<FactoryArgs_>(args)...);
+    return link_output(dest, std::forward<LnkFn_>(linker));
 }
 
 static constexpr auto link_as_is = [](auto&&, execution_context&, auto&& prev_out, auto&& next_in) { next_in = std::forward<decltype(prev_out)>(prev_out); };

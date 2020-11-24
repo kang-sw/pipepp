@@ -77,6 +77,10 @@ pipepp::gui::option_panel::option_panel(nana::window wd, bool visible)
     m.input_descr.focus_behavior(widgets::skeletons::text_focus_behavior::none);
     m.input_descr.bgcolor(colors::light_gray);
     m.input_descr.line_wrapped(true);
+    m.input_descr.colored_area_access()->get(0)->bgcolor = colors::black;
+    m.input_descr.colored_area_access()->get(0)->fgcolor = colors::white;
+    m.input_descr.colored_area_access()->get(1)->bgcolor = colors::black;
+    m.input_descr.colored_area_access()->get(1)->fgcolor = colors::yellow;
 
     m.input_enter.multi_lines(false);
     m.input_enter.typeface(DEFAULT_DATA_FONT);

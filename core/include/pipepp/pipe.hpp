@@ -119,7 +119,7 @@ struct pipe_id_gen {
  */
 class pipe_base final : public std::enable_shared_from_this<pipe_base> {
 public:
-    using output_link_adapter_type = std::function<void(base_shared_context&, execution_context&, std::any const& output, std::any& input)>;
+    using output_link_adapter_type = std::function<bool(base_shared_context&, execution_context&, std::any const& output, std::any& input)>;
     using output_handler_type = std::function<void(pipe_error, base_shared_context&, execution_context&, std::any const&)>;
     using system_clock = std::chrono::system_clock;
 
@@ -180,7 +180,7 @@ public:
         bool _submit_input(
           fence_index_t output_fence,
           pipe_id_t input_index,
-          std::function<void(std::any&)> const& input_manip,
+          std::function<bool(std::any&)> const& input_manip,
           std::shared_ptr<base_shared_context> const& fence_obj,
           bool abort_current = false);
 
@@ -457,16 +457,26 @@ void pipe_base::connect_output_to(pipe_base& other, Fn_&& fn)
         auto& ni = std::any_cast<NextIn_&>(next_in);
 
         // clang-format off
-        if constexpr (std::is_invocable_v<Fn_, SD, PO, NI>) { fn_(sd, po, ni); }
-        else if constexpr (std::is_invocable_v<Fn_>) { fn_(); }
-        else if constexpr (std::is_invocable_v<Fn_, NI>) { fn_(ni); }
-        else if constexpr (std::is_invocable_v<Fn_, SD, NI>) { fn_(sd, ni); }
-        else if constexpr (std::is_invocable_v<Fn_, SD, EC, NI>) { fn_(sd, ec, ni); }
-        else if constexpr (std::is_invocable_v<Fn_, PO, NI>) { fn_(po, ni); }
-        else if constexpr (std::is_invocable_v<Fn_, EC, PO, NI>) { fn_(ec, po, ni); }
-        else if constexpr (std::is_invocable_v<Fn_, SD, EC, PO, NI>) { fn_(sd, ec, po, ni); }
+        bool R = true;
+        if constexpr (std::is_invocable_r_v<void, Fn_>)                         { fn_(); }
+        else if constexpr (std::is_invocable_r_v<bool, Fn_, SD, PO, NI>)        { R = fn_(sd, po, ni); }
+        else if constexpr (std::is_invocable_r_v<bool, Fn_, NI>)                { R = fn_(ni); }
+        else if constexpr (std::is_invocable_r_v<bool, Fn_, SD, NI>)            { R = fn_(sd, ni); }
+        else if constexpr (std::is_invocable_r_v<bool, Fn_, SD, EC, NI>)        { R = fn_(sd, ec, ni); }
+        else if constexpr (std::is_invocable_r_v<bool, Fn_, PO, NI>)            { R = fn_(po, ni); }
+        else if constexpr (std::is_invocable_r_v<bool, Fn_, EC, PO, NI>)        { R = fn_(ec, po, ni); }
+        else if constexpr (std::is_invocable_r_v<bool, Fn_, SD, EC, PO, NI>)    { R = fn_(sd, ec, po, ni); }
+        else if constexpr (std::is_invocable_r_v<void, Fn_, SD, PO, NI>)        { fn_(sd, po, ni); }
+        else if constexpr (std::is_invocable_r_v<void, Fn_, NI>)                { fn_(ni); }
+        else if constexpr (std::is_invocable_r_v<void, Fn_, SD, NI>)            { fn_(sd, ni); }
+        else if constexpr (std::is_invocable_r_v<void, Fn_, SD, EC, NI>)        { fn_(sd, ec, ni); }
+        else if constexpr (std::is_invocable_r_v<void, Fn_, PO, NI>)            { fn_(po, ni); }
+        else if constexpr (std::is_invocable_r_v<void, Fn_, EC, PO, NI>)        { fn_(ec, po, ni); }
+        else if constexpr (std::is_invocable_r_v<void, Fn_, SD, EC, PO, NI>)    { fn_(sd, ec, po, ni); }
         else { static_assert(false, "No available invocable method"); }
         // clang-format on
+
+        return R;
     };
 
     _connect_output_to_impl(&other, wrapper);

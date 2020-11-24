@@ -172,7 +172,7 @@ void pipepp::detail::pipe_base::executor_slot::_perform_output_link(size_t outpu
 
         if (auto check = slot.can_submit_input(fence_index_); check.has_value()) {
             auto input_manip = [this, &link](std::any& out) {
-                link.handler(*fence_object_, context_write(), cached_output_, out);
+                return link.handler(*fence_object_, context_write(), cached_output_, out);
             };
 
             // 만약 optional인 경우, 입력이 준비되지 않았다면 abort에 true를 지정해,
@@ -400,7 +400,7 @@ void pipepp::detail::pipe_base::input_slot_t::_supply_input_to_active_executor(b
     owner_.destruction_guard_.unlock();
 }
 
-bool pipepp::detail::pipe_base::input_slot_t::_submit_input(fence_index_t output_fence, pipepp::pipe_id_t input_pipe, std::function<void(std::any&)> const& input_manip, std::shared_ptr<pipepp::base_shared_context> const& fence_obj, bool abort_current)
+bool pipepp::detail::pipe_base::input_slot_t::_submit_input(fence_index_t output_fence, pipepp::pipe_id_t input_pipe, std::function<bool(std::any&)> const& input_manip, std::shared_ptr<pipepp::base_shared_context> const& fence_obj, bool abort_current)
 {
     std::lock_guard lock{cached_input_.second};
     std::lock_guard destruction_guard{owner_.destruction_guard_};
@@ -435,16 +435,17 @@ bool pipepp::detail::pipe_base::input_slot_t::_submit_input(fence_index_t output
         throw pipe_input_exception("duplicated input submit request ... something's wrong!");
     }
 
-    bool const should_abort_input = abort_current || owner_.is_paused();
-    owner_._update_abort_received(false);
+    bool should_abort_input = abort_current || owner_.is_paused();
 
     // fence object가 비어 있다면, 채웁니다.
     if (active_input_fence_object_ == nullptr) {
         active_input_fence_object_ = fence_obj;
     }
 
-    // 해당하는 입력 슬롯을 설정합니다.
-    if (!should_abort_input) { input_manip(cached_input_.first); }
+    // 입력을 전달합니다. 만약 입력에 실패한다면, 즉시 입력을 취소하게 됩니다.
+    if (!should_abort_input) { should_abort_input = !input_manip(cached_input_.first); }
+
+    // 해당하는 입력 슬롯을 채우거나, 버립니다.
     ready_conds_[input_index] = should_abort_input ? input_link_state::discarded : input_link_state::valid;
 
     bool const is_all_input_link_ready
@@ -452,6 +453,7 @@ bool pipepp::detail::pipe_base::input_slot_t::_submit_input(fence_index_t output
 
     if ((!should_abort_input && owner_._is_selective_input()) || is_all_input_link_ready) {
         _supply_input_to_active_executor();
+        owner_._update_abort_received(false);
         return true;
     }
 

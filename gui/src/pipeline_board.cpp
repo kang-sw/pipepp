@@ -69,7 +69,7 @@ pipepp::gui::pipeline_board::pipeline_board(const nana::window& wd, const nana::
             auto points = all_pts.subspan(ld.index_offset + 1, ld.index_count - 1);
             auto begin_pt = all_pts[ld.index_offset] + offset;
 
-            for (int ofst_y : kangsw::iota(-1, 2)) {
+            for (int ofst_y : kangsw::iota(0, 1)) {
                 gp.line_begin(begin_pt.x + ofst_y, begin_pt.y + ofst_y);
                 auto ofst = nana::point{ofst_y, 0};
                 for (auto& pt : points) { gp.line_to(pt + offset + ofst, line_color); }
@@ -224,6 +224,8 @@ void pipepp::gui::pipeline_board::reset_pipeline(std::shared_ptr<pipepp::detail:
     //   분리하였습니다.
     {
         auto gap = m.widget_default_size + m.widget_default_gap;
+        map<pipe_id_t, int> slot_order_from;
+        map<pipe_id_t, int> slot_order_to;
 
         for (auto [idx_from, idx_to] : connections) {
             auto from = positions.at(idx_from);
@@ -235,9 +237,10 @@ void pipepp::gui::pipeline_board::reset_pipeline(std::shared_ptr<pipepp::detail:
             nana::point l_dest[2];
             auto l_pos = {from, to};
             auto l_is_starting_pt = {true, false};
-            for (auto [dest, pos, is_starting] :
-                 kangsw::zip(l_dest, l_pos, l_is_starting_pt)) {
-                dest.x = pos.width * gap.width + m.widget_default_size.width / 2;
+            auto l_offset = {slot_order_from[idx_from]++, slot_order_to[idx_from]++};
+            for (auto [dest, pos, is_starting, offset] :
+                 kangsw::zip(l_dest, l_pos, l_is_starting_pt, l_offset)) {
+                dest.x = pos.width * gap.width + m.widget_default_size.width / 2 + offset * 4;
                 dest.y = pos.height * gap.height + is_starting * m.widget_default_size.height;
             }
 

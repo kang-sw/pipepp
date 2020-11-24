@@ -223,8 +223,11 @@ static std::string path_tostr(const char* path, int line)
 #define PIPEPP_OPTION_AUTO(NAME, DEFAULT_VALUE, ...) \
     PIPEPP_OPTION_FULL(decltype(DEFAULT_VALUE), NAME, DEFAULT_VALUE, __VA_ARGS__)
 
-#define PIPEPP_OPTION(NAME, DEFAULT_VALUE, ...) \
+#define PIPEPP_OPTION_CAT(NAME, DEFAULT_VALUE, ...) \
     PIPEPP_OPTION_AUTO(NAME, DEFAULT_VALUE, ___category___, __VA_ARGS__)
+
+#define PIPEPP_OPTION_CAT_DESC(NAME, DEFAULT_VALUE, DESC, ...) \
+    PIPEPP_OPTION_CAT(NAME, DEFAULT_VALUE, (const char*)___PIPEPP_CONCAT(u8, DESC), __VA_ARGS__)
 
 #define PIPEPP_DECLARE_OPTION_CATEGORY(CATEGORY) inline static const std::string ___category___ = (CATEGORY)
 #define PIPEPP_DECLARE_OPTION_CLASS(EXECUTOR) \
@@ -244,3 +247,27 @@ static std::string path_tostr(const char* path, int line)
             + std::string(CATEGORY);                                           \
     };                                                                         \
     struct CLASS : ___category_##CLASS
+
+// #define PIPEPP_OPTION PIPEPP_OPTION_CAT
+
+#define ___PIPEPP_OPTION_4(NAME, VALUE, DESC, VERIFY) PIPEPP_OPTION_CAT_DESC(NAME, VALUE, DESC, VERIFY)
+#define ___PIPEPP_OPTION_3(NAME, VALUE, DESC) PIPEPP_OPTION_CAT_DESC(NAME, VALUE, DESC)
+#define ___PIPEPP_OPTION_2(NAME, VALUE) PIPEPP_OPTION_CAT(NAME, VALUE)
+#define ___PIPEPP_OPTION_1(NAME) static_assert(false)
+
+#ifndef ___PIPEPP_VARIADIC_MACRO_NAMES
+#define ___PIPEPP_MSVC_BUG_REOLSVER(MACRO, ARGS) MACRO ARGS // name to remind that bug fix is due to MSVC :-)
+
+#define ___PIPEPP_NUM_ARGS_2(_1, _2, _3, _4, _5, _6, _7, _8, _9, _10, _11, _12, _13, _14, TOTAL, ...) TOTAL
+#define ___PIPEPP_NUM_ARGS_1(...) ___PIPEPP_MSVC_BUG_REOLSVER(___PIPEPP_NUM_ARGS_2, (__VA_ARGS__))
+#define ___PIPEPP_NUM_ARGS(...) ___PIPEPP_NUM_ARGS_1(__VA_ARGS__, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1)
+#define ___PIPEPP_VA_MACRO(MACRO, ...)                \
+    MSVC_BUG(CONCATE, (MACRO, NUM_ARGS(__VA_ARGS__))) \
+    (__VA_ARGS__)
+#endif
+
+#define PIPEPP_OPTION(...)                                  \
+    ___PIPEPP_MSVC_BUG_REOLSVER(                            \
+      ___PIPEPP_CONCAT,                                     \
+      (___PIPEPP_OPTION_, ___PIPEPP_NUM_ARGS(__VA_ARGS__))) \
+    (__VA_ARGS__)

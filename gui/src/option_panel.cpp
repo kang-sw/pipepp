@@ -315,24 +315,13 @@ void pipepp::gui::option_panel::vertical(bool do_vertical)
     auto& m = *impl_;
     m.is_vertical = do_vertical;
 
-    if (do_vertical) {
-        m.input_layout.div(
-          "<"
-          "  vert gap=2"
-          // "  <TITLE weight=20>"
-          "  <DESC margin=[1,0,1,0] weight=25%>"
-          "  <LIST margin=2>"
-          "  <INPUT weight=25 arrange=[20, variable]>"
-          ">");
-    }
-    else {
-        m.input_layout.div(
-          "vert gap=2"
-          // "<TITLE weight=20>"
-          "<DESC margin=[1,0,1,0] weight=25%>"
-          "<LIST margin=2>"
-          "<INPUT weight=25 arrange=[20, variable]>");
-    }
+    m.input_layout.div(
+      "<"
+      "  vert gap=2"
+      "  <DESC margin=[1,0,1,0] weight=35%>"
+      "  <LIST margin=2>"
+      "  <INPUT weight=25 arrange=[25, variable]>"
+      ">");
 
     m.input_layout.collocate();
 }

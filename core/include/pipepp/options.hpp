@@ -131,15 +131,31 @@ struct _option_instance {
 /**
  * PIPEPP_DEFINE_OPTION(TYPE, NAME, DEFAULT_VALUE [, CATEGORY[, DESCRIPTION]])
  */
-#define PIPEPP_OPTION_2(TYPE, NAME, DEFAULT_VALUE, ...)                               \
+#define PIPEPP_OPTION_FULL(TYPE, NAME, DEFAULT_VALUE, ...)                            \
     inline static const ::pipepp::detail::_option_instance<___executor_type___, TYPE> \
-      NAME{DEFAULT_VALUE, #NAME, ##__VA_ARGS__};
+      NAME { DEFAULT_VALUE, #NAME, ##__VA_ARGS__ }
+
+#define PIPEPP_OPTION_AUTO(NAME, DEFAULT_VALUE, ...) \
+    PIPEPP_OPTION_FULL(decltype(DEFAULT_VALUE), NAME, DEFAULT_VALUE, __VA_ARGS__)
 
 #define PIPEPP_OPTION(NAME, DEFAULT_VALUE, ...) \
-    PIPEPP_OPTION_2(decltype(DEFAULT_VALUE), NAME, DEFAULT_VALUE, __VA_ARGS__)
+    PIPEPP_OPTION_AUTO(NAME, DEFAULT_VALUE, ___category___, __VA_ARGS__)
 
-#define PIPEPP_CATEGORY_OPTION(NAME, DEFAULT_VALUE, ...) \
-    PIPEPP_OPTION(NAME, DEFAULT_VALUE, ___category___, __VA_ARGS__)
+#define PIPEPP_DECLARE_OPTION_CATEGORY(CATEGORY) inline static const std::string ___category___ = (CATEGORY)
+#define PIPEPP_DECLARE_OPTION_CLASS(EXECUTOR) \
+    using ___executor_type___ = EXECUTOR;     \
+    PIPEPP_DECLARE_OPTION_CATEGORY("")
 
-#define PIPEPP_DECLARE_OPTION_CLASS(EXECUTOR) using ___executor_type___ = EXECUTOR;
-#define PIPEPP_DECLARE_OPTION_CATEGORY(CATEGORY) inline static const std::string ___category___ = (CATEGORY);
+#define PIPEPP_CATEGORY(CLASS, CATEGORY)                                       \
+    struct ___category_##CLASS {                                               \
+    private:                                                                   \
+        inline static const std::string ___outer_category___ = ___category___; \
+                                                                               \
+    public:                                                                    \
+        inline static const std::string ___category___                         \
+          = (___outer_category___.empty()                                      \
+               ? ""                                                            \
+               : ___outer_category___ + ".")                                   \
+            + std::string(CATEGORY);                                           \
+    };                                                                         \
+    struct CLASS : ___category_##CLASS

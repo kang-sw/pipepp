@@ -330,11 +330,11 @@ private:
         global_options_.reset_as_default<shared_data_type>();
     }
 
+public:
     template <typename FactoryFn_, typename... FactoryArgs_>
     pipe_proxy<SharedData_, typename std::invoke_result_t<FactoryFn_, FactoryArgs_...>::element_type::executor_type>
-    createp(std::string name, size_t num_executors, FactoryFn_&& factory, FactoryArgs_&&... args);
+    create(std::string name, size_t num_executors, FactoryFn_&& factory, FactoryArgs_&&... args);
 
-public:
     template <typename Fn_, typename... Args_>
     static std::shared_ptr<pipeline> make(std::string initial_pipe_name, size_t num_initial_exec, Fn_&& factory, Args_&&... factory_args)
     {
@@ -361,7 +361,7 @@ public:
     // supply input (trigger)
     template <typename Fn_>
     bool suply(
-      input_type input, Fn_&& shared_data_init_func = [](auto) {})
+      input_type input, Fn_&& shared_data_init_func = [](auto&&) {})
     {
         auto shared = _fetch_shared();
         shared_data_init_func(static_cast<shared_data_type&>(*shared));
@@ -380,7 +380,7 @@ private:
 template <typename SharedData_, typename InitialExec_>
 template <typename FactoryFn_, typename... FactoryArgs_>
 pipe_proxy<SharedData_, typename std::invoke_result_t<FactoryFn_, FactoryArgs_...>::element_type::executor_type>
-pipeline<SharedData_, InitialExec_>::createp(std::string name, size_t num_executors, FactoryFn_&& factory, FactoryArgs_&&... args)
+pipeline<SharedData_, InitialExec_>::create(std::string name, size_t num_executors, FactoryFn_&& factory, FactoryArgs_&&... args)
 {
     using factory_invoke_type = std::invoke_result_t<FactoryFn_, FactoryArgs_...>;
     using executor_type = typename factory_invoke_type::element_type;
@@ -399,7 +399,7 @@ pipe_proxy<SharedData_, typename std::invoke_result_t<FactoryFn_, FactoryArgs_..
 pipe_proxy<SharedData_, Exec_>::create_and_link_output(std::string name, size_t num_executors, LnkFn_&& linker, FactoryFn_&& factory, FactoryArgs_&&... args)
 {
     auto pl = _lock();
-    auto dest = pl->createp(std::move(name), num_executors, std::forward<FactoryFn_>(factory), std::forward<FactoryArgs_>(args)...);
+    auto dest = pl->create(std::move(name), num_executors, std::forward<FactoryFn_>(factory), std::forward<FactoryArgs_>(args)...);
     return link_output(dest, std::forward<LnkFn_>(linker));
 }
 

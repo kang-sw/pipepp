@@ -1,7 +1,9 @@
 #pragma once
 #include <memory>
+#include <set>
 #include <shared_mutex>
 #include <span>
+#include <unordered_set>
 #include <variant>
 #include "kangsw/misc.hxx"
 #include "nlohmann/json.hpp"
@@ -94,7 +96,11 @@ struct _option_instance {
     using value_type = Ty_;
 
     _option_instance(
-      Ty_&& init_value, std::string name, std::string category = "", std::string desc = "", std::function<bool(Ty_&)> verifier = [](auto&) { return true; })
+      Ty_&& init_value,
+      std::string name,
+      std::string category = "",
+      std::string desc = "",
+      std::function<bool(Ty_&)> verifier = [](auto&) { return true; })
         : key_(category + "." + name)
     {
         if (_opt_spec<Exec_>().init_values_.contains(key_)) throw;
@@ -126,6 +132,61 @@ struct _option_instance {
 };
 
 } // namespace detail
+
+namespace verify {
+
+template <typename Ty_>
+struct _verify_chain {
+    template <typename Fn_>
+    friend _verify_chain operator|(_verify_chain&& A, Fn_&& B)
+    {
+        A.fn_ = [fn_a = std::move(A.fn_), fn_b = std::forward<Fn_>(B)](Ty_& r) -> bool { return fn_a(r) && fn_b(r); };
+        return std::move(A);
+    }
+
+    template <typename Fn_>
+    _verify_chain(Fn_&& fn)
+        : fn_(std::forward<Fn_>(fn))
+    {}
+
+    bool operator()(Ty_& r) const { return fn_(r); }
+    std::function<bool(Ty_&)> fn_;
+};
+
+template <typename Ty_>
+_verify_chain<Ty_> minimum(Ty_&& min)
+{
+    return [min_ = std::forward<Ty_>(min)](Ty_& r) {
+        if (r < min_) { return r = min_, false; }
+        return true;
+    };
+}
+
+template <typename Ty_>
+_verify_chain<Ty_> maximum(Ty_&& max)
+{
+    return [max_ = std::forward<Ty_>(max)](Ty_& r) {
+        if (r > max_) { return r = max_, false; }
+        return true;
+    };
+}
+
+template <typename Ty_>
+auto clamp(Ty_&& min, Ty_&& max)
+{
+    return minimum(std::forward<Ty_>(min)) | maximum(std::forward<Ty_>(max));
+}
+
+template <typename Ty_, typename... Args_>
+_verify_chain<Ty_> contains(Ty_ first, Args_&&... args)
+{
+    return [set_ = std::unordered_set<Ty_>({first, std::forward<Args_>(args)...})](Ty_& r) {
+        if (!set_.contains(r)) return r = *set_.begin(), false;
+        return true;
+    };
+}
+
+} // namespace verify
 } // namespace pipepp
 
 /**

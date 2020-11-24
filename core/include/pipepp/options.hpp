@@ -218,7 +218,7 @@ static std::string path_tostr(const char* path, int line)
  */
 #define PIPEPP_OPTION_FULL(TYPE, NAME, DEFAULT_VALUE, ...)                            \
     inline static const ::pipepp::detail::_option_instance<___executor_type___, TYPE> \
-      NAME { ::pipepp::detail::path_tostr(__FILE__, __LINE__), DEFAULT_VALUE, #NAME, ##__VA_ARGS__ }
+      NAME { ::pipepp::detail::path_tostr(__FILE__, __LINE__), (DEFAULT_VALUE), #NAME, ##__VA_ARGS__ }
 
 #define PIPEPP_OPTION_AUTO(NAME, DEFAULT_VALUE, ...) \
     PIPEPP_OPTION_FULL(decltype(DEFAULT_VALUE), NAME, DEFAULT_VALUE, __VA_ARGS__)
@@ -227,7 +227,7 @@ static std::string path_tostr(const char* path, int line)
     PIPEPP_OPTION_AUTO(NAME, DEFAULT_VALUE, ___category___, __VA_ARGS__)
 
 #define PIPEPP_OPTION_CAT_DESC(NAME, DEFAULT_VALUE, DESC, ...) \
-    PIPEPP_OPTION_CAT(NAME, DEFAULT_VALUE, (const char*)___PIPEPP_CONCAT(u8, DESC), __VA_ARGS__)
+    PIPEPP_OPTION_CAT(NAME, DEFAULT_VALUE, (const char*)(DESC), __VA_ARGS__)
 
 #define PIPEPP_DECLARE_OPTION_CATEGORY(CATEGORY) inline static const std::string ___category___ = (CATEGORY)
 #define PIPEPP_DECLARE_OPTION_CLASS(EXECUTOR) \

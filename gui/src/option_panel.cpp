@@ -71,7 +71,7 @@ pipepp::gui::option_panel::option_panel(nana::window wd, bool visible)
     m.input_title.text_align(align::center, align_v::center);
 
     m.input_descr.borderless(true);
-    m.input_descr.typeface(DEFAULT_DATA_FONT);
+    // m.input_descr.typeface(DEFAULT_DATA_FONT);
     m.input_descr.multi_lines(true);
     m.input_descr.editable(false);
     m.input_descr.focus_behavior(widgets::skeletons::text_focus_behavior::none);
@@ -133,7 +133,7 @@ void pipepp::gui::option_panel::_cb_tree_selected(nana::arg_treebox const& a)
     auto& value = opts.value().at(key);
     auto& name = opts.names().at(key);
     m.input_title.caption(opts.names().at(key));
-    m.input_descr.reset(fmt::format("{}\t<{}>\n  defined in \"{}\"\n", name, value.type_name(), opts.paths().at(key)));
+    m.input_descr.reset(fmt::format("{}\t<{}>\n  @ \"{}\"\n", name, value.type_name(), opts.paths().at(key)));
     m.input_descr.append(opts.description().at(key), true);
 
     auto& list = m.input_array_object_list;

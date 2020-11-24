@@ -27,6 +27,28 @@ void pipepp::detail::pipeline_base::sync()
     }
 }
 
+void pipepp::detail::pipeline_base::launch()
+{
+    if (pipes_.front()->input_links().empty() == false) {
+        throw pipe_link_exception("frontmost input pipe must not receive input from any other pipe.");
+    }
+
+    for (auto i : kangsw::iota((size_t)1, pipes_.size())) {
+        auto& pipe = pipes_.at(i);
+        if (pipe->input_links().size() == 0) {
+            throw pipe_link_exception("Pipe isolation detected");
+        }
+    }
+
+    for (auto [pipe, tuple] : kangsw::zip(pipes_, adapters_)) {
+        auto& [n_ex, handler] = tuple;
+        pipe->launch(n_ex, std::move(handler));
+    }
+
+    adapters_.clear();
+    adapters_.shrink_to_fit();
+}
+
 nlohmann::json pipepp::detail::pipeline_base::export_options()
 {
     nlohmann::json opts;
@@ -64,8 +86,7 @@ void pipepp::detail::pipeline_base::import_options(nlohmann::json const& in)
                     recurse(recurse, item.value(), r.at(item.key()));
                 }
             }
-        }
-        else if (l.is_array() && r.is_array()) {
+        } else if (l.is_array() && r.is_array()) {
             int i;
             for (i = 0; i < std::min(l.size(), r.size()); ++i) {
                 recurse(recurse, l[i], r[i]);
@@ -74,8 +95,7 @@ void pipepp::detail::pipeline_base::import_options(nlohmann::json const& in)
             while (i < r.size()) {
                 l[i] = r[i];
             }
-        }
-        else if (strcmp(l.type_name(), r.type_name()) == 0) {
+        } else if (strcmp(l.type_name(), r.type_name()) == 0) {
             l = r;
         }
     };
@@ -90,8 +110,7 @@ void pipepp::detail::pipeline_base::import_options(nlohmann::json const& in)
 
         if (opts_suspend.contains(pipe->name())) {
             pipe->pause();
-        }
-        else {
+        } else {
             pipe->unpause();
         }
     }

@@ -11,6 +11,9 @@ namespace pipepp {
 namespace detail {
 
 class pipeline_base : public std::enable_shared_from_this<pipeline_base> {
+public:
+    using factory_return_type = std::unique_ptr<detail::executor_base>;
+
 protected:
     pipeline_base();
     virtual ~pipeline_base() = default;
@@ -23,6 +26,9 @@ public:
 
     auto& _thread_pool() { return workers_; }
     void sync();
+
+    // launcher
+    void launch();
 
 public:
     auto& options() const { return global_options_; }
@@ -43,6 +49,8 @@ protected:
     std::mutex fence_object_pool_lock_;
     option_base global_options_;
     kangsw::timer_thread_pool workers_;
+
+    std::vector<std::tuple<size_t, std::function<factory_return_type(void)>>> adapters_;
 };
 
 class pipe_proxy_base {
@@ -183,6 +191,10 @@ public:
     create_and_link_output(
       std::string name, size_t num_executors, LnkFn_&& linker, FactoryFn_&& factory, FactoryArgs_&&... args);
 
+    template <typename FactoryFn_, typename... FactoryArgs_>
+    pipe_proxy<SharedData_, typename std::invoke_result_t<FactoryFn_, FactoryArgs_...>::element_type::executor_type>
+    create(std::string name, size_t num_executors, FactoryFn_&& factory, FactoryArgs_&&... args);
+
     /**
      * AVAILABLE LINKER SIGNATURES
      *
@@ -278,7 +290,6 @@ public:
     using input_type = typename initial_executor_type::input_type;
     using initial_proxy_type = pipe_proxy<shared_data_type, initial_executor_type>;
 
-    using factory_return_type = std::unique_ptr<detail::executor_base>;
     ~pipeline() { sync(); }
 
 private:
@@ -357,17 +368,6 @@ public:
         return pipes_.front()->try_submit(std::move(input), std::move(shared));
     }
 
-    // launcher
-    void launch()
-    {
-        for (auto [pipe, tuple] : kangsw::zip(pipes_, adapters_)) {
-            auto& [n_ex, handler] = tuple;
-            pipe->launch(n_ex, std::move(handler));
-        }
-
-        adapters_.clear();
-    }
-
 protected:
     std::shared_ptr<base_shared_context> _new_shared_object() override
     {
@@ -375,15 +375,21 @@ protected:
     }
 
 private:
-    std::vector<std::tuple<
-      size_t, std::function<factory_return_type()>>>
-      adapters_;
 };
 
 template <typename SharedData_, typename Exec_>
 template <typename LnkFn_, typename FactoryFn_, typename... FactoryArgs_>
 pipe_proxy<SharedData_, typename std::invoke_result_t<FactoryFn_, FactoryArgs_...>::element_type::executor_type>
 pipe_proxy<SharedData_, Exec_>::create_and_link_output(std::string name, size_t num_executors, LnkFn_&& linker, FactoryFn_&& factory, FactoryArgs_&&... args)
+{
+    auto dest = create(std::move(name), num_executors, std::forward<FactoryFn_>(factory), std::forward<FactoryArgs_>(args)...);
+    return link_output(dest, std::forward<LnkFn_>(linker));
+}
+
+template <typename SharedData_, typename Exec_>
+template <typename FactoryFn_, typename... FactoryArgs_>
+pipe_proxy<SharedData_, typename std::invoke_result_t<FactoryFn_, FactoryArgs_...>::element_type::executor_type>
+pipe_proxy<SharedData_, Exec_>::create(std::string name, size_t num_executors, FactoryFn_&& factory, FactoryArgs_&&... args)
 {
     using factory_invoke_type = std::invoke_result_t<FactoryFn_, FactoryArgs_...>;
     using executor_type = typename factory_invoke_type::element_type;
@@ -394,8 +400,7 @@ pipe_proxy<SharedData_, Exec_>::create_and_link_output(std::string name, size_t 
       std::move(name), false, num_executors,
       std::forward<FactoryFn_>(factory), std::forward<FactoryArgs_>(args)...);
 
-    pipe_proxy<shared_data_type, destination_type> dest(pipeline_, ref);
-    return link_output(dest, std::forward<LnkFn_>(linker));
+    return {pipeline_, ref};
 }
 
 static constexpr auto link_as_is = [](auto&&, execution_context&, auto&& prev_out, auto&& next_in) { next_in = std::forward<decltype(prev_out)>(prev_out); };

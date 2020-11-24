@@ -50,6 +50,7 @@ private:
 
 public:
     std::function<void(std::string_view)> on_dirty;
+    bool automatic_vertical_swap = true;
 
 private:
     struct body_type;

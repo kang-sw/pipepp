@@ -39,6 +39,7 @@ public:
     auto& description() const { return descriptions_; }
     auto& categories() const { return categories_; }
     auto& names() const { return names_; }
+    auto& paths() const { return paths_; }
 
     bool verify(std::string const& n, nlohmann::json& arg) const
     {
@@ -58,6 +59,7 @@ private:
     std::map<std::string, std::string> categories_;
     std::map<std::string, std::string> names_;
     std::map<std::string, verify_function_t> verifiers_;
+    std::map<std::string, std::string> paths_;
     mutable std::shared_mutex lock_;
 };
 
@@ -71,6 +73,7 @@ public:
     std::map<std::string, std::string> init_categories_;
     std::map<std::string, std::string> init_names_;
     std::map<std::string, verify_function_t> init_verifies_;
+    std::map<std::string, std::string> paths_;
 };
 
 template <typename Exec_>
@@ -88,6 +91,7 @@ void option_base::reset_as_default()
     descriptions_ = _opt_spec<Exec_>().init_descs_;
     names_ = _opt_spec<Exec_>().init_names_;
     verifiers_ = _opt_spec<Exec_>().init_verifies_;
+    paths_ = _opt_spec<Exec_>().paths_;
 }
 
 template <typename Exec_, typename Ty_>
@@ -96,6 +100,7 @@ struct _option_instance {
     using value_type = Ty_;
 
     _option_instance(
+      std::string path,
       Ty_&& init_value,
       std::string name,
       std::string category = "",
@@ -111,7 +116,7 @@ struct _option_instance {
             if (!fn(value)) { return arg = value, false; }
             return true;
         };
-
+        _opt_spec<Exec_>().paths_[key_] = path;
         _opt_spec<Exec_>().init_values_[key_] = std::forward<Ty_>(init_value);
         _opt_spec<Exec_>().init_categories_[key_] = std::move(category);
         _opt_spec<Exec_>().init_descs_[key_] = std::move(desc);
@@ -187,14 +192,33 @@ _verify_chain<Ty_> contains(Ty_ first, Args_&&... args)
 }
 
 } // namespace verify
+
+namespace detail {
+static std::string path_tostr(const char* path, int line)
+{
+    auto out = std::string(path);
+    if (auto sz = out.find_last_of("\\/"); sz != std::string::npos) {
+        out = out.substr(sz + 1);
+    }
+    out.append(" (").append(std::to_string(line)).append(")");
+    return std::move(out);
+}
+} // namespace detail
 } // namespace pipepp
+
+#ifndef ___PIPEPP_CONCAT
+#define ___PIPEPP_CONCAT_2(A, B) A##B
+#define ___PIPEPP_CONCAT(A, B) ___PIPEPP_CONCAT_2(A, B)
+#define ___PIPEPP_TO_STR_2(A) #A
+#define ___PIPEPP_TO_STR(A) ___PIPEPP_TO_STR_2(A)
+#endif
 
 /**
  * PIPEPP_DEFINE_OPTION(TYPE, NAME, DEFAULT_VALUE [, CATEGORY[, DESCRIPTION]])
  */
 #define PIPEPP_OPTION_FULL(TYPE, NAME, DEFAULT_VALUE, ...)                            \
     inline static const ::pipepp::detail::_option_instance<___executor_type___, TYPE> \
-      NAME { DEFAULT_VALUE, #NAME, ##__VA_ARGS__ }
+      NAME { ::pipepp::detail::path_tostr(__FILE__, __LINE__), DEFAULT_VALUE, #NAME, ##__VA_ARGS__ }
 
 #define PIPEPP_OPTION_AUTO(NAME, DEFAULT_VALUE, ...) \
     PIPEPP_OPTION_FULL(decltype(DEFAULT_VALUE), NAME, DEFAULT_VALUE, __VA_ARGS__)

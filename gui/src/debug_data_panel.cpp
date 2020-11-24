@@ -77,8 +77,7 @@ public:
                 }
                 owner_._refresh_layout();
                 relocate();
-            }
-            else {
+            } else {
                 colapsed_or_subscribed_ = !colapsed_or_subscribed_;
                 _perform_subscribe(true);
             }
@@ -139,7 +138,8 @@ public:
             auto& data = std::get<timer_data_desc>(slot_);
             using namespace std::chrono;
 
-            format_to(insert(str_left), "{0:>{1}}| {2} ", "", level * m.indent, data.name);
+            format_to(insert(str_left), "{0:>{1}}{3} {2} ", "",
+                      level * m.indent, data.name, colapsed_or_subscribed_ ? '=' : '|');
             format_to(insert(str_right), "{0:.4f} ms", duration<double, std::milli>{data.elapsed}.count());
 
             // timer color set
@@ -163,8 +163,7 @@ public:
                 : category_colors[std::min<int>(max_category, level)]);
 
             text_.bgcolor(colapsed_or_subscribed_ ? colors(0x333333) : colors::black);
-        }
-        else if (is_debug_slot()) {
+        } else if (is_debug_slot()) {
             auto& data = std::get<debug_data_desc>(slot_);
             format_to(insert(str_left), "{0:>{1}}[{2}]", "", level * m.indent, data.name);
 
@@ -293,8 +292,7 @@ private:
                 auto& data = std::get<debug_data_desc>(slot_);
                 colapsed_or_subscribed_ = subscriber(category_, data);
             }
-        }
-        else if (handle_unchecked && !colapsed_or_subscribed_) {
+        } else if (handle_unchecked && !colapsed_or_subscribed_) {
             auto uncheck_handler = m.board_ref->debug_data_unchecked;
             if (uncheck_handler) {
                 auto& data = std::get<debug_data_desc>(slot_);
@@ -406,8 +404,7 @@ void pipepp::gui::debug_data_panel::_update(std::shared_ptr<execution_context_da
         if (is_new) {
             auto root = root_stack.at(tm.category_level - 1);
             it->second = root->append(tm);
-        }
-        else {
+        } else {
             // 이미 존재하는 엔터티를 업데이트하는 경우, 동 레벨 카테고리의 이전 sibling을 방문,
             //
             it->second.lock()->put(tm);

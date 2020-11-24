@@ -17,7 +17,7 @@ struct my_shared_data : public base_shared_context {
 
 struct exec_0 {
     PIPEPP_DECLARE_OPTION_CLASS(exec_0);
-    PIPEPP_OPTION_2(bool, is_first, false, "debug.show");
+    PIPEPP_OPTION_FULL(bool, is_first, false, "debug.show");
 
     using input_type = std::tuple<double>;
     using output_type = std::tuple<double, double>;

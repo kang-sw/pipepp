@@ -284,7 +284,7 @@ void pipepp::gui::option_panel::reload(std::weak_ptr<detail::pipeline_base> pl, 
     for (auto category_pair : option->categories()) {
         nana::drawerbase::treebox::item_proxy item;
         auto& key = category_pair.first;
-        auto category = category_pair.second.empty() ? "Misc" : category_pair.second;
+        auto category = category_pair.second.empty() ? "" : category_pair.second;
         std::string name;
 
         for (; !category.empty();) {
@@ -303,9 +303,10 @@ void pipepp::gui::option_panel::reload(std::weak_ptr<detail::pipeline_base> pl, 
 
             if (category_name[0] == '.') { category_name.erase(0, 1); };
             item = item.empty() ? tree.insert(name, std::move(category_name)) : item.append(name, std::move(category_name));
+            item.expand(item.level() < 2);
         }
 
-        item = item.append(key, "");
+        item = item.empty() ? tree.insert(key, "") : item.append(key, "");
         _refresh_item(item);
     }
 }

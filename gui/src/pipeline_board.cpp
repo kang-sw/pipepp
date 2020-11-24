@@ -30,13 +30,13 @@ struct pipepp::gui::pipeline_board::data_type {
     pipeline_board& self;
     nana::drawing drawing{self};
 
-    std::weak_ptr<impl__::pipeline_base> pipe;
+    std::weak_ptr<detail::pipeline_base> pipe;
 
     double zoom;
     nana::point center;
 
-    nana::size widget_default_size = {128, 128};
-    nana::size widget_default_gap = {48, 16};
+    nana::size widget_default_size = {196, 100};
+    nana::size widget_default_gap = {16, 36};
 
     std::vector<pipe_widget_desc> widgets;
     std::vector<nana::point> all_points;
@@ -65,13 +65,13 @@ pipepp::gui::pipeline_board::pipeline_board(const nana::window& wd, const nana::
         auto offset = m->center;
 
         for (auto& ld : m->line_descriptions) {
-            auto line_color = ld.is_optional_connection ? nana::colors::light_gray : nana::colors::black;
+            auto line_color = ld.is_optional_connection ? optional_connection_line_color : main_connection_line_color;
             auto points = all_pts.subspan(ld.index_offset + 1, ld.index_count - 1);
             auto begin_pt = all_pts[ld.index_offset] + offset;
 
-            for (int ofst_y : kangsw::iota(4)) {
-                gp.line_begin(begin_pt.x, begin_pt.y + ofst_y);
-                auto ofst = nana::point{0, ofst_y};
+            for (int ofst_y : kangsw::iota(0, 1)) {
+                gp.line_begin(begin_pt.x + ofst_y, begin_pt.y + ofst_y);
+                auto ofst = nana::point{ofst_y, 0};
                 for (auto& pt : points) { gp.line_to(pt + offset + ofst, line_color); }
             }
         }
@@ -119,7 +119,7 @@ void pipepp::gui::pipeline_board::_clear_views()
     m.all_points.clear();
 }
 
-void pipepp::gui::pipeline_board::_calc_hierarchical_node_positions(pipepp::impl__::pipe_proxy_base root_proxy, std::unordered_multimap<pipepp::pipe_id_t, pipepp::pipe_id_t>& connections, std::map<pipepp::pipe_id_t, nana::size>& positions)
+void pipepp::gui::pipeline_board::_calc_hierarchical_node_positions(pipepp::detail::pipe_proxy_base root_proxy, std::unordered_multimap<pipepp::pipe_id_t, pipepp::pipe_id_t>& connections, std::map<pipepp::pipe_id_t, nana::size>& positions)
 {
     // 1. 계층 구조 계산 방식
     //      1. 루트 프록시부터 자손 프록시로 iterate해 마주치는 모든 id를 hierarchy_occurences의
@@ -133,7 +133,7 @@ void pipepp::gui::pipeline_board::_calc_hierarchical_node_positions(pipepp::impl
     //        단, 상기한 바와 같이 먼저 max_hierarchy가 일치해야 합니다.
     //
     using namespace std;
-    using impl__::pipe_proxy_base;
+    using detail::pipe_proxy_base;
     set<pipe_id_t> visit_mask;
     auto recursive_build_tree
       = [&](auto& recall, pipe_proxy_base const& proxy, size_t width, size_t hierarchy) -> size_t {
@@ -167,7 +167,9 @@ void pipepp::gui::pipeline_board::_update_widget_pos()
     for (auto& elem : m.widgets) {
         auto gap = m.widget_default_size + m.widget_default_gap;
         auto center = m.center;
-        elem.view->move(center.x + elem.slot_hierarchy_level * gap.width, center.y + elem.slot_sibling_order * gap.height);
+        auto x = center.x + elem.slot_sibling_order * gap.width;
+        auto y = center.y + elem.slot_hierarchy_level * gap.height;
+        elem.view->move(x, y);
     }
 }
 
@@ -191,7 +193,7 @@ void pipepp::gui::pipeline_board::_m_typeface(const nana::paint::font& font)
     }
 }
 
-void pipepp::gui::pipeline_board::reset_pipeline(std::shared_ptr<pipepp::impl__::pipeline_base> pipeline)
+void pipepp::gui::pipeline_board::reset_pipeline(std::shared_ptr<pipepp::detail::pipeline_base> pipeline)
 {
     // TODO
     // 0. 이미 존재하는 pipe_view 개체를 모두 소거합니다.
@@ -222,6 +224,8 @@ void pipepp::gui::pipeline_board::reset_pipeline(std::shared_ptr<pipepp::impl__:
     //   분리하였습니다.
     {
         auto gap = m.widget_default_size + m.widget_default_gap;
+        map<pipe_id_t, int> slot_order_from;
+        map<pipe_id_t, int> slot_order_to;
 
         for (auto [idx_from, idx_to] : connections) {
             auto from = positions.at(idx_from);
@@ -233,10 +237,11 @@ void pipepp::gui::pipeline_board::reset_pipeline(std::shared_ptr<pipepp::impl__:
             nana::point l_dest[2];
             auto l_pos = {from, to};
             auto l_is_starting_pt = {true, false};
-            for (auto [dest, pos, is_starting] :
-                 kangsw::zip(l_dest, l_pos, l_is_starting_pt)) {
-                dest.x = pos.height * gap.width + is_starting * m.widget_default_size.width;
-                dest.y = pos.width * gap.height + m.widget_default_size.height / 2;
+            auto l_offset = {slot_order_from[idx_from]++, slot_order_to[idx_from]++};
+            for (auto [dest, pos, is_starting, offset] :
+                 kangsw::zip(l_dest, l_pos, l_is_starting_pt, l_offset)) {
+                dest.x = pos.width * gap.width + m.widget_default_size.width / 2 + offset * 4;
+                dest.y = pos.height * gap.height + is_starting * m.widget_default_size.height;
             }
 
             size_t indices[] = {m.all_points.size(), 2};

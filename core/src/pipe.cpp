@@ -1,10 +1,11 @@
 #include <bitset>
 #include <cassert>
+#include "fmt/format.h"
 #include "kangsw/enum_arithmetic.hxx"
 #include "kangsw/misc.hxx"
 #include "pipepp/pipe.hpp"
 
-std::optional<bool> pipepp::impl__::pipe_base::input_slot_t::can_submit_input(fence_index_t output_fence) const
+std::optional<bool> pipepp::detail::pipe_base::input_slot_t::can_submit_input(fence_index_t output_fence) const
 {
     auto active = active_input_fence();
     if (output_fence < active) {
@@ -21,7 +22,7 @@ std::optional<bool> pipepp::impl__::pipe_base::input_slot_t::can_submit_input(fe
     return is_idle && output_fence == active;
 }
 
-void pipepp::impl__::pipe_base::input_slot_t::_prepare_next()
+void pipepp::detail::pipe_base::input_slot_t::_prepare_next()
 {
     using namespace kangsw::enum_arithmetic;
     for (auto& e : ready_conds_) { e = input_link_state::none; }
@@ -29,7 +30,7 @@ void pipepp::impl__::pipe_base::input_slot_t::_prepare_next()
     this->active_input_fence_object_.reset();
 }
 
-void pipepp::impl__::pipe_base::input_slot_t::_propagate_fence_abortion(fence_index_t pending_fence, size_t output_link_index)
+void pipepp::detail::pipe_base::input_slot_t::_propagate_fence_abortion(fence_index_t pending_fence, size_t output_link_index)
 {
     using namespace std::chrono_literals;
 
@@ -59,7 +60,7 @@ void pipepp::impl__::pipe_base::input_slot_t::_propagate_fence_abortion(fence_in
     }
 }
 
-void pipepp::impl__::pipe_base::executor_slot::_launch_async(launch_args_t arg)
+void pipepp::detail::pipe_base::executor_slot::_launch_async(launch_args_t arg)
 {
     std::lock_guard destruction_guard{owner_.destruction_guard_};
 
@@ -73,12 +74,12 @@ void pipepp::impl__::pipe_base::executor_slot::_launch_async(launch_args_t arg)
     owner_._thread_pool().add_task(&executor_slot::_launch_callback, this);
 }
 
-kangsw::timer_thread_pool& pipepp::impl__::pipe_base::executor_slot::workers()
+kangsw::timer_thread_pool& pipepp::detail::pipe_base::executor_slot::workers()
 {
     return owner_._thread_pool();
 }
 
-void pipepp::impl__::pipe_base::executor_slot::_launch_callback()
+void pipepp::detail::pipe_base::executor_slot::_launch_callback()
 {
     using namespace kangsw::literals;
 
@@ -89,7 +90,7 @@ void pipepp::impl__::pipe_base::executor_slot::_launch_callback()
     pipe_error exec_res;
 
     PIPEPP_REGISTER_CONTEXT(context_write());
-    timer_scope_ = context_write().timer_scope("Total Execution Time");
+    timer_scope_total_ = context_write().timer_scope("Total Execution Time");
 
     PIPEPP_ELAPSE_BLOCK("A. Executor Run Time")
     {
@@ -98,24 +99,31 @@ void pipepp::impl__::pipe_base::executor_slot::_launch_callback()
           std::memory_order_relaxed);
     }
 
+    // 출력 순서까지 대기
+    using namespace std::literals;
+    PIPEPP_ELAPSE_BLOCK("B. Await for output order")
+    while (!_is_output_order()) { std::this_thread::sleep_for(50us); }
+
     // 먼저, 연결된 일반 핸들러를 모두 처리합니다.
-    PIPEPP_ELAPSE_BLOCK("B. Output Handler Overhead")
+    PIPEPP_ELAPSE_BLOCK("C. Output Handler Overhead")
     {
         auto fence_obj = fence_object_.get();
         for (auto& fn : owner_.output_handlers_) {
-            fn(exec_res, *fence_obj, cached_output_);
+            fn(exec_res, *fence_obj, context_write(), cached_output_);
         }
     }
 
+    timer_scope_link_ = context_write().timer_scope("D. Linker Overhead");
     if (owner_.output_links_.empty() == false) {
-        workers().add_task(&executor_slot::_output_link_callback, this, 0, exec_res > pipe_error::warning);
+        // workers().add_task(&executor_slot::_output_link_callback, this, 0, exec_res > pipe_error::warning);
+        _perform_output_link(0, exec_res > pipe_error::warning);
     }
     else {
         _perform_post_output();
     }
 }
 
-void pipepp::impl__::pipe_base::executor_slot::_perform_post_output()
+void pipepp::detail::pipe_base::executor_slot::_perform_post_output()
 {
     if (!_is_output_order()) {
         using namespace std::literals;
@@ -126,7 +134,8 @@ void pipepp::impl__::pipe_base::executor_slot::_perform_post_output()
     auto constexpr RELAXED = std::memory_order_relaxed;
     // -- 연결된 모든 출력을 처리한 경우입니다.
     // 타이머 관련 로직 처리
-    timer_scope_.reset();
+    timer_scope_link_.reset();
+    timer_scope_total_.reset();
     owner_._refresh_interval_timer();
     owner_._update_latest_latency(fence_object_->launch_time_point());
 
@@ -145,54 +154,78 @@ void pipepp::impl__::pipe_base::executor_slot::_perform_post_output()
     owner_.destruction_guard_.unlock();
 }
 
-void pipepp::impl__::pipe_base::executor_slot::_output_link_callback(size_t output_index, bool aborting)
+void pipepp::detail::pipe_base::executor_slot::_perform_output_link(size_t output_index, bool aborting)
 {
-    auto& link = owner_.output_links_[output_index];
-    auto& slot = link.pipe->input_slot_;
-    using namespace std::chrono;
-    auto delay = 0us;
+    PIPEPP_REGISTER_CONTEXT(context_write());
+    for (; output_index < owner_.output_links_.size();) {
+        assert(_is_output_order());
 
-    if (link.pipe->is_launched() == false) {
-        throw pipe_exception("linked pipe is not launched yet!");
-    }
+        auto& link = owner_.output_links_[output_index];
+        auto& slot = link.pipe->input_slot_;
+        using namespace std::chrono;
+        auto delay = 0us;
 
-    if (!_is_output_order()) {
-        // 만약 이 실행기의 출력 순서가 아직 오지 않았다면, 단순히 대기합니다.
-        delay = 50us;
-    }
-    else if (auto check = slot.can_submit_input(fence_index_); check.has_value()) {
-        auto input_manip = [this, &link](std::any& out) {
-            link.handler(*fence_object_, cached_output_, out);
-        };
+        PIPEPP_ELAPSE_SCOPE_DYNAMIC(fmt::format(":: [{}]", link.pipe->name()).c_str());
+        if (link.pipe->is_launched() == false) {
+            throw pipe_exception("linked pipe is not launched yet!");
+        }
 
-        // 만약 optional인 경우, 입력이 준비되지 않았다면 abort에 true를 지정해,
-        //현재 입력 fence를 즉시 취소합니다.
-        bool const abort_optional = aborting || (slot.is_optional_ && !*check);
-        bool const can_try_submit = *check || abort_optional;
-        if (can_try_submit && slot._submit_input(fence_index_, owner_.id(), input_manip, fence_object_, abort_optional)) {
-            // no need to retry.
-            // go to next index.
+        if (auto check = slot.can_submit_input(fence_index_); check.has_value()) {
+            auto input_manip = [this, &link](std::any& out) {
+                return link.handler(*fence_object_, context_write(), cached_output_, out);
+            };
+
+            // 만약 optional인 경우, 입력이 준비되지 않았다면 abort에 true를 지정해,
+            //현재 입력 fence를 즉시 취소합니다.
+            bool const abort_optional = aborting || (slot.is_optional_ && !*check);
+            bool const can_try_submit = *check || abort_optional;
+            if (can_try_submit && slot._submit_input(fence_index_, owner_.id(), input_manip, fence_object_, abort_optional)) {
+                // no need to retry.
+                // go to next index.
+                ++output_index;
+
+                if (!link.pipe->is_paused() && owner_._is_selective_output() && !aborting && !slot.is_optional_) {
+                    // Optional 출력이 아닌 출력 노드에 대해, 성공적으로 입력을 제출한 경우입니다.
+                    // selective 출력이 활성화되었다면, 나머지 출력 링크를 버립니다.
+                    aborting = true;
+                }
+            }
+            else {
+                // Retry after short delay.
+                delay = 200us;
+            }
+        }
+        else { // simply discards current output link
             ++output_index;
         }
-        else {
-            // Retry after short delay.
-            delay = 200us;
-        }
-    }
-    else { // simply discards current output link
-        ++output_index;
-    }
 
-    if (output_index < owner_.output_links_.size()) {
         // 다음 출력 콜백을 예약합니다.
-        workers().add_timer(delay, &executor_slot::_output_link_callback, this, output_index, aborting);
+        // workers().add_timer(delay, &executor_slot::_output_link_callback, this, output_index, aborting);
+        if (delay > 0us) { std::this_thread::sleep_for(delay); }
     }
-    else {
-        _perform_post_output();
-    }
+    _perform_post_output();
 }
 
-void pipepp::impl__::pipe_base::_connect_output_to_impl(pipe_base* other, pipepp::impl__::pipe_base::output_link_adapter_type adapter)
+pipepp::detail::pipe_base::tweak_t pipepp::detail::pipe_base::get_prelaunch_tweaks()
+{
+    if (is_launched()) { throw pipe_exception("tweak must be editted before launch!"); }
+    return tweak_t{
+      .selective_input = &mode_selectie_input_,
+      .selective_output = &mode_selective_output_,
+      .is_optional = &input_slot_.is_optional_,
+    };
+}
+
+pipepp::detail::pipe_base::const_tweak_t pipepp::detail::pipe_base::read_tweaks() const
+{
+    return const_tweak_t{
+      .selective_input = &mode_selectie_input_,
+      .selective_output = &mode_selective_output_,
+      .is_optional = &input_slot_.is_optional_,
+    };
+}
+
+void pipepp::detail::pipe_base::_connect_output_to_impl(pipe_base* other, pipepp::detail::pipe_base::output_link_adapter_type adapter)
 {
     if (is_launched() || other->is_launched()) {
         throw pipe_link_exception("pipe already launched");
@@ -272,22 +305,35 @@ void pipepp::impl__::pipe_base::_connect_output_to_impl(pipe_base* other, pipepp
     assert(other->input_links_.size() == other->input_slot_.ready_conds_.size());
 }
 
-void pipepp::impl__::pipe_base::executor_conditions(std::vector<executor_condition_t>& conds) const
+void pipepp::detail::pipe_base::executor_conditions(std::vector<executor_condition_t>& conds) const
 {
     conds.resize(num_executors());
     for (auto i : kangsw::iota(conds.size())) {
         auto& exec = *executor_slots_[i];
 
         if (exec._is_busy()) {
-            conds[i] = _pending_output_slot_index() == i ? executor_condition_t::output : executor_condition_t::busy;
+            conds[i] = _pending_output_slot_index() == i ? executor_condition_t::busy_output : executor_condition_t::busy;
         }
         else {
-            conds[i] = executor_condition_t::idle;
+            conds[i] = _pending_output_slot_index() == i
+                         ? recently_aborted()
+                             ? executor_condition_t::idle_aborted
+                             : executor_condition_t::idle_output
+                         : exec.latest_exec_result() > pipe_error::warning
+                             ? executor_condition_t::idle_aborted
+                             : executor_condition_t::idle;
         }
     }
 }
 
-void pipepp::impl__::pipe_base::launch(size_t num_executors, std::function<std::unique_ptr<executor_base>()>&& factory)
+void pipepp::detail::pipe_base::mark_dirty()
+{
+    for (auto& exec_ptr : executor_slots_) {
+        exec_ptr->context_write()._mark_dirty();
+    }
+}
+
+void pipepp::detail::pipe_base::launch(size_t num_executors, std::function<std::unique_ptr<executor_base>()>&& factory)
 {
     if (is_launched()) {
         throw pipe_exception("this pipe is already launched!");
@@ -298,20 +344,20 @@ void pipepp::impl__::pipe_base::launch(size_t num_executors, std::function<std::
     }
 
     // 각 슬롯 인스턴스는 동일한 실행기를 가져야 하므로, 팩토리 함수를 받아와서 생성합니다.
-    for (auto index : kangsw::counter_range(num_executors)) {
+    for (auto index : kangsw::iota(num_executors)) {
         executor_slots_.emplace_back(std::make_unique<executor_slot>(*this, factory(), index, &options()));
     }
 
     input_slot_.active_input_fence_.store((fence_index_t)1, std::memory_order_relaxed);
 }
 
-void pipepp::impl__::pipe_base::_rotate_output_order(executor_slot* ref)
+void pipepp::detail::pipe_base::_rotate_output_order(executor_slot* ref)
 {
     assert(ref == executor_slots_[_pending_output_slot_index()].get());
     output_exec_slot_.fetch_add(1);
 }
 
-void pipepp::impl__::pipe_base::_refresh_interval_timer()
+void pipepp::detail::pipe_base::_refresh_interval_timer()
 {
     constexpr auto RELAXED = std::memory_order_relaxed;
     auto tp = latest_output_tp_.load(RELAXED);
@@ -319,13 +365,13 @@ void pipepp::impl__::pipe_base::_refresh_interval_timer()
     latest_output_tp_.compare_exchange_strong(tp, system_clock::now());
 }
 
-void pipepp::impl__::pipe_base::_update_latest_latency(system_clock::time_point launched)
+void pipepp::detail::pipe_base::_update_latest_latency(system_clock::time_point launched)
 {
     constexpr auto RELAXED = std::memory_order_relaxed;
     latest_output_latency_.store(system_clock::now() - launched, RELAXED);
 }
 
-void pipepp::impl__::pipe_base::input_slot_t::_supply_input_to_active_executor(bool is_initial_call)
+void pipepp::detail::pipe_base::input_slot_t::_supply_input_to_active_executor(bool is_initial_call)
 {
     if (is_initial_call) {
         owner_.destruction_guard_.lock();
@@ -354,7 +400,7 @@ void pipepp::impl__::pipe_base::input_slot_t::_supply_input_to_active_executor(b
     owner_.destruction_guard_.unlock();
 }
 
-bool pipepp::impl__::pipe_base::input_slot_t::_submit_input(fence_index_t output_fence, pipepp::pipe_id_t input_pipe, std::function<void(std::any&)> const& input_manip, std::shared_ptr<pipepp::base_shared_context> const& fence_obj, bool abort_current)
+bool pipepp::detail::pipe_base::input_slot_t::_submit_input(fence_index_t output_fence, pipepp::pipe_id_t input_pipe, std::function<bool(std::any&)> const& input_manip, std::shared_ptr<pipepp::base_shared_context> const& fence_obj, bool abort_current)
 {
     std::lock_guard lock{cached_input_.second};
     std::lock_guard destruction_guard{owner_.destruction_guard_};
@@ -389,43 +435,46 @@ bool pipepp::impl__::pipe_base::input_slot_t::_submit_input(fence_index_t output
         throw pipe_input_exception("duplicated input submit request ... something's wrong!");
     }
 
-    if (abort_current || owner_.is_paused()) {
-        // 현재 입력 슬롯의 펜스를 invalidate합니다.
-
-        // 연결된 각각의 출력 링크에 새로운 인덱스를 전파합니다.
-        // 기본 개념은, 현재 인덱스를 기다리고 있는 출력 링크의 입력 인덱스를 넘기는 것이므로,
-        //현재 입력 펜스 인덱스를 캡쳐해 전달합니다.
-        if (owner_.output_links_.empty() == false) {
-            owner_.destruction_guard_.lock();
-            owner_._thread_pool().add_task(&input_slot_t::_propagate_fence_abortion, this, active_input_fence(), 0);
-        }
-
-        // 다음 인덱스로 넘어갑니다.
-        _prepare_next();
-        return true;
-    }
+    bool should_abort_input = abort_current || owner_.is_paused();
 
     // fence object가 비어 있다면, 채웁니다.
     if (active_input_fence_object_ == nullptr) {
         active_input_fence_object_ = fence_obj;
     }
 
-    // 입력 슬롯을 채웁니다.
-    input_manip(cached_input_.first);
-    ready_conds_[input_index] = input_link_state::valid;
+    // 입력을 전달합니다. 만약 입력에 실패한다면, 즉시 입력을 취소하게 됩니다.
+    if (!should_abort_input) { should_abort_input = !input_manip(cached_input_.first); }
+
+    // 해당하는 입력 슬롯을 채우거나, 버립니다.
+    ready_conds_[input_index] = should_abort_input ? input_link_state::discarded : input_link_state::valid;
 
     bool const is_all_input_link_ready
-      = std::count(ready_conds_.begin(), ready_conds_.end(),
-                   input_link_state::valid)
-        == ready_conds_.size();
+      = std::ranges::count(ready_conds_, input_link_state::valid) == ready_conds_.size();
 
-    if (is_all_input_link_ready) {
+    if ((!should_abort_input && owner_._is_selective_input()) || is_all_input_link_ready) {
         _supply_input_to_active_executor();
+        owner_._update_abort_received(false);
+        return true;
     }
+
+    bool const contains_abort = std::ranges::count(ready_conds_, input_link_state::none) == 0;
+    if (!owner_._is_selective_input() || contains_abort) {
+        // 선택적 입력이 아니라면 즉시 abort를 propagate하고, 선택적 입력이라면 전체가 결과를 반환할 때까지 대기합니다.
+        if (owner_.output_links_.empty() == false) {
+            owner_.destruction_guard_.lock();
+            owner_._thread_pool().add_task(&input_slot_t::_propagate_fence_abortion, this, active_input_fence(), 0);
+        }
+
+        // 다음 인덱스로 넘어갑니다.
+        owner_._update_abort_received(true);
+        _prepare_next();
+    }
+
+    // 입력이 성공적으로 제출되었거나, abort가 처리되었습니다.
     return true;
 }
 
-bool pipepp::impl__::pipe_base::input_slot_t::_submit_input_direct(std::any&& input, std::shared_ptr<pipepp::base_shared_context> fence_object)
+bool pipepp::detail::pipe_base::input_slot_t::_submit_input_direct(std::any&& input, std::shared_ptr<pipepp::base_shared_context> fence_object)
 {
     if (owner_.is_paused()) { return false; }
 
@@ -448,7 +497,7 @@ bool pipepp::impl__::pipe_base::input_slot_t::_submit_input_direct(std::any&& in
     return true;
 }
 
-bool pipepp::impl__::pipe_base::input_slot_t::_can_submit_input_direct() const
+bool pipepp::detail::pipe_base::input_slot_t::_can_submit_input_direct() const
 {
     return owner_._active_exec_slot()._is_executor_busy() == false;
 }

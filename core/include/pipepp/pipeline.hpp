@@ -8,16 +8,18 @@
 #include "pipepp/pipe.hpp"
 
 namespace pipepp {
-namespace impl__ {
+namespace detail {
 
 class pipeline_base : public std::enable_shared_from_this<pipeline_base> {
 protected:
-    pipeline_base() = default;
+    pipeline_base();
     virtual ~pipeline_base() = default;
 
 public:
     decltype(auto) get_first();
     decltype(auto) get_pipe(pipe_id_t);
+
+    auto get_pipe(std::string_view s);
 
     auto& _thread_pool() { return workers_; }
     void sync();
@@ -45,63 +47,73 @@ protected:
 
 class pipe_proxy_base {
     friend class pipeline_base;
+    friend class std::optional<pipe_proxy_base>;
 
 protected:
     pipe_proxy_base(
       std::weak_ptr<pipeline_base> pipeline,
       pipe_base& pipe_ref)
         : pipeline_(pipeline)
-        , pipe_(pipe_ref)
+        , pipe_(&pipe_ref)
     {
     }
 
 public:
     virtual ~pipe_proxy_base() = default;
 
+protected:
+    auto& pipe() { return *pipe_; }
+    auto& pipe() const { return *pipe_; }
+
 public:
     // size of output nodes
     // output nodes[index]
-    size_t num_output_nodes() const { return pipe_.output_links().size(); }
-    pipe_proxy_base get_output_node(size_t index) const { return {pipeline_, *pipe_.output_links().at(index).pipe}; }
+    size_t num_output_nodes() const { return pipe().output_links().size(); }
+    pipe_proxy_base get_output_node(size_t index) const { return {pipeline_, *pipe().output_links().at(index).pipe}; }
 
-    size_t num_input_nodes() const { return pipe_.input_links().size(); }
-    pipe_proxy_base get_input_node(size_t index) const { return {pipeline_, *pipe_.input_links().at(index).pipe}; }
+    size_t num_input_nodes() const { return pipe().input_links().size(); }
+    pipe_proxy_base get_input_node(size_t index) const { return {pipeline_, *pipe().input_links().at(index).pipe}; }
 
     // get previous execution context
     std::shared_ptr<execution_context_data> consume_execution_result();
     bool execution_result_available() const;
 
     // get options
-    auto& options() const { return pipe_.options(); }
+    auto& options() const { return pipe().options(); }
 
     // get id
-    auto id() const { return pipe_.id(); }
+    auto id() const { return pipe().id(); }
 
     // get name
-    auto& name() const { return pipe_.name(); }
+    auto& name() const { return pipe().name(); }
 
     // check validity
     bool is_valid() const { return pipeline_.expired() == false; }
-    bool is_optional() const { return pipe_.is_optional_input(); }
+    bool is_optional() const { return pipe().is_optional_input(); }
 
     // executor conditions
-    size_t num_executors() const { return pipe_.num_executors(); }
-    void executor_conditions(std::vector<executor_condition_t>& out) const { pipe_.executor_conditions(out); }
+    size_t num_executors() const { return pipe().num_executors(); }
+    void executor_conditions(std::vector<executor_condition_t>& out) const { pipe().executor_conditions(out); }
 
     // return latest output interval
-    auto output_interval() const { return pipe_.output_interval(); }
-    auto output_latency() const { return pipe_.output_latency(); }
-    // pause functionality
-    bool is_paused() const { return pipe_.is_paused(); }
-    void pause() { pipe_.pause(); }
-    void unpause() { pipe_.unpause(); }
+    auto output_interval() const { return pipe().output_interval(); }
+    auto output_latency() const { return pipe().output_latency(); }
 
-    // TODO: report currently active output executor
-    // TODO: report execution results of each executors
+    // pause functionality
+    bool is_paused() const { return pipe().is_paused(); }
+    void pause() { pipe().pause(); }
+    void unpause() { pipe().unpause(); }
+    bool recently_aborted() const { return pipe().recently_aborted(); }
+
+    // mark dirty
+    void mark_option_dirty() { pipe().mark_dirty(); }
+
+    auto configure_tweaks() { return pipe().get_prelaunch_tweaks(); }
+    auto tweaks() { return pipe().read_tweaks(); }
 
 protected:
     std::weak_ptr<pipeline_base> pipeline_;
-    pipe_base& pipe_;
+    pipe_base* pipe_;
 };
 
 inline decltype(auto) pipeline_base::get_first()
@@ -109,19 +121,33 @@ inline decltype(auto) pipeline_base::get_first()
     return pipe_proxy_base(weak_from_this(), *pipes_.front());
 }
 
-inline decltype(auto) pipepp::impl__::pipeline_base::get_pipe(pipe_id_t id)
+inline decltype(auto) pipepp::detail::pipeline_base::get_pipe(pipe_id_t id)
 {
     auto index = id_mapping_.at(id);
     return pipe_proxy_base(weak_from_this(), *pipes_.at(index));
 }
 
-} // namespace impl__
+inline auto pipepp::detail::pipeline_base::get_pipe(std::string_view s)
+{
+    std::optional<pipe_proxy_base> rval;
+
+    for (auto& pipe : pipes_) {
+        if (pipe->name() == s) {
+            rval = pipe_proxy_base(weak_from_this(), *pipe);
+            break;
+        }
+    }
+
+    return std::move(rval);
+}
+
+} // namespace detail
 
 // template <typename SharedData_, typename InitialExec_>
 // class pipeline;
 
 template <typename SharedData_, typename Exec_>
-class pipe_proxy final : public impl__::pipe_proxy_base {
+class pipe_proxy final : public detail::pipe_proxy_base {
     template <typename, typename>
     friend class pipeline;
     template <typename, typename>
@@ -135,24 +161,54 @@ public:
     using pipeline_type = pipeline<SharedData_, Exec_>;
 
 private:
-    pipe_proxy(const std::weak_ptr<impl__::pipeline_base>& pipeline, impl__::pipe_base& pipe_ref)
+    pipe_proxy(const std::weak_ptr<detail::pipeline_base>& pipeline, detail::pipe_base& pipe_ref)
         : pipe_proxy_base(pipeline, pipe_ref)
     {
     }
 
 public:
-    // link to
-    // 1. creation
+    /**
+     * AVAILABLE LINKER SIGNATURES
+     *
+     *  (                                                           )\n
+     *  (Next Input                                                 )\n
+     *  (SharedData,    Prev Output,    Next Input                  )\n
+     *  (SharedData,    Next Input                                  )\n
+     *  (Prev Output,   Next Input                                  )\n
+     *  (Exec Context,  Prev Output,    Next Input                  )\n
+     *  (Shared Data,   Exec Context,   Prev Output,    Next Input  )\n
+     */
     template <typename LnkFn_, typename FactoryFn_, typename... FactoryArgs_>
     pipe_proxy<SharedData_, typename std::invoke_result_t<FactoryFn_, FactoryArgs_...>::element_type::executor_type>
     create_and_link_output(
-      std::string name, bool optional_input, size_t num_executors, LnkFn_&& linker, FactoryFn_&& factory, FactoryArgs_&&... args);
+      std::string name, size_t num_executors, LnkFn_&& linker, FactoryFn_&& factory, FactoryArgs_&&... args);
 
-    // 2. simple linkage
+    /**
+     * AVAILABLE LINKER SIGNATURES
+     *
+     *  (                                                           )\n
+     *  (Next Input                                                 )\n
+     *  (SharedData,    Prev Output,    Next Input                  )\n
+     *  (SharedData,    Next Input                                  )\n
+     *  (Prev Output,   Next Input                                  )\n
+     *  (Exec Context,  Prev Output,    Next Input                  )\n
+     *  (Shared Data,   Exec Context,   Prev Output,    Next Input  )\n
+     */
     template <typename Dest_, typename LnkFn_>
     pipe_proxy<shared_data_type, Dest_> link_output(pipe_proxy<shared_data_type, Dest_> dest, LnkFn_&& linker);
 
-    // simple output handler
+    /**
+     * AVAILABLE OUTPUT HANDLER SIGNATURES
+     *
+     *   (                                                      )\n
+     *   (Pipe Err,     SharedData,     Result                  )\n
+     *   (SharedData                                            )\n
+     *   (SharedData,   Exec Context                            )\n
+     *   (Pipe Err,     Result                                  )\n
+     *   (SharedData,   Result                                  )\n
+     *   (SharedData,   Exec Context,   Result                  )\n
+     *   (Pipe Err,     SharedData,     Exec Context,   Result  )\n
+     */
     template <typename Fn_>
     pipe_proxy& add_output_handler(Fn_&& handler);
 
@@ -174,8 +230,8 @@ pipe_proxy<SharedData_, Exec_>::link_output(pipe_proxy<shared_data_type, Dest_> 
 {
     using prev_output_type = output_type;
     using next_input_type = typename Dest_::input_type;
-    pipe_.connect_output_to<shared_data_type, prev_output_type, next_input_type>(
-      dest.pipe_, std::forward<LnkFn_>(linker));
+    pipe().connect_output_to<shared_data_type, prev_output_type, next_input_type>(
+      dest.pipe(), std::forward<LnkFn_>(linker));
 
     return dest;
 }
@@ -185,15 +241,34 @@ template <typename Fn_>
 pipe_proxy<SharedData_, Exec_>&
 pipe_proxy<SharedData_, Exec_>::add_output_handler(Fn_&& handler)
 {
-    auto wrapper = [fn_ = std::move(handler)](pipe_error e, base_shared_context& s, std::any const& o) {
-        fn_(e, static_cast<SharedData_&>(s), std::any_cast<output_type const&>(o));
+    auto wrapper = [fn_ = std::move(handler)](pipe_error e, base_shared_context& s, execution_context& ec, std::any const& o) {
+        auto& sd = static_cast<SharedData_&>(s);
+        auto& out = std::any_cast<output_type const&>(o);
+
+        using PE = pipe_error;
+        using SD = SharedData_&;
+        using EC = execution_context&;
+        using OUT = output_type const&;
+
+        bool const okay = e <= pipe_error::warning;
+        // clang-format off
+        if constexpr (std::is_invocable_v<Fn_>) { if(okay) fn_(); }
+        if constexpr (std::is_invocable_v<Fn_, PE, SD, OUT>) { fn_(e, sd, out); }
+        else if constexpr (std::is_invocable_v<Fn_, SD>) { if (okay) { fn_(sd); } }
+        else if constexpr (std::is_invocable_v<Fn_, SD, EC>) { if (okay) { fn_(sd, ec); } }
+        else if constexpr (std::is_invocable_v<Fn_, PE, OUT>) { fn_(e, o); }
+        else if constexpr (std::is_invocable_v<Fn_, SD, OUT>) { if (okay) { fn_(sd, out); } }
+        else if constexpr (std::is_invocable_v<Fn_, SD, EC, OUT>) { if (okay) { fn_(sd, ec, out); } }
+        else if constexpr (std::is_invocable_v<Fn_, PE, SD, EC, OUT>) { fn_(e, sd, ec, out); }
+        else { static_assert(false, "No invocable method"); }
+        // clang-format on
     };
-    pipe_.add_output_handler(std::move(wrapper));
+    pipe().add_output_handler(std::move(wrapper));
     return *this;
-}
+} // namespace pipepp
 
 template <typename SharedData_, typename InitialExec_>
-class pipeline final : public impl__::pipeline_base {
+class pipeline final : public detail::pipeline_base {
     template <typename, typename>
     friend class pipe_proxy;
 
@@ -203,7 +278,7 @@ public:
     using input_type = typename initial_executor_type::input_type;
     using initial_proxy_type = pipe_proxy<shared_data_type, initial_executor_type>;
 
-    using factory_return_type = std::unique_ptr<impl__::executor_base>;
+    using factory_return_type = std::unique_ptr<detail::executor_base>;
     ~pipeline() { sync(); }
 
 private:
@@ -211,17 +286,18 @@ private:
     auto& _create_pipe(std::string initial_pipe_name, bool is_optional, size_t num_execs, Fn_&& exec_factory, Args_&&... args)
     {
         if (num_execs == 0) { throw pipe_exception("invalid number of executors"); }
-        auto fn = std::ranges::find_if(pipes_, [&initial_pipe_name](std::unique_ptr<impl__::pipe_base> const& pipe) {
+        auto fn = std::ranges::find_if(pipes_, [&initial_pipe_name](std::unique_ptr<detail::pipe_base> const& pipe) {
             return pipe->name() == initial_pipe_name;
         });
         if (fn != pipes_.end()) { throw pipe_exception("name duplication detected"); }
 
         auto index = pipes_.size();
         auto& pipe = pipes_.emplace_back(
-          std::make_unique<impl__::pipe_base>(
+          std::make_unique<detail::pipe_base>(
             std::move(initial_pipe_name), is_optional));
         pipe->_set_thread_pool_reference(&workers_);
         pipe->options().reset_as_default<Exec_>();
+        pipe->mark_dirty();
 
         adapters_.emplace_back(
           num_execs,
@@ -263,7 +339,7 @@ public:
     initial_proxy_type front()
     {
         return initial_proxy_type{
-          std::static_pointer_cast<impl__::pipeline_base>(shared_from_this()),
+          std::static_pointer_cast<detail::pipeline_base>(shared_from_this()),
           *pipes_.front()};
     }
 
@@ -307,7 +383,7 @@ private:
 template <typename SharedData_, typename Exec_>
 template <typename LnkFn_, typename FactoryFn_, typename... FactoryArgs_>
 pipe_proxy<SharedData_, typename std::invoke_result_t<FactoryFn_, FactoryArgs_...>::element_type::executor_type>
-pipe_proxy<SharedData_, Exec_>::create_and_link_output(std::string name, bool optional_input, size_t num_executors, LnkFn_&& linker, FactoryFn_&& factory, FactoryArgs_&&... args)
+pipe_proxy<SharedData_, Exec_>::create_and_link_output(std::string name, size_t num_executors, LnkFn_&& linker, FactoryFn_&& factory, FactoryArgs_&&... args)
 {
     using factory_invoke_type = std::invoke_result_t<FactoryFn_, FactoryArgs_...>;
     using executor_type = typename factory_invoke_type::element_type;
@@ -315,13 +391,13 @@ pipe_proxy<SharedData_, Exec_>::create_and_link_output(std::string name, bool op
 
     auto pl = _lock();
     auto& ref = pl->template _create_pipe<destination_type>(
-      std::move(name), optional_input, num_executors,
+      std::move(name), false, num_executors,
       std::forward<FactoryFn_>(factory), std::forward<FactoryArgs_>(args)...);
 
     pipe_proxy<shared_data_type, destination_type> dest(pipeline_, ref);
     return link_output(dest, std::forward<LnkFn_>(linker));
 }
 
-static constexpr auto link_as_is = [](auto, auto& prev_out, auto& next_in) { next_in = prev_out; };
+static constexpr auto link_as_is = [](auto&&, execution_context&, auto&& prev_out, auto&& next_in) { next_in = std::forward<decltype(prev_out)>(prev_out); };
 
 } // namespace pipepp

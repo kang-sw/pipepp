@@ -86,13 +86,13 @@ TEST_CASE("pipeline compilation", "")
     auto _0 = pl->front();
     auto _1_0
       = _0.create_and_link_output(
-        "1.0", false, 64, link_as_is, &exec_1::factory);
+        "1.0", 64, link_as_is, &exec_1::factory);
     auto _1_1
       = _0.create_and_link_output(
-        "1.1", false, 64, link_as_is, &exec_1::factory);
+        "1.1", 64, link_as_is, &exec_1::factory);
     auto _2
       = _1_1.create_and_link_output(
-              "2.0", false, 64, &link_1_0, &exec_0::factory)
+              "2.0", 64, &link_1_0, &exec_0::factory)
           .add_output_handler([&](pipe_error, my_shared_data const& so, exec_0::output_type const& val) {
               auto [a, b] = val;
               order[ordering++] = so.level;

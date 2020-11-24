@@ -9,13 +9,14 @@
 #include <vector>
 
 #include "kangsw/misc.hxx"
+#include "kangsw/ptr_proxy.hxx"
 #include "kangsw/thread_pool.hxx"
 #include "kangsw/thread_utility.hxx"
 #include "pipepp/execution_context.hpp"
 #include "pipepp/options.hpp"
 
 namespace pipepp {
-namespace impl__ {
+namespace detail {
 class pipeline_base;
 }
 
@@ -23,6 +24,7 @@ class pipeline_base;
 enum class pipe_error {
     ok,
     warning,
+    abort,
     error,
     fatal
 };
@@ -65,24 +67,26 @@ enum class pipe_id_t : size_t { none = -1 };
 
 /** fence shared data의 기본 상속형입니다. */
 struct base_shared_context {
-    friend class impl__::pipeline_base;
+    friend class detail::pipeline_base;
     virtual ~base_shared_context() = default;
     auto& option() const noexcept { return global_options_; }
-    operator impl__::option_base const &() const { return *global_options_; }
+    operator detail::option_base const &() const { return *global_options_; }
     auto launch_time_point() const { return launched_; }
 
 private:
-    impl__::option_base const* global_options_;
+    detail::option_base const* global_options_;
     std::chrono::system_clock::time_point launched_;
 };
 
 enum class executor_condition_t : uint8_t {
     idle,
+    idle_aborted,
+    idle_output,
     busy,
-    output
+    busy_output
 };
 
-namespace impl__ {
+namespace detail {
 
 /** 기본 실행기. */
 class executor_base {
@@ -115,8 +119,8 @@ struct pipe_id_gen {
  */
 class pipe_base final : public std::enable_shared_from_this<pipe_base> {
 public:
-    using output_link_adapter_type = std::function<void(base_shared_context const&, std::any const& output, std::any& input)>;
-    using output_handler_type = std::function<void(pipe_error, base_shared_context&, std::any const&)>;
+    using output_link_adapter_type = std::function<bool(base_shared_context&, execution_context&, std::any const& output, std::any& input)>;
+    using output_handler_type = std::function<void(pipe_error, base_shared_context&, execution_context&, std::any const&)>;
     using system_clock = std::chrono::system_clock;
 
     explicit pipe_base(std::string name, bool optional_pipe = false)
@@ -126,6 +130,21 @@ public:
     }
 
 public:
+    struct tweak_t {
+        kangsw::ptr_proxy<bool> selective_input;
+        kangsw::ptr_proxy<bool> selective_output;
+        kangsw::ptr_proxy<bool> is_optional;
+    };
+    struct const_tweak_t {
+        kangsw::ptr_proxy<const bool> selective_input;
+        kangsw::ptr_proxy<const bool> selective_output;
+        kangsw::ptr_proxy<const bool> is_optional;
+    };
+
+    /** pre launch tweak 획득 */
+    tweak_t get_prelaunch_tweaks();
+    const_tweak_t read_tweaks() const;
+
     class input_slot_t {
         friend class pipe_base;
 
@@ -161,7 +180,7 @@ public:
         bool _submit_input(
           fence_index_t output_fence,
           pipe_id_t input_index,
-          std::function<void(std::any&)> const& input_manip,
+          std::function<bool(std::any&)> const& input_manip,
           std::shared_ptr<base_shared_context> const& fence_obj,
           bool abort_current = false);
 
@@ -212,7 +231,8 @@ public:
         fence_index_t fence_index() const { return fence_index_; }
         bool _is_executor_busy() const { return fence_index_ != fence_index_t::none; }
         bool _is_output_order() const { return index_ == owner_._pending_output_slot_index(); }
-        bool _is_busy() const { return timer_scope_.has_value(); }
+        bool _is_busy() const { return timer_scope_total_.has_value(); }
+        auto latest_exec_result() const { return latest_execution_result_.load(std::memory_order_relaxed); }
 
     public:
         struct launch_args_t {
@@ -256,7 +276,7 @@ public:
          */
         void _launch_callback(); // 파라미터는 나중에 추가
         void _perform_post_output();
-        void _output_link_callback(size_t output_index, bool aborting);
+        void _perform_output_link(size_t output_index, bool aborting);
 
     private:
         pipe_base& owner_;
@@ -272,7 +292,8 @@ public:
         std::any cached_input_;
         std::any cached_output_;
 
-        std::optional<execution_context::timer_scope_indicator> timer_scope_;
+        std::optional<execution_context::timer_scope_indicator> timer_scope_total_;
+        std::optional<execution_context::timer_scope_indicator> timer_scope_link_;
 
         size_t index_;
     };
@@ -305,6 +326,7 @@ public:
     bool is_paused() const { return paused_.load(std::memory_order_relaxed); }
     void pause() { paused_.store(true, std::memory_order_relaxed); }
     void unpause() { paused_.store(false, std::memory_order_relaxed); }
+    bool recently_aborted() const { return recently_input_aborted_.load(std::memory_order::relaxed); }
 
     /** 상태 점검 */
     bool is_optional_input() const { return input_slot_.is_optional_; }
@@ -317,6 +339,9 @@ public:
         return latest_interval_.load(std::memory_order_relaxed);
     }
     auto output_latency() const { return latest_output_latency_.load(std::memory_order_relaxed); }
+
+    /** 옵션 변경 후 호출, mark dirty */
+    void mark_dirty();
 
 public:
     /** 입력 연결자 */
@@ -361,6 +386,9 @@ public:
     size_t _slot_active() const { return active_exec_slot_.load() % executor_slots_.size(); }
     void _refresh_interval_timer();
     void _update_latest_latency(system_clock::time_point launched);
+    bool _is_selective_input() const { return mode_selectie_input_; }
+    bool _is_selective_output() const { return mode_selective_output_; }
+    void _update_abort_received(bool abort) { recently_input_aborted_.store(abort, std::memory_order::relaxed); }
 
 private:
     kangsw::timer_thread_pool& _thread_pool() const { return *ref_workers_; }
@@ -397,6 +425,13 @@ private:
     /** 일시 정지 처리 */
     std::atomic_bool paused_;
 
+    /** 상태 플래그 */
+    std::atomic_bool recently_input_aborted_;
+
+    /** 설정 플래그 */
+    bool mode_selective_output_ = false;
+    bool mode_selectie_input_ = false;
+
     //---GUARD--//
     kangsw::destruction_guard destruction_guard_;
 }; // namespace pipepp
@@ -404,14 +439,44 @@ private:
 template <typename Shared_, typename PrevOut_, typename NextIn_, typename Fn_>
 void pipe_base::connect_output_to(pipe_base& other, Fn_&& fn)
 {
-    auto wrapper = [fn_ = std::move(fn)](base_shared_context const& shared, std::any const& prev_out, std::any& next_in) -> void {
+    auto wrapper = [fn_ = std::move(fn)](base_shared_context& shared, execution_context& ec, std::any const& prev_out, std::any& next_in) {
         if (next_in.type() != typeid(NextIn_)) {
             next_in.emplace<NextIn_>();
         }
         if (prev_out.type() != typeid(PrevOut_)) {
             throw pipe_input_exception("argument type does not match");
         }
-        fn_(static_cast<Shared_ const&>(shared), std::any_cast<PrevOut_ const&>(prev_out), std::any_cast<NextIn_&>(next_in));
+
+        using SD = Shared_&;
+        using PO = PrevOut_ const&;
+        using NI = NextIn_&;
+        using EC = execution_context&;
+
+        auto& sd = static_cast<Shared_&>(shared);
+        auto& po = std::any_cast<PrevOut_ const&>(prev_out);
+        auto& ni = std::any_cast<NextIn_&>(next_in);
+
+        // clang-format off
+        bool R = true;
+        if constexpr (std::is_invocable_r_v<void, Fn_>)                         { fn_(); }
+        else if constexpr (std::is_invocable_r_v<bool, Fn_, SD, PO, NI>)        { R = fn_(sd, po, ni); }
+        else if constexpr (std::is_invocable_r_v<bool, Fn_, NI>)                { R = fn_(ni); }
+        else if constexpr (std::is_invocable_r_v<bool, Fn_, SD, NI>)            { R = fn_(sd, ni); }
+        else if constexpr (std::is_invocable_r_v<bool, Fn_, SD, EC, NI>)        { R = fn_(sd, ec, ni); }
+        else if constexpr (std::is_invocable_r_v<bool, Fn_, PO, NI>)            { R = fn_(po, ni); }
+        else if constexpr (std::is_invocable_r_v<bool, Fn_, EC, PO, NI>)        { R = fn_(ec, po, ni); }
+        else if constexpr (std::is_invocable_r_v<bool, Fn_, SD, EC, PO, NI>)    { R = fn_(sd, ec, po, ni); }
+        else if constexpr (std::is_invocable_r_v<void, Fn_, SD, PO, NI>)        { fn_(sd, po, ni); }
+        else if constexpr (std::is_invocable_r_v<void, Fn_, NI>)                { fn_(ni); }
+        else if constexpr (std::is_invocable_r_v<void, Fn_, SD, NI>)            { fn_(sd, ni); }
+        else if constexpr (std::is_invocable_r_v<void, Fn_, SD, EC, NI>)        { fn_(sd, ec, ni); }
+        else if constexpr (std::is_invocable_r_v<void, Fn_, PO, NI>)            { fn_(po, ni); }
+        else if constexpr (std::is_invocable_r_v<void, Fn_, EC, PO, NI>)        { fn_(ec, po, ni); }
+        else if constexpr (std::is_invocable_r_v<void, Fn_, SD, EC, PO, NI>)    { fn_(sd, ec, po, ni); }
+        else { static_assert(false, "No available invocable method"); }
+        // clang-format on
+
+        return R;
     };
 
     _connect_output_to_impl(&other, wrapper);
@@ -427,13 +492,13 @@ void pipe_base::launch_by(size_t num_executors, Fn_&& factory, Args_&&... args)
         args...)); // Intentionally not forwarded to prevent move assignment
 }
 
-} // namespace impl__
+} // namespace detail
 /**
  * 독립된 알고리즘 실행기 하나를 정의합니다.
  * 파이프에 공급하는 모든 실행기는 이 클래스를 상속해야 합니다.
  */
 template <typename Exec_>
-class executor final : public impl__::executor_base {
+class executor final : public detail::executor_base {
 public:
     using executor_type = Exec_;
     using input_type = typename executor_type::input_type;

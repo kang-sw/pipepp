@@ -11,22 +11,27 @@
 #include "nana/paint/graphics.hpp"
 #include "pipepp/gui/pipe_detail_panel.hpp"
 #include "pipepp/gui/pipe_view.hpp"
+
+#include "nana/gui/widgets/label.hpp"
+#include "pipepp/gui/pipeline_board.hpp"
 #include "pipepp/pipeline.hpp"
 
 using clock_type = std::chrono::system_clock;
 
 struct pipepp::gui::pipe_view::data_type {
     pipe_view& self;
+    pipeline_board* board_ref;
 
-    std::weak_ptr<impl__::pipeline_base> pipeline;
+    std::weak_ptr<detail::pipeline_base> pipeline;
     pipe_id_t pipe;
 
     std::shared_ptr<execution_context_data> exec_data;
     std::shared_ptr<pipe_detail_panel> detail_view;
 
     nana::place layout{self};
-    nana::button button{self};
+    nana::panel<true> title{self};
     nana::panel<true> label{self};
+    nana::button button{self};
 
     std::string label_text_interval = " ms";
     std::string label_text_exec = " ms";
@@ -45,6 +50,8 @@ struct pipepp::gui::pipe_view::data_type {
 
     clock_type::time_point latest_exec_receive;
     bool upper_node_paused = false;
+
+    nana::color title_layer_color;
 };
 
 void pipepp::gui::pipe_view::_label_events()
@@ -53,14 +60,21 @@ void pipepp::gui::pipe_view::_label_events()
 
     nana::drawing(m.label).draw_diehard([&](nana::paint::graphics& gp) {
         auto proxy = impl_->pipeline.lock()->get_pipe(impl_->pipe);
+        auto tweak = proxy.tweaks();
         auto backcolor = proxy.is_paused()
                            ? nana::colors::dark_red
                            : m.upper_node_paused
                                ? nana::colors::yellow
-                               : nana::color(85, 65, 85);
+                               : tweak.selective_input
+                                   ? nana::color(43, 100, 64)
+                                   : nana::color(64, 33, 64);
+
+        auto bottomcolor = tweak.selective_output
+                             ? nana::color(35, 48, 121)
+                             : nana::color(35, 35, 35);
 
         gp.gradual_rectangle(
-          nana::rectangle{{1, 1}, gp.size() + nana::size(-1, -1)}, backcolor, nana::color(35, 35, 35), true);
+          nana::rectangle{{1, 1}, gp.size() + nana::size(-1, -1)}, backcolor, bottomcolor, true);
         gp.round_rectangle(
           nana::rectangle{{}, gp.size()}, 3, 3,
           nana::colors::black, false, backcolor);
@@ -69,7 +83,7 @@ void pipepp::gui::pipe_view::_label_events()
             auto extent = gp.text_extent_size(text);
             nana::point str_draw_pos = {};
             str_draw_pos.y = slot * (extent.height + 2) + 3;
-            str_draw_pos.x = m.label.size().width - 5 - extent.width;
+            str_draw_pos.x = m.label.size().width * 94 / 100 - extent.width;
             gp.string(str_draw_pos, text, color);
         };
 
@@ -78,12 +92,15 @@ void pipepp::gui::pipe_view::_label_events()
         put_text(2, nana::colors::light_gray, m.label_text_interval);
     });
 
-    m.label.events().mouse_down([&](nana::arg_mouse const& arg) {
+    m.button.events().mouse_down([&](nana::arg_mouse const& arg) {
         if (arg.right_button) {
             auto proxy = impl_->pipeline.lock()->get_pipe(impl_->pipe);
             proxy.is_paused() ? proxy.unpause() : proxy.pause();
             _refresh_btn_color(!!details());
             nana::drawing(m.label).update();
+
+            auto& dirty = m.board_ref->option_changed;
+            if (dirty) { dirty(m.pipe, {}); }
         }
     });
 
@@ -99,29 +116,31 @@ pipepp::gui::pipe_view::pipe_view(const nana::window& wd, const nana::rectangle&
     , impl_(std::make_unique<data_type>(*this))
 {
     auto& m = *impl_;
+    auto pipe_board = dynamic_cast<pipeline_board*>(nana::API::get_widget(wd));
+    m.board_ref = pipe_board;
 
-    m.layout.div("vert<MAIN weight=20><<INTERVAL> weight=60><EXEC_COND>");
-    m.layout["MAIN"] << m.button;
+    m.layout.div("vert<MAIN weight=23><INTERVAL weight=60 margin=[0,1,0,1]><EXEC_COND margin=[0,1,0,1]>");
+    m.layout["MAIN"] << m.title;
     m.layout["INTERVAL"] << m.label;
     m.layout["EXEC_COND"] << m.executor_notes;
 
+    m.button.transparent(true);
     //  m.text.text_align(nana::align::center, nana::align_v::center);
     // m.button.typeface(nana::paint::font("consolas", 11.0));
     // m.label.typeface(nana::paint::font("consolas", 11.0));
-
     _label_events();
 
     m.button.events().click([&](nana::arg_click const& arg) {
-        details() == nullptr ? open_details(*this) : close_details();
+        details() == nullptr ? open_details(*this) : details()->focus();
         _refresh_btn_color(!!details());
     });
 
     nana::drawing(m.executor_notes).draw_diehard([&](nana::paint::graphics& gp) {
-        auto bgcol = bgcolor();
+        auto bgcol = nana::color(34, 22, 34);
         gp.gradual_rectangle(
           //nana::rectangle{{1, 1}, gp.size() + nana::size(-1, -1)},
           nana::rectangle{{}, gp.size()},
-          nana::color(87, 76, 86), bgcol, true);
+          bgcol, nana::color(87, 76, 86), true);
 
         int top = 0, bottom = gp.size().height - 0;
         int left = 0, right = gp.size().width - 0;
@@ -145,30 +164,51 @@ pipepp::gui::pipe_view::pipe_view(const nana::window& wd, const nana::rectangle&
                 nana::color color;
                 switch (cond[i]) {
                     case executor_condition_t::idle: color = nana::color(45, 45, 45); break;
-                    case executor_condition_t::busy: color = nana::colors::orange; break;
-                    case executor_condition_t::output: color = nana::colors::deep_sky_blue; break;
-                    default: color = nana::colors::red;
+                    case executor_condition_t::busy: color = nana::colors::yellow; break;
+                    case executor_condition_t::busy_output: color = nana::colors::orange; break;
+                    case executor_condition_t::idle_aborted: color = nana::colors::red; break;
+                    case executor_condition_t::idle_output: [[fallthrough]];
+                    default: color = nana::colors::lawn_green;
                 }
 
                 // gp.rectangle(r, true, color);
-                gp.gradual_rectangle(rect, color, bgcol, true);
+                gp.gradual_rectangle(rect, bgcol, color, true);
                 // gp.rectangle(r, false, nana::colors::dim_gray);
             }
         }
 
-        /*gp.round_rectangle(
+        gp.round_rectangle(
           nana::rectangle{{}, gp.size()}, 2, 2,
-          nana::colors::black, false, nana::colors::dim_gray);*/
+          nana::colors::black, false, nana::colors::dim_gray);
+    });
+
+    m.title.fgcolor(nana::colors::alice_blue);
+    nana::drawing(m.title).draw_diehard([&](nana::paint::graphics& gp) {
+        auto my_rect = nana::rectangle({}, m.title.size());
+        auto bg = m.title.bgcolor();
+        auto fg = m.title.fgcolor();
+
+        using namespace nana;
+        gp.gradual_rectangle(my_rect, m.title_layer_color, bg, true);
+        gp.round_rectangle(my_rect, 3, 3, nana::colors::black, false, {});
+
+        auto str = m.title.caption();
+        auto extent = gp.text_extent_size(str);
+        gp.string(nana::point((m.title.size().width - extent.width) / 2, (m.title.size().height - extent.height) / 2), str, fg);
     });
 
     events().destroy([&](nana::arg_destroy const& a) {
         close_details();
     });
+
+    events().resized([&](auto&&) {
+        m.button.size(size());
+    });
 }
 
 pipepp::gui::pipe_view::~pipe_view() = default;
 
-void pipepp::gui::pipe_view::reset_view(std::weak_ptr<impl__::pipeline_base> pipeline, pipe_id_t pipe)
+void pipepp::gui::pipe_view::reset_view(std::weak_ptr<detail::pipeline_base> pipeline, pipe_id_t pipe)
 {
     auto& m = *impl_;
     m.pipeline = pipeline;
@@ -178,7 +218,7 @@ void pipepp::gui::pipe_view::reset_view(std::weak_ptr<impl__::pipeline_base> pip
     if (pl == nullptr) { return; }
 
     auto proxy = pl->get_pipe(m.pipe);
-    m.button.caption(proxy.name());
+    m.title.caption(proxy.name());
     _refresh_btn_color(false);
 }
 
@@ -195,7 +235,7 @@ void pipepp::gui::pipe_view::update()
         m.exec_data = proxy.consume_execution_result();
         // auto time = m.exec_data->timers[0].elapsed;
 
-        auto lst_tm = {proxy.output_interval(), m.exec_data->timers[0].elapsed, proxy.output_latency()};
+        auto lst_tm = {proxy.output_interval(), m.exec_data->timers[1].elapsed, proxy.output_latency()};
         auto lst_tget = {&m.label_text_interval, &m.label_text_exec, &m.label_text_latency};
         auto lst_lerp = {&m.label_dur_interval, &m.label_dur_exec, &m.label_dur_latency};
         for (
@@ -212,10 +252,11 @@ void pipepp::gui::pipe_view::update()
         }
         m.latest_exec_receive = clock_type::now();
         m.upper_node_paused = false;
+        _refresh_btn_color(!!details());
     }
     else if (clock_type::now() - m.latest_exec_receive > 500ms) {
         m.latest_exec_receive = clock_type::now();
-        auto has_any_paused_input = [&](auto recurse, impl__::pipe_proxy_base const& prx) -> bool {
+        auto has_any_paused_input = [&](auto recurse, detail::pipe_proxy_base const& prx) -> bool {
             if (prx.is_paused()) { return true; }
             for (auto index : kangsw::iota(prx.num_input_nodes())) {
                 if (recurse(recurse, prx.get_input_node(index))) {
@@ -225,8 +266,9 @@ void pipepp::gui::pipe_view::update()
             return false;
         };
 
-        m.upper_node_paused = has_any_paused_input(has_any_paused_input, proxy);
+        m.upper_node_paused = has_any_paused_input(has_any_paused_input, proxy) || proxy.recently_aborted();
         nana::drawing(m.label).update();
+        _refresh_btn_color(!!details());
     }
 
     {
@@ -248,22 +290,11 @@ void pipepp::gui::pipe_view::_refresh_btn_color(bool detail_open)
 {
     auto& m = *impl_;
     auto proxy = m.pipeline.lock()->get_pipe(m.pipe);
-    if (detail_open) {
-        if (proxy.is_paused()) {
-            m.button.bgcolor(nana::colors::pale_violet_red);
-        }
-        else {
-            m.button.bgcolor(nana::colors::light_green);
-        }
-    }
-    else {
-        if (proxy.is_paused()) {
-            m.button.bgcolor(nana::colors::dim_gray);
-        }
-        else {
-            m.button.bgcolor(nana::colors::antique_white);
-        }
-    }
+
+    m.title_layer_color = detail_open ? nana::color(141, 131, 123) : nana::color(84, 53, 84);
+    m.title.bgcolor(m.upper_node_paused ? nana::colors::dark_red : nana::color(43, 121, 61));
+
+    nana::API::refresh_window(m.title);
 }
 
 void pipepp::gui::pipe_view::open_details(const nana::window& wd)
@@ -271,19 +302,25 @@ void pipepp::gui::pipe_view::open_details(const nana::window& wd)
     auto& m = *impl_;
     if (m.detail_view == nullptr || m.detail_view->empty()) {
         nana::rectangle parent_rect;
-        nana::API::get_window_rectangle(this->parent(), parent_rect);
-        parent_rect.width = 480;
-        parent_rect.height = 640;
+        parent_rect.position(nana::API::cursor_position());
+        parent_rect.width = 640;
+        parent_rect.height = 480;
+        parent_rect.x -= parent_rect.width;
+        parent_rect.y -= 5;
+
         nana::appearance appear;
         appear.floating = false;
         appear.decoration = true;
         appear.maximize = false;
-        appear.minimize = false;
-        appear.sizable = false;
-        appear.taskbar = true;
+        appear.minimize = true;
+        appear.sizable = true;
+        appear.taskbar = false;
 
         auto p = m.detail_view
           = std::make_shared<pipe_detail_panel>(wd, parent_rect, appear);
+
+        p->icon({});
+        p->move(parent_rect.position());
 
         p->reset_pipe(m.pipeline, m.pipe);
         if (m.exec_data) { p->update(m.exec_data); }
@@ -307,7 +344,7 @@ void pipepp::gui::pipe_view::close_details()
 
 void pipepp::gui::pipe_view::_m_caption(native_string_type&& f)
 {
-    impl_->button.caption(f);
+    impl_->title.caption(f);
     super::_m_caption(std::move(f));
 }
 
@@ -322,7 +359,7 @@ void pipepp::gui::pipe_view::_m_bgcolor(const nana::color& c)
 void pipepp::gui::pipe_view::_m_typeface(const nana::paint::font& font)
 {
     auto& m = *impl_;
-    m.button.typeface(font);
+    m.title.typeface(font);
     m.label.typeface(font);
     m.executor_notes.typeface(font);
     super::_m_typeface(font);

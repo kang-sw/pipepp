@@ -2,7 +2,13 @@
 #include <mutex>
 #include "pipepp/pipeline.hpp"
 
-void pipepp::impl__::pipeline_base::sync()
+pipepp::detail::pipeline_base::pipeline_base()
+{
+    using namespace std::literals;
+    workers_.max_task_interval_time = 100us;
+}
+
+void pipepp::detail::pipeline_base::sync()
 {
     for (bool is_busy = true; is_busy;) {
         using namespace std::literals;
@@ -21,27 +27,34 @@ void pipepp::impl__::pipeline_base::sync()
     }
 }
 
-nlohmann::json pipepp::impl__::pipeline_base::export_options()
+nlohmann::json pipepp::detail::pipeline_base::export_options()
 {
     nlohmann::json opts;
     auto _lck = options().lock_read();
-    opts["shared"] = options().value();
-    auto& opts_pipe_section = opts["pipes"];
+    opts["___shared"] = options().value();
+    auto& opts_pipe_section = opts["___pipes"];
+    auto& opts_suspend = opts["___suspended"];
 
     for (auto& pipe : pipes_) {
         auto& opts_pipe = opts_pipe_section[pipe->name()];
         opts_pipe = pipe->options().value();
+
+        if (pipe->is_paused()) {
+            opts_suspend[pipe->name()];
+        }
     }
 
     return opts;
 }
 
-void pipepp::impl__::pipeline_base::import_options(nlohmann::json const& in)
+void pipepp::detail::pipeline_base::import_options(nlohmann::json const& in)
 {
     // 재귀적으로 옵션을 대입합니다.
     auto _lck = options().lock_write();
-    options().value().merge_patch(in["shared"]);
-    auto& pipes_in = in["pipes"];
+    if (!in.contains("___shared") || !in.contains("___pipes") || !in.contains("___suspended")) { return; }
+    options().value().merge_patch(in["___shared"]);
+    auto& pipes_in = in["___pipes"];
+    auto& opts_suspend = in["___suspended"];
 
     using nlohmann::json;
     auto update = [](auto& recurse, json& l, json const& r) -> void {
@@ -73,10 +86,18 @@ void pipepp::impl__::pipeline_base::import_options(nlohmann::json const& in)
         if (it_found == pipes_in.end()) { continue; }
 
         update(update, opts, it_found.value());
+        pipe->mark_dirty();
+
+        if (opts_suspend.contains(pipe->name())) {
+            pipe->pause();
+        }
+        else {
+            pipe->unpause();
+        }
     }
 }
 
-std::shared_ptr<pipepp::base_shared_context> pipepp::impl__::pipeline_base::_fetch_shared()
+std::shared_ptr<pipepp::base_shared_context> pipepp::detail::pipeline_base::_fetch_shared()
 {
     std::lock_guard lock(fence_object_pool_lock_);
 
@@ -95,15 +116,15 @@ std::shared_ptr<pipepp::base_shared_context> pipepp::impl__::pipeline_base::_fet
     return gen;
 }
 
-std::shared_ptr<pipepp::execution_context_data> pipepp::impl__::pipe_proxy_base::consume_execution_result()
+std::shared_ptr<pipepp::execution_context_data> pipepp::detail::pipe_proxy_base::consume_execution_result()
 {
-    auto exec_result = pipe_.latest_execution_context();
+    auto exec_result = pipe().latest_execution_context();
     return exec_result ? const_cast<execution_context*>(exec_result)->_consume_read_buffer()
                        : nullptr;
 }
 
-bool pipepp::impl__::pipe_proxy_base::execution_result_available() const
+bool pipepp::detail::pipe_proxy_base::execution_result_available() const
 {
-    auto exec_result = pipe_.latest_execution_context();
+    auto exec_result = pipe().latest_execution_context();
     return exec_result && exec_result->can_consume_read_buffer();
 }

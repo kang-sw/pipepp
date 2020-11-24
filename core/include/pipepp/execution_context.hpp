@@ -10,9 +10,9 @@
 #include "kangsw/spinlock.hxx"
 
 namespace pipepp {
-namespace impl__ {
+namespace detail {
 class option_base;
-} // namespace impl__
+} // namespace detail
 
 /**
  * 전역 string table을 얻어옵니다. 모든 execution_context는 이 함수를 사용.
@@ -34,6 +34,7 @@ struct execution_context_data {
 
 public:
     struct timer_entity {
+        size_t order;
         std::string_view name;
         kangsw::hash_index category_id;
         size_t category_level;
@@ -41,6 +42,7 @@ public:
     };
 
     struct debug_data_entity {
+        size_t order;
         std::string_view name;
         kangsw::hash_index category_id;
         size_t category_level;
@@ -95,7 +97,7 @@ public:
 
 public: // accessor
     auto const& option() const { return *options_; }
-    operator impl__::option_base const &() const { return *options_; }
+    operator detail::option_base const &() const { return *options_; }
 
 public: // methods
     /**
@@ -116,10 +118,16 @@ public: // methods
     template <typename Ty_>
     void store_debug_data(kangsw::hash_pack, Ty_&& value);
 
+    /**
+     * 옵션의 더티 여부 확인 및 플래그 제거
+     */
+    bool consume_option_dirty_flag() { return !inv_opt_dirty_.test_and_set(std::memory_order::relaxed); }
+
 public:                    // internal public methods
     void _clear_records(); // invoke() 이전 호출
-    void _internal__set_option(impl__::option_base const* opt) { options_ = opt; }
+    void _internal__set_option(detail::option_base const* opt) { options_ = opt; }
     void _swap_data_buff(); // invoke() 이후 호출
+    void _mark_dirty() { inv_opt_dirty_.clear(std::memory_order::relaxed); }
 
     /**
      * 읽기 버퍼를 추출합니다.
@@ -132,12 +140,14 @@ private: // private methods
     auto& _wr() { return context_data_[front_data_buffer_]; }
 
 private:
-    class impl__::option_base const* options_ = {};
+    class detail::option_base const* options_ = {};
 
     std::array<std::shared_ptr<execution_context_data>, 2> context_data_;
     bool front_data_buffer_ = false;
     kangsw::spinlock swap_lock_;
     std::atomic_flag rd_buf_valid_;
+
+    std::atomic_flag inv_opt_dirty_;
 
     size_t category_level_ = 0;
     std::vector<kangsw::hash_index> category_id_;
@@ -151,6 +161,7 @@ void execution_context::store_debug_data(kangsw::hash_pack hp, Ty_&& value)
     entity.category_level = category_level_;
     entity.name = string_pool()(hp).second;
     entity.category_id = category_id_.back();
+    entity.order = _wr()->debug_data.size() + _wr()->timers.size();
     auto& data = entity.data;
 
     if constexpr (std::is_same_v<bool, type>) {
@@ -174,7 +185,9 @@ void execution_context::store_debug_data(kangsw::hash_pack hp, Ty_&& value)
 
 #define ___PIPEPP_CONCAT_2(A, B) A##B
 #define ___PIPEPP_CONCAT(A, B) ___PIPEPP_CONCAT_2(A, B)
+
 #define PIPEPP_REGISTER_CONTEXT(CONTEXT) auto& ___call_PIPEPP_REGISTER_CONTEXT = (CONTEXT)
+
 #define PIPEPP_ELAPSE_SCOPE(NAME)                                                  \
     constexpr kangsw::hash_pack ___PIPEPP_CONCAT(___TIMER_HASH_, __LINE__) = NAME; \
     auto ___PIPEPP_CONCAT(___TIMER_SCOPE_, __LINE__) = ___call_PIPEPP_REGISTER_CONTEXT.timer_scope(___PIPEPP_CONCAT(___TIMER_HASH_, __LINE__));
@@ -182,6 +195,12 @@ void execution_context::store_debug_data(kangsw::hash_pack hp, Ty_&& value)
 #define PIPEPP_ELAPSE_BLOCK(NAME)                                                  \
     constexpr kangsw::hash_pack ___PIPEPP_CONCAT(___TIMER_HASH_, __LINE__) = NAME; \
     if (auto ___PIPEPP_CONCAT(___TIMER_SCOPE_, __LINE__) = ___call_PIPEPP_REGISTER_CONTEXT.timer_scope(___PIPEPP_CONCAT(___TIMER_HASH_, __LINE__)); true)
+
+#define PIPEPP_ELAPSE_SCOPE_DYNAMIC(NAME) \
+    auto ___PIPEPP_CONCAT(___TIMER_SCOPE_, __LINE__) = ___call_PIPEPP_REGISTER_CONTEXT.timer_scope(NAME);
+
+#define PIPEPP_STORE_DEBUG_DATA_DYNAMIC(NAME, VALUE) \
+    ___call_PIPEPP_REGISTER_CONTEXT.store_debug_data(NAME, (VALUE));
 
 #define PIPEPP_STORE_DEBUG_DATA(NAME, VALUE)                                      \
     constexpr kangsw::hash_pack ___PIPEPP_CONCAT(___DATA_HASH_, __LINE__) = NAME; \

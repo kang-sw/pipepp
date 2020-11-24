@@ -53,6 +53,7 @@ pipepp::execution_context::timer_scope_indicator pipepp::execution_context::time
     elem.category_level = category_level_;
     elem.name = string_pool()(name).second;
     elem.category_id = name.first;
+    elem.order = _wr()->debug_data.size() + _wr()->timers.size();
 
     category_level_++;
     category_id_.emplace_back(name.first);

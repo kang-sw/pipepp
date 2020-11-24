@@ -17,4 +17,7 @@ struct localization {
         return r.load(path), std::move(r);
     }
 };
+
+extern nana::paint::font DEFAULT_DATA_FONT;
+
 } // namespace pipepp::gui

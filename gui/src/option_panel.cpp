@@ -215,16 +215,14 @@ void pipepp::gui::option_panel::_update_enterbox(bool trig_modify)
         auto& key = m.selected_proxy.key();
         if (!m.option->verify(key)) {
             m.selected_proxy.select(false);
-            m.selected_proxy.select(true);
             correct = false;
         } else {
             _refresh_item(m.selected_proxy);
             API::refresh_window(m.items);
-
-            if (on_dirty) { on_dirty(m.selected_proxy.key()); }
-
-            m.input_enter.select(true);
         }
+
+        if (on_dirty) { on_dirty(m.selected_proxy.key()); }
+        m.input_enter.select(true);
     }
 
     widget.bgcolor(correct ? colors::light_green : colors::orange_red);

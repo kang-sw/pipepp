@@ -203,7 +203,7 @@ _verify_chain<Ty_> minimum_all(RTy_&& pivot)
         for (auto& val : r) {
             if (val < pvt_) { val = pvt_, modified_any = true; }
         }
-        return modified_any;
+        return !modified_any;
     };
 }
 
@@ -215,7 +215,7 @@ _verify_chain<Ty_> maximum_all(RTy_&& pivot)
         for (auto& val : r) {
             if (val > pvt_) { val = pvt_, modified_any = true; }
         }
-        return modified_any;
+        return !modified_any;
     };
 }
 
@@ -233,7 +233,7 @@ _verify_chain<Ty_> contains_all(RTy_&& first, Args_&&... args)
         for (auto& val : r) {
             if (!set_.contains(val)) val = *set_.begin(), modify_any = true;
         }
-        return modify_any;
+        return !modify_any;
     };
 }
 

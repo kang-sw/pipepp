@@ -147,7 +147,7 @@ namespace verify {
 template <typename Ty_>
 struct _verify_chain {
     template <typename Fn_>
-    friend _verify_chain operator|(_verify_chain&& A, Fn_&& B)
+    friend _verify_chain operator|(_verify_chain A, Fn_&& B)
     {
         A.fn_ = [fn_a = std::move(A.fn_), fn_b = std::forward<Fn_>(B)](Ty_& r) -> bool { return fn_a(r) && fn_b(r); };
         return std::move(A);

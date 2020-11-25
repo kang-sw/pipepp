@@ -110,14 +110,18 @@ struct _option_instance {
     {
         if (_opt_spec<Exec_>().init_values_.contains(key_)) throw;
 
+        auto initv = std::forward<Ty_>(init_value);
+        verifier(initv);
+
         verify_function_t verify = [fn = std::move(verifier)](nlohmann::json& arg) -> bool {
             Ty_ value = arg;
 
             if (!fn(value)) { return arg = value, false; }
             return true;
         };
+
         _opt_spec<Exec_>().paths_[key_] = path;
-        _opt_spec<Exec_>().init_values_[key_] = std::forward<Ty_>(init_value);
+        _opt_spec<Exec_>().init_values_[key_] = std::move(initv);
         _opt_spec<Exec_>().init_categories_[key_] = std::move(category);
         _opt_spec<Exec_>().init_descs_[key_] = std::move(desc);
         _opt_spec<Exec_>().init_names_[key_] = std::move(name);

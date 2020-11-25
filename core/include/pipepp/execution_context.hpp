@@ -182,7 +182,7 @@ void execution_context::store_debug_data(kangsw::hash_pack hp, Ty_&& value)
 namespace pipepp::detail {
 template <typename Exec_>
 struct ___pipepp_executor_base {
-    using ___executor___ = Exec_;
+    using ___executor_type___ = Exec_;
     inline static const std::string ___category___ = "";
 };
 } // namespace pipepp::detail

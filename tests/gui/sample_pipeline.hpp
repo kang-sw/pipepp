@@ -1,7 +1,5 @@
 #pragma once
-#include "pipepp/execution_context.hpp"
-#include "pipepp/pipe.hpp"
-#include "pipepp/pipeline.hpp"
+#include "pipepp/pipepp.h"
 
 struct my_shared_context : public pipepp::base_shared_context {
 };

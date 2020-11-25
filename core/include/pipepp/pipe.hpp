@@ -13,7 +13,6 @@
 #include "kangsw/thread_pool.hxx"
 #include "kangsw/thread_utility.hxx"
 #include "pipepp/execution_context.hpp"
-#include "pipepp/options.hpp"
 
 namespace pipepp {
 namespace detail {
@@ -123,11 +122,9 @@ public:
     using output_handler_type = std::function<void(pipe_error, base_shared_context&, execution_context&, std::any const&)>;
     using system_clock = std::chrono::system_clock;
 
-    explicit pipe_base(std::string name, bool optional_pipe = false)
-        : name_(name)
-    {
-        input_slot_.is_optional_ = optional_pipe;
-    }
+    explicit pipe_base(std::string name, bool optional_pipe = false);
+
+    ~pipe_base();
 
 public:
     struct tweak_t {
@@ -318,8 +315,8 @@ public:
     auto& output_links() const { return output_links_; }
 
     /** 파이프 옵션 반환 */
-    auto& options() { return executor_options_; }
-    auto& options() const { return executor_options_; }
+    auto& options() { return *executor_options_; }
+    auto& options() const { return *executor_options_; }
 
     /** 입력 가능 상태인지 확인 */
     bool can_submit_input_direct() const { return !_active_exec_slot()._is_executor_busy(); }
@@ -420,7 +417,7 @@ private:
     std::vector<output_handler_type> output_handlers_;
 
     kangsw::timer_thread_pool* ref_workers_ = nullptr;
-    option_base executor_options_;
+    std::unique_ptr<option_base> executor_options_;
 
     /** 일시 정지 처리 */
     std::atomic_bool paused_;

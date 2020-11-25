@@ -1,4 +1,5 @@
 #include "pipepp/gui/debug_data_panel.hpp"
+#include <cassert>
 #include <iterator>
 #include <variant>
 
@@ -353,7 +354,7 @@ pipepp::gui::debug_data_panel::debug_data_panel(window wd, bool visible)
     });
 
     m.scroll.events().value_changed([&](arg_scroll const& arg) {
-        int y_val = -m.scroll.value();
+        int y_val = -(int)m.scroll.value();
         m.root->move(0, y_val);
     });
 }

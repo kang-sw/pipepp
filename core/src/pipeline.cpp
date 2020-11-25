@@ -1,11 +1,17 @@
 #include <filesystem>
 #include <mutex>
+#include "pipepp/options.hpp"
 #include "pipepp/pipeline.hpp"
 
 pipepp::detail::pipeline_base::pipeline_base()
+    : global_options_(std::make_unique<option_base>())
 {
     using namespace std::literals;
     workers_.max_task_interval_time = 100us;
+}
+
+pipepp::detail::pipeline_base::~pipeline_base()
+{
 }
 
 void pipepp::detail::pipeline_base::sync()
@@ -49,9 +55,8 @@ void pipepp::detail::pipeline_base::launch()
     adapters_.shrink_to_fit();
 }
 
-nlohmann::json pipepp::detail::pipeline_base::export_options()
+void pipepp::detail::pipeline_base::export_options(nlohmann::json& opts)
 {
-    nlohmann::json opts;
     auto _lck = options().lock_read();
     opts["___shared"] = options().value();
     auto& opts_pipe_section = opts["___pipes"];
@@ -65,8 +70,6 @@ nlohmann::json pipepp::detail::pipeline_base::export_options()
             opts_suspend[pipe->name()];
         }
     }
-
-    return opts;
 }
 
 void pipepp::detail::pipeline_base::import_options(nlohmann::json const& in)
@@ -129,7 +132,7 @@ std::shared_ptr<pipepp::base_shared_context> pipepp::detail::pipeline_base::_fet
     }
 
     auto& gen = fence_objects_.emplace_back(_new_shared_object());
-    gen->global_options_ = &global_options_;
+    gen->global_options_ = global_options_.get();
     gen->launched_ = std::chrono::system_clock::now();
 
     return gen;

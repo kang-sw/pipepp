@@ -5,7 +5,7 @@
 
 #include "catch.hpp"
 #include "fmt/format.h"
-#include "pipepp/pipeline.hpp"
+#include "pipepp/pipepp.h"
 
 namespace pipepp_test::pipelines {
 using namespace pipepp;

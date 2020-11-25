@@ -3,7 +3,8 @@
 #include "fmt/format.h"
 #include "kangsw/enum_arithmetic.hxx"
 #include "kangsw/misc.hxx"
-#include "pipepp/pipe.hpp"
+#include "pipepp/options.hpp"
+#include "pipepp/pipepp.h"
 
 std::optional<bool> pipepp::detail::pipe_base::input_slot_t::can_submit_input(fence_index_t output_fence) const
 {
@@ -41,20 +42,17 @@ void pipepp::detail::pipe_base::input_slot_t::_propagate_fence_abortion(fence_in
     if (auto query_result = link_input.can_submit_input(pending_fence); query_result.has_value()) {
         if (query_result.value() && link_input._submit_input(pending_fence, owner_.id(), {}, {}, true)) {
             ++output_link_index;
-        }
-        else {
+        } else {
             delay = 100us;
         }
-    }
-    else {
+    } else {
         ++output_link_index;
     }
 
     if (output_link_index < owner_.output_links_.size()) {
         owner_._thread_pool().add_timer(
           delay, &input_slot_t::_propagate_fence_abortion, this, pending_fence, output_link_index);
-    }
-    else {
+    } else {
         // 탈출 조건 ... 전파 완료함
         owner_.destruction_guard_.unlock();
     }
@@ -117,8 +115,7 @@ void pipepp::detail::pipe_base::executor_slot::_launch_callback()
     if (owner_.output_links_.empty() == false) {
         // workers().add_task(&executor_slot::_output_link_callback, this, 0, exec_res > pipe_error::warning);
         _perform_output_link(0, exec_res > pipe_error::warning);
-    }
-    else {
+    } else {
         _perform_post_output();
     }
 }
@@ -189,13 +186,11 @@ void pipepp::detail::pipe_base::executor_slot::_perform_output_link(size_t outpu
                     // selective 출력이 활성화되었다면, 나머지 출력 링크를 버립니다.
                     aborting = true;
                 }
-            }
-            else {
+            } else {
                 // Retry after short delay.
                 delay = 200us;
             }
-        }
-        else { // simply discards current output link
+        } else { // simply discards current output link
             ++output_index;
         }
 
@@ -204,6 +199,17 @@ void pipepp::detail::pipe_base::executor_slot::_perform_output_link(size_t outpu
         if (delay > 0us) { std::this_thread::sleep_for(delay); }
     }
     _perform_post_output();
+}
+
+pipepp::detail::pipe_base::pipe_base(std::string name, bool optional_pipe)
+    : name_(name)
+    , executor_options_(std::make_unique<option_base>())
+{
+    input_slot_.is_optional_ = optional_pipe;
+}
+
+pipepp::detail::pipe_base::~pipe_base()
+{
 }
 
 pipepp::detail::pipe_base::tweak_t pipepp::detail::pipe_base::get_prelaunch_tweaks()
@@ -264,8 +270,7 @@ void pipepp::detail::pipe_base::_connect_output_to_impl(pipe_base* other, pipepp
       kangsw::recurse_for_each(other, [&](pipe_base* node, auto emplacer) {
           if (id() == node->id()) {
               is_met = true;
-          }
-          else {
+          } else {
               output_recurse(node, emplacer);
           }
       }),
@@ -313,8 +318,7 @@ void pipepp::detail::pipe_base::executor_conditions(std::vector<executor_conditi
 
         if (exec._is_busy()) {
             conds[i] = _pending_output_slot_index() == i ? executor_condition_t::busy_output : executor_condition_t::busy;
-        }
-        else {
+        } else {
             conds[i] = _pending_output_slot_index() == i
                          ? recently_aborted()
                              ? executor_condition_t::idle_aborted

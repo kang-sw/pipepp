@@ -123,19 +123,25 @@ std::shared_ptr<pipepp::base_shared_context> pipepp::detail::pipeline_base::_fet
 {
     std::lock_guard lock(fence_object_pool_lock_);
 
+    std::shared_ptr<base_shared_context> ref = {};
     for (auto& ptr : fence_objects_) {
         if (ptr.use_count() == 1) {
             // 만약 다른 레퍼런스가 모두 해제되었다면, 재사용합니다.
-            ptr->launched_ = std::chrono::system_clock::now();
-            return ptr;
+            ref = ptr;
+            break;
         }
     }
 
-    auto& gen = fence_objects_.emplace_back(_new_shared_object());
-    gen->global_options_ = global_options_.get();
-    gen->launched_ = std::chrono::system_clock::now();
+    if (!ref) {
+        ref = fence_objects_.emplace_back(_new_shared_object());
+        ref->global_options_ = global_options_.get();
+    }
 
-    return gen;
+    ref->launched_ = std::chrono::system_clock::now();
+    ref->fence_ = pipes_.front()->current_fence_index();
+
+    ref->reload();
+    return ref;
 }
 
 std::shared_ptr<pipepp::execution_context_data> pipepp::detail::pipe_proxy_base::consume_execution_result()

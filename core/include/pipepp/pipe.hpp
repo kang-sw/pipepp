@@ -72,9 +72,13 @@ struct base_shared_context {
     operator detail::option_base const &() const { return *global_options_; }
     auto launch_time_point() const { return launched_; }
 
+    /** shared context를 상속하는 클래스에서 재정의해, 재사용된 shared context의 초기화를 처리할 수 있습니다. */
+    virtual void reload(){}
+
 private:
     detail::option_base const* global_options_;
     std::chrono::system_clock::time_point launched_;
+    fence_index_t fence_;
 };
 
 enum class executor_condition_t : uint8_t {
@@ -329,6 +333,8 @@ public:
     bool is_optional_input() const { return input_slot_.is_optional_; }
     size_t num_executors() const { return executor_slots_.size(); }
     void executor_conditions(std::vector<executor_condition_t>& conds) const;
+
+    auto current_fence_index() const { return input_slot_.active_input_fence_.load(std::memory_order_relaxed); }
 
     /** 출력 인터벌 반환 */
     auto output_interval() const

@@ -9,7 +9,8 @@ template <typename SharedData_, typename InitialExec_> template <typename Exec_,
     auto fn = std::ranges::find_if(pipes_, [&initial_pipe_name](std::unique_ptr<detail::pipe_base> const& pipe) {
         return pipe->name() == initial_pipe_name;
     });
-    if (fn != pipes_.end()) { throw pipe_exception("name duplication detected"); }
+    using namespace std::literals;
+    if (fn != pipes_.end()) { throw pipe_exception(("name duplication detected: "s + (**fn).name()).c_str()); }
 
     auto index = pipes_.size();
     auto& pipe = pipes_.emplace_back(

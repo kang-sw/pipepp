@@ -169,7 +169,7 @@ void pipepp::detail::pipe_base::executor_slot::_perform_output_link(size_t outpu
 
         if (auto check = slot.can_submit_input(fence_index_); check.has_value()) {
             auto input_manip = [this, &link](std::any& out) {
-                return link.handler(*fence_object_, context_write(), cached_output_, out);
+                return link.handler(*fence_object_, context_write(), cached_output_, out, link.pipe->options());
             };
 
             // 만약 optional인 경우, 입력이 준비되지 않았다면 abort에 true를 지정해,

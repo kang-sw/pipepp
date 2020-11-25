@@ -341,6 +341,6 @@ protected:
 private:
 };
 
-static constexpr auto link_as_is = [](auto&&, execution_context&, auto&& prev_out, auto&& next_in) { next_in = std::forward<decltype(prev_out)>(prev_out); };
+static constexpr auto link_as_is = [](auto&& prev_out, auto&& next_in) { next_in = std::forward<decltype(prev_out)>(prev_out);  return true; };
 
 } // namespace pipepp

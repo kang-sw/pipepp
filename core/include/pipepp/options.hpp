@@ -187,10 +187,76 @@ auto clamp(Ty_&& min, Ty_&& max)
 }
 
 template <typename Ty_, typename... Args_>
-_verify_chain<Ty_> contains(Ty_ first, Args_&&... args)
+_verify_chain<Ty_> contains(Ty_&& first, Args_&&... args)
 {
-    return [set_ = std::unordered_set<Ty_>({first, std::forward<Args_>(args)...})](Ty_& r) {
+    return [set_ = std::unordered_set<Ty_>({std::forward<Ty_>(first), std::forward<Args_>(args)...})](Ty_& r) {
         if (!set_.contains(r)) return r = *set_.begin(), false;
+        return true;
+    };
+}
+
+template <typename Ty_, typename RTy_>
+_verify_chain<Ty_> minimum_all(RTy_&& pivot)
+{
+    return [pvt_ = std::forward<RTy_>(pivot)](Ty_& r) {
+        bool modified_any = false;
+        for (auto& val : r) {
+            if (val < pvt_) { val = pvt_, modified_any = true; }
+        }
+        return modified_any;
+    };
+}
+
+template <typename Ty_, typename RTy_>
+_verify_chain<Ty_> maximum_all(RTy_&& pivot)
+{
+    return [pvt_ = std::forward<RTy_>(pivot)](Ty_& r) {
+        bool modified_any = false;
+        for (auto& val : r) {
+            if (val > pvt_) { val = pvt_, modified_any = true; }
+        }
+        return modified_any;
+    };
+}
+
+template <typename Ty_, typename RTy_>
+_verify_chain<Ty_> clamp_all(RTy_&& min, RTy_&& max)
+{
+    return minimum_all<Ty_>(std::forward<RTy_>(min)) | maximum_all<Ty_>(std::forward<RTy_>(max));
+}
+
+template <typename Ty_, typename RTy_, typename... Args_>
+_verify_chain<Ty_> contains_all(RTy_&& first, Args_&&... args)
+{
+    return [set_ = std::unordered_set<RTy_>({std::forward<RTy_>(first), std::forward<Args_>(args)...})](Ty_& r) {
+        bool modify_any = false;
+        for (auto& val : r) {
+            if (!set_.contains(val)) val = *set_.begin(), modify_any = true;
+        }
+        return modify_any;
+    };
+}
+
+template <typename Ty_>
+_verify_chain<Ty_> ascending()
+{
+    return [](Ty_& r) {
+        if (!std::is_sorted(std::begin(r), std::end(r), std::less_equal<>{})) {
+            std::sort(std::begin(r), std::end(r), std::less_equal<>{});
+            return false;
+        }
+        return true;
+    };
+}
+
+template <typename Ty_>
+_verify_chain<Ty_> descending()
+{
+    return [](Ty_& r) {
+        if (!std::is_sorted(std::begin(r), std::end(r), std::greater_equal<>{})) {
+            std::sort(std::begin(r), std::end(r), std::greater_equal<>{});
+            return false;
+        }
         return true;
     };
 }

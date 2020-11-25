@@ -576,23 +576,4 @@ decltype(auto) make_executor(Args_&&... args)
 {
     return std::make_unique<executor<Exec_>>(std::forward<Args_>(args)...);
 }
-
-template <typename Fn_, typename... Args_>
-struct function_executor_wrapper {
-    using input_type = std::tuple<Args_...>;
-    using output_type = std::invoke_result_t<Fn_, Args_...>;
-
-    function_executor_wrapper(Fn_&& f)
-        : fn_(std::forward<Fn_>(f))
-    {
-    }
-
-    void operator()(input_type const& i, output_type& o) const
-    {
-        std::apply(fn_, i);
-    }
-
-    Fn_ fn_;
-};
-
 } // namespace pipepp

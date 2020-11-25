@@ -453,23 +453,34 @@ void pipe_base::connect_output_to(pipe_base& other, Fn_&& fn)
         auto& po = std::any_cast<PrevOut_ const&>(prev_out);
         auto& ni = std::any_cast<NextIn_&>(next_in);
 
+        using std::is_invocable_r_v;
+
         // clang-format off
         bool R = true;
-        if constexpr (std::is_invocable_r_v<void, Fn_>)                         { fn_(); }
-        else if constexpr (std::is_invocable_r_v<bool, Fn_, SD, PO, NI>)        { R = fn_(sd, po, ni); }
-        else if constexpr (std::is_invocable_r_v<bool, Fn_, NI>)                { R = fn_(ni); }
-        else if constexpr (std::is_invocable_r_v<bool, Fn_, SD, NI>)            { R = fn_(sd, ni); }
-        else if constexpr (std::is_invocable_r_v<bool, Fn_, SD, EC, NI>)        { R = fn_(sd, ec, ni); }
-        else if constexpr (std::is_invocable_r_v<bool, Fn_, PO, NI>)            { R = fn_(po, ni); }
-        else if constexpr (std::is_invocable_r_v<bool, Fn_, EC, PO, NI>)        { R = fn_(ec, po, ni); }
-        else if constexpr (std::is_invocable_r_v<bool, Fn_, SD, EC, PO, NI>)    { R = fn_(sd, ec, po, ni); }
-        else if constexpr (std::is_invocable_r_v<void, Fn_, SD, PO, NI>)        { fn_(sd, po, ni); }
-        else if constexpr (std::is_invocable_r_v<void, Fn_, NI>)                { fn_(ni); }
-        else if constexpr (std::is_invocable_r_v<void, Fn_, SD, NI>)            { fn_(sd, ni); }
-        else if constexpr (std::is_invocable_r_v<void, Fn_, SD, EC, NI>)        { fn_(sd, ec, ni); }
-        else if constexpr (std::is_invocable_r_v<void, Fn_, PO, NI>)            { fn_(po, ni); }
-        else if constexpr (std::is_invocable_r_v<void, Fn_, EC, PO, NI>)        { fn_(ec, po, ni); }
-        else if constexpr (std::is_invocable_r_v<void, Fn_, SD, EC, PO, NI>)    { fn_(sd, ec, po, ni); }
+        if      constexpr (is_invocable_r_v<void, Fn_>                      ) { fn_(); }
+        else if constexpr (is_invocable_r_v<bool, Fn_, SD, PO, NI>          ) { R = fn_(sd, po, ni); }
+        else if constexpr (is_invocable_r_v<bool, Fn_, NI>                  ) { R = fn_(ni); }
+        else if constexpr (is_invocable_r_v<bool, Fn_, SD, NI>              ) { R = fn_(sd, ni); }
+        else if constexpr (is_invocable_r_v<bool, Fn_, SD, EC, NI>          ) { R = fn_(sd, ec, ni); }
+        else if constexpr (is_invocable_r_v<bool, Fn_, PO, NI>              ) { R = fn_(po, ni); }
+        else if constexpr (is_invocable_r_v<bool, Fn_, EC, PO, NI>          ) { R = fn_(ec, po, ni); }
+        else if constexpr (is_invocable_r_v<bool, Fn_, SD, EC, PO, NI>      ) { R = fn_(sd, ec, po, ni); }
+
+        else if constexpr (is_invocable_r_v<NI, Fn_, SD, PO>                ) { ni = fn_(sd, po); }
+        else if constexpr (is_invocable_r_v<NI, Fn_>                        ) { ni = fn_(); }
+        else if constexpr (is_invocable_r_v<NI, Fn_, SD>                    ) { ni = fn_(sd); }
+        else if constexpr (is_invocable_r_v<NI, Fn_, SD, EC>                ) { ni = fn_(sd, ec); }
+        else if constexpr (is_invocable_r_v<NI, Fn_, PO>                    ) { ni = fn_(po); }
+        else if constexpr (is_invocable_r_v<NI, Fn_, EC, PO>                ) { ni = fn_(ec, po); }
+        else if constexpr (is_invocable_r_v<NI, Fn_, SD, EC, PO>            ) { ni = fn_(sd, ec, po); }
+
+        else if constexpr (is_invocable_r_v<void, Fn_, SD, PO, NI>          ) { fn_(sd, po, ni); }
+        else if constexpr (is_invocable_r_v<void, Fn_, NI>                  ) { fn_(ni); }
+        else if constexpr (is_invocable_r_v<void, Fn_, SD, NI>              ) { fn_(sd, ni); }
+        else if constexpr (is_invocable_r_v<void, Fn_, SD, EC, NI>          ) { fn_(sd, ec, ni); }
+        else if constexpr (is_invocable_r_v<void, Fn_, PO, NI>              ) { fn_(po, ni); }
+        else if constexpr (is_invocable_r_v<void, Fn_, EC, PO, NI>          ) { fn_(ec, po, ni); }
+        else if constexpr (is_invocable_r_v<void, Fn_, SD, EC, PO, NI>      ) { fn_(sd, ec, po, ni); }
         else { static_assert(false, "No available invocable method"); }
         // clang-format on
 
@@ -525,10 +536,26 @@ public:
             output.emplace<output_type>();
         }
 
-        return std::invoke(
-          &executor_type::invoke, &exec_,
-          *context_,
-          std::any_cast<input_type&>(input), std::any_cast<output_type&>(output));
+        auto& ec = *context_;
+        auto& in = std::any_cast<input_type&>(input);
+        auto& out = std::any_cast<output_type&>(output);
+
+        using std::is_invocable_r_v;
+
+        using EC = execution_context&;
+        using INR = input_type const&;
+        using OUTR = output_type&;
+        using OUT = output_type;
+        using PE = pipe_error;
+
+        // clang-format off
+        if      constexpr (is_invocable_r_v<PE, executor_type, EC, INR, OUTR>  ) { return exec_(ec, in, out); }
+        else if constexpr (is_invocable_r_v<void, executor_type, EC, INR, OUTR>) { exec_(ec, in, out); return {}; }
+        else if constexpr (is_invocable_r_v<OUT, executor_type, EC, INR>       ) { out = exec_(ec, in); return {}; }
+        else if constexpr (is_invocable_r_v<OUT, executor_type, INR>           ) { out = exec_(in); return {}; }
+        else if constexpr (is_invocable_r_v<void, executor_type, INR, OUTR>           ) { exec_(in, out); return {}; }
+        else { return std::invoke( &executor_type::invoke, &exec_, *context_, in, out); }
+        // clang-format on
     }
 
     // Non-virtual to be overriden by base class
@@ -549,5 +576,23 @@ decltype(auto) make_executor(Args_&&... args)
 {
     return std::make_unique<executor<Exec_>>(std::forward<Args_>(args)...);
 }
+
+template <typename Fn_, typename... Args_>
+struct function_executor_wrapper {
+    using input_type = std::tuple<Args_...>;
+    using output_type = std::invoke_result_t<Fn_, Args_...>;
+
+    function_executor_wrapper(Fn_&& f)
+        : fn_(std::forward<Fn_>(f))
+    {
+    }
+
+    void operator()(input_type const& i, output_type& o) const
+    {
+        std::apply(fn_, i);
+    }
+
+    Fn_ fn_;
+};
 
 } // namespace pipepp

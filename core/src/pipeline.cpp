@@ -1,11 +1,17 @@
 #include <filesystem>
 #include <mutex>
+#include "pipepp/options.hpp"
 #include "pipepp/pipeline.hpp"
 
 pipepp::detail::pipeline_base::pipeline_base()
+    : global_options_(std::make_unique<option_base>())
 {
     using namespace std::literals;
     workers_.max_task_interval_time = 100us;
+}
+
+pipepp::detail::pipeline_base::~pipeline_base()
+{
 }
 
 void pipepp::detail::pipeline_base::sync()
@@ -27,9 +33,30 @@ void pipepp::detail::pipeline_base::sync()
     }
 }
 
-nlohmann::json pipepp::detail::pipeline_base::export_options()
+void pipepp::detail::pipeline_base::launch()
 {
-    nlohmann::json opts;
+    if (pipes_.front()->input_links().empty() == false) {
+        throw pipe_link_exception("frontmost input pipe must not receive input from any other pipe.");
+    }
+
+    for (auto i : kangsw::iota((size_t)1, pipes_.size())) {
+        auto& pipe = pipes_.at(i);
+        if (pipe->input_links().size() == 0) {
+            throw pipe_link_exception("Pipe isolation detected");
+        }
+    }
+
+    for (auto [pipe, tuple] : kangsw::zip(pipes_, adapters_)) {
+        auto& [n_ex, handler] = tuple;
+        pipe->launch(n_ex, std::move(handler));
+    }
+
+    adapters_.clear();
+    adapters_.shrink_to_fit();
+}
+
+void pipepp::detail::pipeline_base::export_options(nlohmann::json& opts)
+{
     auto _lck = options().lock_read();
     opts["___shared"] = options().value();
     auto& opts_pipe_section = opts["___pipes"];
@@ -43,8 +70,6 @@ nlohmann::json pipepp::detail::pipeline_base::export_options()
             opts_suspend[pipe->name()];
         }
     }
-
-    return opts;
 }
 
 void pipepp::detail::pipeline_base::import_options(nlohmann::json const& in)
@@ -64,8 +89,7 @@ void pipepp::detail::pipeline_base::import_options(nlohmann::json const& in)
                     recurse(recurse, item.value(), r.at(item.key()));
                 }
             }
-        }
-        else if (l.is_array() && r.is_array()) {
+        } else if (l.is_array() && r.is_array()) {
             int i;
             for (i = 0; i < std::min(l.size(), r.size()); ++i) {
                 recurse(recurse, l[i], r[i]);
@@ -74,8 +98,7 @@ void pipepp::detail::pipeline_base::import_options(nlohmann::json const& in)
             while (i < r.size()) {
                 l[i] = r[i];
             }
-        }
-        else if (strcmp(l.type_name(), r.type_name()) == 0) {
+        } else if (strcmp(l.type_name(), r.type_name()) == 0) {
             l = r;
         }
     };
@@ -90,8 +113,7 @@ void pipepp::detail::pipeline_base::import_options(nlohmann::json const& in)
 
         if (opts_suspend.contains(pipe->name())) {
             pipe->pause();
-        }
-        else {
+        } else {
             pipe->unpause();
         }
     }
@@ -101,19 +123,25 @@ std::shared_ptr<pipepp::base_shared_context> pipepp::detail::pipeline_base::_fet
 {
     std::lock_guard lock(fence_object_pool_lock_);
 
+    std::shared_ptr<base_shared_context> ref = {};
     for (auto& ptr : fence_objects_) {
         if (ptr.use_count() == 1) {
             // 만약 다른 레퍼런스가 모두 해제되었다면, 재사용합니다.
-            ptr->launched_ = std::chrono::system_clock::now();
-            return ptr;
+            ref = ptr;
+            break;
         }
     }
 
-    auto& gen = fence_objects_.emplace_back(_new_shared_object());
-    gen->global_options_ = &global_options_;
-    gen->launched_ = std::chrono::system_clock::now();
+    if (!ref) {
+        ref = fence_objects_.emplace_back(_new_shared_object());
+        ref->global_options_ = global_options_.get();
+    }
 
-    return gen;
+    ref->launched_ = std::chrono::system_clock::now();
+    ref->fence_ = pipes_.front()->current_fence_index();
+
+    ref->reload();
+    return ref;
 }
 
 std::shared_ptr<pipepp::execution_context_data> pipepp::detail::pipe_proxy_base::consume_execution_result()

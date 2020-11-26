@@ -34,7 +34,7 @@ private:
     void _refresh_layout();
 
 private:
-    friend struct inline_widget;
+    friend class inline_widget;
     struct data_type;
     std::unique_ptr<data_type> impl_;
     data_type& m;

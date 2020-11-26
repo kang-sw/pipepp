@@ -1,7 +1,9 @@
 #pragma once
 #include <memory>
+#include <set>
 #include <shared_mutex>
 #include <span>
+#include <unordered_set>
 #include <variant>
 #include "kangsw/misc.hxx"
 #include "nlohmann/json.hpp"
@@ -37,6 +39,7 @@ public:
     auto& description() const { return descriptions_; }
     auto& categories() const { return categories_; }
     auto& names() const { return names_; }
+    auto& paths() const { return paths_; }
 
     bool verify(std::string const& n, nlohmann::json& arg) const
     {
@@ -56,6 +59,7 @@ private:
     std::map<std::string, std::string> categories_;
     std::map<std::string, std::string> names_;
     std::map<std::string, verify_function_t> verifiers_;
+    std::map<std::string, std::string> paths_;
     mutable std::shared_mutex lock_;
 };
 
@@ -69,6 +73,7 @@ public:
     std::map<std::string, std::string> init_categories_;
     std::map<std::string, std::string> init_names_;
     std::map<std::string, verify_function_t> init_verifies_;
+    std::map<std::string, std::string> paths_;
 };
 
 template <typename Exec_>
@@ -86,6 +91,7 @@ void option_base::reset_as_default()
     descriptions_ = _opt_spec<Exec_>().init_descs_;
     names_ = _opt_spec<Exec_>().init_names_;
     verifiers_ = _opt_spec<Exec_>().init_verifies_;
+    paths_ = _opt_spec<Exec_>().paths_;
 }
 
 template <typename Exec_, typename Ty_>
@@ -94,10 +100,18 @@ struct _option_instance {
     using value_type = Ty_;
 
     _option_instance(
-      Ty_&& init_value, std::string name, std::string category = "", std::string desc = "", std::function<bool(Ty_&)> verifier = [](auto&) { return true; })
+      std::string path,
+      Ty_&& init_value,
+      std::string name,
+      std::string category = "",
+      std::string desc = "",
+      std::function<bool(Ty_&)> verifier = [](auto&) { return true; })
         : key_(category + "." + name)
     {
         if (_opt_spec<Exec_>().init_values_.contains(key_)) throw;
+
+        auto initv = std::forward<Ty_>(init_value);
+        verifier(initv);
 
         verify_function_t verify = [fn = std::move(verifier)](nlohmann::json& arg) -> bool {
             Ty_ value = arg;
@@ -106,7 +120,8 @@ struct _option_instance {
             return true;
         };
 
-        _opt_spec<Exec_>().init_values_[key_] = std::forward<Ty_>(init_value);
+        _opt_spec<Exec_>().paths_[key_] = path;
+        _opt_spec<Exec_>().init_values_[key_] = std::move(initv);
         _opt_spec<Exec_>().init_categories_[key_] = std::move(category);
         _opt_spec<Exec_>().init_descs_[key_] = std::move(desc);
         _opt_spec<Exec_>().init_names_[key_] = std::move(name);
@@ -126,20 +141,137 @@ struct _option_instance {
 };
 
 } // namespace detail
+
+namespace verify {
+
+template <typename Ty_>
+struct _verify_chain {
+    template <typename Fn_>
+    friend _verify_chain operator|(_verify_chain A, Fn_&& B)
+    {
+        A.fn_ = [fn_a = std::move(A.fn_), fn_b = std::forward<Fn_>(B)](Ty_& r) -> bool { return fn_a(r) && fn_b(r); };
+        return std::move(A);
+    }
+
+    template <typename Fn_>
+    _verify_chain(Fn_&& fn)
+        : fn_(std::forward<Fn_>(fn))
+    {}
+
+    bool operator()(Ty_& r) const { return fn_(r); }
+    std::function<bool(Ty_&)> fn_;
+};
+
+template <typename Ty_>
+_verify_chain<Ty_> minimum(Ty_&& min)
+{
+    return [min_ = std::forward<Ty_>(min)](Ty_& r) {
+        if (r < min_) { return r = min_, false; }
+        return true;
+    };
+}
+
+template <typename Ty_>
+_verify_chain<Ty_> maximum(Ty_&& max)
+{
+    return [max_ = std::forward<Ty_>(max)](Ty_& r) {
+        if (r > max_) { return r = max_, false; }
+        return true;
+    };
+}
+
+template <typename Ty_>
+auto clamp(Ty_&& min, Ty_&& max)
+{
+    return minimum(std::forward<Ty_>(min)) | maximum(std::forward<Ty_>(max));
+}
+
+template <typename Ty_, typename... Args_>
+_verify_chain<Ty_> contains(Ty_&& first, Args_&&... args)
+{
+    return [set_ = std::unordered_set<Ty_>({std::forward<Ty_>(first), std::forward<Args_>(args)...})](Ty_& r) {
+        if (!set_.contains(r)) return r = *set_.begin(), false;
+        return true;
+    };
+}
+
+template <typename Ty_, typename RTy_>
+_verify_chain<Ty_> minimum_all(RTy_&& pivot)
+{
+    return [pvt_ = std::forward<RTy_>(pivot)](Ty_& r) {
+        bool modified_any = false;
+        for (auto& val : r) {
+            if (val < pvt_) { val = pvt_, modified_any = true; }
+        }
+        return !modified_any;
+    };
+}
+
+template <typename Ty_, typename RTy_>
+_verify_chain<Ty_> maximum_all(RTy_&& pivot)
+{
+    return [pvt_ = std::forward<RTy_>(pivot)](Ty_& r) {
+        bool modified_any = false;
+        for (auto& val : r) {
+            if (val > pvt_) { val = pvt_, modified_any = true; }
+        }
+        return !modified_any;
+    };
+}
+
+template <typename Ty_, typename RTy_>
+_verify_chain<Ty_> clamp_all(RTy_&& min, RTy_&& max)
+{
+    return minimum_all<Ty_>(std::forward<RTy_>(min)) | maximum_all<Ty_>(std::forward<RTy_>(max));
+}
+
+template <typename Ty_, typename RTy_, typename... Args_>
+_verify_chain<Ty_> contains_all(RTy_&& first, Args_&&... args)
+{
+    return [set_ = std::unordered_set<RTy_>({std::forward<RTy_>(first), std::forward<Args_>(args)...})](Ty_& r) {
+        bool modify_any = false;
+        for (auto& val : r) {
+            if (!set_.contains(val)) val = *set_.begin(), modify_any = true;
+        }
+        return !modify_any;
+    };
+}
+
+template <typename Ty_>
+_verify_chain<Ty_> ascending()
+{
+    return [](Ty_& r) {
+        if (!std::is_sorted(std::begin(r), std::end(r), std::less_equal<>{})) {
+            std::sort(std::begin(r), std::end(r), std::less_equal<>{});
+            return false;
+        }
+        return true;
+    };
+}
+
+template <typename Ty_>
+_verify_chain<Ty_> descending()
+{
+    return [](Ty_& r) {
+        if (!std::is_sorted(std::begin(r), std::end(r), std::greater_equal<>{})) {
+            std::sort(std::begin(r), std::end(r), std::greater_equal<>{});
+            return false;
+        }
+        return true;
+    };
+}
+
+} // namespace verify
+
+namespace detail {
+static std::string path_tostr(const char* path, int line)
+{
+    auto out = std::string(path);
+    if (auto sz = out.find_last_of("\\/"); sz != std::string::npos) {
+        out = out.substr(sz + 1);
+    }
+    out.append(" (").append(std::to_string(line)).append(")");
+    return std::move(out);
+}
+} // namespace detail
 } // namespace pipepp
-
-/**
- * PIPEPP_DEFINE_OPTION(TYPE, NAME, DEFAULT_VALUE [, CATEGORY[, DESCRIPTION]])
- */
-#define PIPEPP_OPTION_2(TYPE, NAME, DEFAULT_VALUE, ...)                               \
-    inline static const ::pipepp::detail::_option_instance<___executor_type___, TYPE> \
-      NAME{DEFAULT_VALUE, #NAME, ##__VA_ARGS__};
-
-#define PIPEPP_OPTION(NAME, DEFAULT_VALUE, ...) \
-    PIPEPP_OPTION_2(decltype(DEFAULT_VALUE), NAME, DEFAULT_VALUE, __VA_ARGS__)
-
-#define PIPEPP_CATEGORY_OPTION(NAME, DEFAULT_VALUE, ...) \
-    PIPEPP_OPTION(NAME, DEFAULT_VALUE, ___category___, __VA_ARGS__)
-
-#define PIPEPP_DECLARE_OPTION_CLASS(EXECUTOR) using ___executor_type___ = EXECUTOR;
-#define PIPEPP_DECLARE_OPTION_CATEGORY(CATEGORY) inline static const std::string ___category___ = (CATEGORY);

@@ -166,58 +166,23 @@ void execution_context::store_debug_data(kangsw::hash_pack hp, Ty_&& value)
 
     if constexpr (std::is_same_v<bool, type>) {
         data = value;
-    }
-    else if constexpr (std::is_integral_v<type>) {
+    } else if constexpr (std::is_integral_v<type>) {
         data.emplace<int64_t>(std::forward<Ty_>(value));
-    }
-    else if constexpr (std::is_floating_point_v<type>) {
+    } else if constexpr (std::is_floating_point_v<type>) {
         data.emplace<double>(std::forward<Ty_>(value));
-    }
-    else if constexpr (std::is_convertible_v<type, std::string>) {
+    } else if constexpr (std::is_convertible_v<type, std::string>) {
         data.emplace<std::string>(std::forward<Ty_>(value));
-    }
-    else {
+    } else {
         data.emplace<std::any>(std::forward<Ty_>(value));
     }
 }
 
 } // namespace pipepp
 
-#define ___PIPEPP_CONCAT_2(A, B) A##B
-#define ___PIPEPP_CONCAT(A, B) ___PIPEPP_CONCAT_2(A, B)
-
-#define PIPEPP_REGISTER_CONTEXT(CONTEXT) auto& ___call_PIPEPP_REGISTER_CONTEXT = (CONTEXT)
-
-#define PIPEPP_ELAPSE_SCOPE(NAME)                                                  \
-    constexpr kangsw::hash_pack ___PIPEPP_CONCAT(___TIMER_HASH_, __LINE__) = NAME; \
-    auto ___PIPEPP_CONCAT(___TIMER_SCOPE_, __LINE__) = ___call_PIPEPP_REGISTER_CONTEXT.timer_scope(___PIPEPP_CONCAT(___TIMER_HASH_, __LINE__));
-
-#define PIPEPP_ELAPSE_BLOCK(NAME)                                                  \
-    constexpr kangsw::hash_pack ___PIPEPP_CONCAT(___TIMER_HASH_, __LINE__) = NAME; \
-    if (auto ___PIPEPP_CONCAT(___TIMER_SCOPE_, __LINE__) = ___call_PIPEPP_REGISTER_CONTEXT.timer_scope(___PIPEPP_CONCAT(___TIMER_HASH_, __LINE__)); true)
-
-#define PIPEPP_ELAPSE_SCOPE_DYNAMIC(NAME) \
-    auto ___PIPEPP_CONCAT(___TIMER_SCOPE_, __LINE__) = ___call_PIPEPP_REGISTER_CONTEXT.timer_scope(NAME);
-
-#define PIPEPP_STORE_DEBUG_DATA_DYNAMIC(NAME, VALUE) \
-    ___call_PIPEPP_REGISTER_CONTEXT.store_debug_data(NAME, (VALUE));
-
-#define PIPEPP_STORE_DEBUG_DATA(NAME, VALUE)                                      \
-    constexpr kangsw::hash_pack ___PIPEPP_CONCAT(___DATA_HASH_, __LINE__) = NAME; \
-    ___call_PIPEPP_REGISTER_CONTEXT.store_debug_data(___PIPEPP_CONCAT(___DATA_HASH_, __LINE__), (VALUE));
-
-#define PIPEPP_CAPTURE_DEBUG_DATA(VALUE)                                            \
-    constexpr kangsw::hash_pack ___PIPEPP_CONCAT(___DATA_HASH_, __LINE__) = #VALUE; \
-    ___call_PIPEPP_REGISTER_CONTEXT.store_debug_data(___PIPEPP_CONCAT(___DATA_HASH_, __LINE__), (VALUE));
-
-#define PIPEPP_STORE_DEBUG_DATA_COND(NAME, VALUE, COND)                                                       \
-    if (COND) {                                                                                               \
-        constexpr kangsw::hash_pack ___PIPEPP_CONCAT(___DATA_HASH_, __LINE__) = NAME;                         \
-        ___call_PIPEPP_REGISTER_CONTEXT.store_debug_data(___PIPEPP_CONCAT(___DATA_HASH_, __LINE__), (VALUE)); \
-    }
-
-#define PIPEPP_CAPTURE_DEBUG_DATA_COND(VALUE, COND)                                                           \
-    if (COND) {                                                                                               \
-        constexpr kangsw::hash_pack ___PIPEPP_CONCAT(___DATA_HASH_, __LINE__) = #VALUE;                       \
-        ___call_PIPEPP_REGISTER_CONTEXT.store_debug_data(___PIPEPP_CONCAT(___DATA_HASH_, __LINE__), (VALUE)); \
-    }
+namespace pipepp::detail {
+template <typename Exec_>
+struct ___pipepp_executor_base {
+    using ___executor_type___ = Exec_;
+    inline static const std::string ___category___ = "";
+};
+} // namespace pipepp::detail

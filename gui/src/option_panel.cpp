@@ -37,6 +37,7 @@ struct pipepp::gui::option_panel::body_type {
     nana::treebox::item_proxy selected_proxy;
 
     bool is_vertical = false;
+    bool expanded = false;
 };
 
 struct option_tree_arg {
@@ -70,11 +71,16 @@ pipepp::gui::option_panel::option_panel(nana::window wd, bool visible)
     m.input_title.text_align(align::center, align_v::center);
 
     m.input_descr.borderless(true);
-    m.input_descr.typeface(DEFAULT_DATA_FONT);
+    // m.input_descr.typeface(DEFAULT_DATA_FONT);
     m.input_descr.multi_lines(true);
     m.input_descr.editable(false);
     m.input_descr.focus_behavior(widgets::skeletons::text_focus_behavior::none);
     m.input_descr.bgcolor(colors::light_gray);
+    m.input_descr.line_wrapped(true);
+    m.input_descr.colored_area_access()->get(0)->bgcolor = colors::black;
+    m.input_descr.colored_area_access()->get(0)->fgcolor = colors::white;
+    m.input_descr.colored_area_access()->get(1)->bgcolor = colors::black;
+    m.input_descr.colored_area_access()->get(1)->fgcolor = colors::yellow;
 
     m.input_enter.multi_lines(false);
     m.input_enter.typeface(DEFAULT_DATA_FONT);
@@ -88,7 +94,11 @@ pipepp::gui::option_panel::option_panel(nana::window wd, bool visible)
     m.input_array_object_list.events().selected([&](auto& arg) { _cb_json_list_selected(arg); });
     _assign_events();
 
-    vertical(false);
+    events().resized([&](auto&&) {
+        if (automatic_vertical_swap) {
+            vertical(size().width < size().height);
+        }
+    });
 }
 
 pipepp::gui::option_panel::~option_panel() = default;
@@ -123,7 +133,7 @@ void pipepp::gui::option_panel::_cb_tree_selected(nana::arg_treebox const& a)
     auto& value = opts.value().at(key);
     auto& name = opts.names().at(key);
     m.input_title.caption(opts.names().at(key));
-    m.input_descr.reset(fmt::format("({}\t: {})\n", name, value.type_name()));
+    m.input_descr.reset(fmt::format("{}\t<{}>\n  @ \"{}\"\n", name, value.type_name(), opts.paths().at(key)));
     m.input_descr.append(opts.description().at(key), true);
 
     auto& list = m.input_array_object_list;
@@ -131,7 +141,7 @@ void pipepp::gui::option_panel::_cb_tree_selected(nana::arg_treebox const& a)
     list.auto_draw(false);
     auto cat = list.at(0);
     for (auto& json_value : value.items()) {
-        cat.append({json_value.key(), json_value.value().dump()});
+        cat.append({!json_value.key().empty() ? json_value.key() : "<Default>", json_value.value().dump()});
         auto item = cat.back();
         item.value(&json_value.value());
     }
@@ -159,8 +169,7 @@ void pipepp::gui::option_panel::_cb_json_list_selected(nana::arg_listbox const& 
         if (item.value<nlohmann::json*>()->is_boolean()) {
             _update_check_button();
         }
-    }
-    else {
+    } else {
         m.input_enter.reset("...");
     }
 
@@ -206,15 +215,13 @@ void pipepp::gui::option_panel::_update_enterbox(bool trig_modify)
         auto& key = m.selected_proxy.key();
         if (!m.option->verify(key)) {
             m.selected_proxy.select(false);
-            m.selected_proxy.select(true);
-            return;
+            correct = false;
+        } else {
+            _refresh_item(m.selected_proxy);
+            API::refresh_window(m.items);
         }
 
-        _refresh_item(m.selected_proxy);
-        API::refresh_window(m.items);
-
         if (on_dirty) { on_dirty(m.selected_proxy.key()); }
-
         m.input_enter.select(true);
     }
 
@@ -252,12 +259,10 @@ void pipepp::gui::option_panel::_update_check_button(bool operate)
     if (m.input_enter.text() == "true") {
         if (operate) { m.input_enter.reset("false"); }
         status = operate ? false : true;
-    }
-    else if (m.input_enter.text() == "false") {
+    } else if (m.input_enter.text() == "false") {
         if (operate) { m.input_enter.reset("true"); }
         status = operate ? true : false;
-    }
-    else {
+    } else {
         return;
     }
     m.input_enter_check.bgcolor(status ? colors::black : colors::white);
@@ -281,11 +286,22 @@ void pipepp::gui::option_panel::reload(std::weak_ptr<detail::pipeline_base> pl, 
 
     auto& opts = option->value();
     auto& names = option->names();
-    for (auto category_pair : option->categories()) {
+
+    using namespace std::literals;
+    using std::vector, std::string, std::string_view, std::pair;
+
+    vector<pair<string_view, string_view>> categories{option->categories().begin(), option->categories().end()};
+    vector<pair<string_view, string_view>> paths{option->paths().begin(), option->paths().end()};
+    kangsw::iota index_range{categories.size()};
+    vector<size_t> indices(index_range.begin(), index_range.end());
+    std::sort(indices.begin(), indices.end(), [&](auto a, auto b) { return paths.at(a).second < paths.at(b).second; });
+
+    for (auto idx : indices) {
+        auto category_pair = categories.at(idx);
         nana::drawerbase::treebox::item_proxy item;
-        auto& key = category_pair.first;
-        auto category = category_pair.second.empty() ? "Misc" : category_pair.second;
-        std::string name;
+        std::string key{category_pair.first};
+        auto category = category_pair.second.empty() ? ""s : std::string(category_pair.second);
+        string name;
 
         for (; !category.empty();) {
             auto first_dot = category.find_first_of('.', 1);
@@ -294,18 +310,18 @@ void pipepp::gui::option_panel::reload(std::weak_ptr<detail::pipeline_base> pl, 
                 category_name = category.substr(0, first_dot);
                 name += category_name;
                 category = category.substr(first_dot);
-            }
-            else {
+            } else {
                 category_name = category;
-                name = category;
+                name = std::move(category);
                 category = {};
             }
 
             if (category_name[0] == '.') { category_name.erase(0, 1); };
             item = item.empty() ? tree.insert(name, std::move(category_name)) : item.append(name, std::move(category_name));
+            item.expand(item.level() < 2);
         }
 
-        item = item.append(key, "");
+        item = item.empty() ? tree.insert(std::move(key), "") : item.append(std::move(key), "");
         _refresh_item(item);
     }
 }
@@ -315,38 +331,28 @@ void pipepp::gui::option_panel::vertical(bool do_vertical)
     auto& m = *impl_;
     m.is_vertical = do_vertical;
 
-    if (do_vertical) {
-        m.input_layout.div(
-          "<"
-          "  vert gap=2"
-          // "  <TITLE weight=20>"
-          "  <DESC margin=[1,0,1,0] weight=25%>"
-          "  <LIST margin=2>"
-          "  <INPUT weight=25 arrange=[20, variable]>"
-          ">");
-    }
-    else {
-        m.input_layout.div(
-          "vert gap=2"
-          // "<TITLE weight=20>"
-          "<DESC margin=[1,0,1,0] weight=25%>"
-          "<LIST margin=2>"
-          "<INPUT weight=25 arrange=[20, variable]>");
+    m.input_layout.div(
+      "<"
+      "  vert gap=2"
+      "  <DESC margin=[1,0,1,0] weight=35%>"
+      "  <LIST margin=2>"
+      "  <INPUT weight=25 arrange=[25, variable]>"
+      ">");
+
+    if (m.expanded) {
+        m.layout.div(fmt::format("{1} {0}", "<MAIN margin=[0,4,0,0]><INPUT> margin=4 gap=4", m.is_vertical ? "vert" : ""));
+    } else {
+        m.layout.div("<MAIN margin=4>");
     }
 
     m.input_layout.collocate();
+    m.layout.collocate();
 }
 
 void pipepp::gui::option_panel::_expand(bool expanded)
 {
     auto& m = *impl_;
+    m.expanded = expanded;
 
-    if (expanded) {
-        m.layout.div(fmt::format("{1} {0}", "<MAIN margin=[0,4,0,0]><INPUT> margin=4 gap=4", m.is_vertical ? "vert" : ""));
-    }
-    else {
-        m.layout.div("<MAIN margin=4>");
-    }
-
-    m.layout.collocate();
+    vertical(m.is_vertical);
 }

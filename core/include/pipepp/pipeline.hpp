@@ -5,15 +5,19 @@
 #include <typeinfo>
 #include "kangsw/misc.hxx"
 #include "kangsw/thread_pool.hxx"
+#include "nlohmann/json_fwd.hpp"
 #include "pipepp/pipe.hpp"
 
 namespace pipepp {
 namespace detail {
 
 class pipeline_base : public std::enable_shared_from_this<pipeline_base> {
+public:
+    using factory_return_type = std::unique_ptr<detail::executor_base>;
+
 protected:
     pipeline_base();
-    virtual ~pipeline_base() = default;
+    virtual ~pipeline_base();
 
 public:
     decltype(auto) get_first();
@@ -24,11 +28,14 @@ public:
     auto& _thread_pool() { return workers_; }
     void sync();
 
-public:
-    auto& options() const { return global_options_; }
-    auto& options() { return global_options_; }
+    // launcher
+    void launch();
 
-    nlohmann::json export_options();
+public:
+    auto& options() const { return *global_options_; }
+    auto& options() { return *global_options_; }
+
+    void export_options(nlohmann::json&);
     void import_options(nlohmann::json const&);
 
 protected:
@@ -41,8 +48,10 @@ protected:
     std::vector<std::shared_ptr<base_shared_context>> fence_objects_;
     std::unordered_map<pipe_id_t, size_t> id_mapping_;
     std::mutex fence_object_pool_lock_;
-    option_base global_options_;
+    std::unique_ptr<option_base> global_options_;
     kangsw::timer_thread_pool workers_;
+
+    std::vector<std::tuple<size_t, std::function<factory_return_type(void)>>> adapters_;
 };
 
 class pipe_proxy_base {
@@ -278,54 +287,20 @@ public:
     using input_type = typename initial_executor_type::input_type;
     using initial_proxy_type = pipe_proxy<shared_data_type, initial_executor_type>;
 
-    using factory_return_type = std::unique_ptr<detail::executor_base>;
     ~pipeline() { sync(); }
 
 private:
-    template <typename Exec_, typename Fn_, typename... Args_>
-    auto& _create_pipe(std::string initial_pipe_name, bool is_optional, size_t num_execs, Fn_&& exec_factory, Args_&&... args)
-    {
-        if (num_execs == 0) { throw pipe_exception("invalid number of executors"); }
-        auto fn = std::ranges::find_if(pipes_, [&initial_pipe_name](std::unique_ptr<detail::pipe_base> const& pipe) {
-            return pipe->name() == initial_pipe_name;
-        });
-        if (fn != pipes_.end()) { throw pipe_exception("name duplication detected"); }
+    template <typename Exec_, typename Fn_, typename... Args_> auto& _create_pipe(std::string initial_pipe_name, bool is_optional, size_t num_execs, Fn_&& exec_factory, Args_&&... args);
 
-        auto index = pipes_.size();
-        auto& pipe = pipes_.emplace_back(
-          std::make_unique<detail::pipe_base>(
-            std::move(initial_pipe_name), is_optional));
-        pipe->_set_thread_pool_reference(&workers_);
-        pipe->options().reset_as_default<Exec_>();
-        pipe->mark_dirty();
-
-        adapters_.emplace_back(
-          num_execs,
-          std::bind<factory_return_type>(
-            std::forward<Fn_>(exec_factory),
-            std::forward<Args_>(args)...));
-
-        id_mapping_[pipe->id()] = index;
-
-        return *pipes_.back();
-    }
-
-    template <typename Fn_, typename... Args_>
-    pipeline(std::string initial_pipe_name, size_t num_exec, Fn_&& initial_executor_factory, Args_&&... args)
-    {
-        _create_pipe<initial_executor_type, Fn_, Args_...>(
-          std::move(initial_pipe_name),
-          false,
-          num_exec,
-          std::forward<Fn_>(initial_executor_factory),
-          std::forward<Args_>(args)...);
-
-        global_options_.reset_as_default<shared_data_type>();
-    }
+    template <typename Fn_, typename... Args_> pipeline(std::string initial_pipe_name, size_t num_exec, Fn_&& initial_executor_factory, Args_&&... args);
 
 public:
+    template <typename FactoryFn_, typename... FactoryArgs_>
+    pipe_proxy<SharedData_, typename std::invoke_result_t<FactoryFn_, FactoryArgs_...>::element_type::executor_type>
+    create(std::string name, size_t num_executors, FactoryFn_&& factory, FactoryArgs_&&... args);
+
     template <typename Fn_, typename... Args_>
-    static std::shared_ptr<pipeline> create(std::string initial_pipe_name, size_t num_initial_exec, Fn_&& factory, Args_&&... factory_args)
+    static std::shared_ptr<pipeline> make(std::string initial_pipe_name, size_t num_initial_exec, Fn_&& factory, Args_&&... factory_args)
     {
         return std::shared_ptr<pipeline>{
           new pipeline(
@@ -350,22 +325,11 @@ public:
     // supply input (trigger)
     template <typename Fn_>
     bool suply(
-      input_type input, Fn_&& shared_data_init_func = [](auto) {})
+      input_type input, Fn_&& shared_data_init_func = [](auto&&) {})
     {
         auto shared = _fetch_shared();
         shared_data_init_func(static_cast<shared_data_type&>(*shared));
         return pipes_.front()->try_submit(std::move(input), std::move(shared));
-    }
-
-    // launcher
-    void launch()
-    {
-        for (auto [pipe, tuple] : kangsw::zip(pipes_, adapters_)) {
-            auto& [n_ex, handler] = tuple;
-            pipe->launch(n_ex, std::move(handler));
-        }
-
-        adapters_.clear();
     }
 
 protected:
@@ -375,29 +339,8 @@ protected:
     }
 
 private:
-    std::vector<std::tuple<
-      size_t, std::function<factory_return_type()>>>
-      adapters_;
 };
 
-template <typename SharedData_, typename Exec_>
-template <typename LnkFn_, typename FactoryFn_, typename... FactoryArgs_>
-pipe_proxy<SharedData_, typename std::invoke_result_t<FactoryFn_, FactoryArgs_...>::element_type::executor_type>
-pipe_proxy<SharedData_, Exec_>::create_and_link_output(std::string name, size_t num_executors, LnkFn_&& linker, FactoryFn_&& factory, FactoryArgs_&&... args)
-{
-    using factory_invoke_type = std::invoke_result_t<FactoryFn_, FactoryArgs_...>;
-    using executor_type = typename factory_invoke_type::element_type;
-    using destination_type = typename executor_type::executor_type;
-
-    auto pl = _lock();
-    auto& ref = pl->template _create_pipe<destination_type>(
-      std::move(name), false, num_executors,
-      std::forward<FactoryFn_>(factory), std::forward<FactoryArgs_>(args)...);
-
-    pipe_proxy<shared_data_type, destination_type> dest(pipeline_, ref);
-    return link_output(dest, std::forward<LnkFn_>(linker));
-}
-
-static constexpr auto link_as_is = [](auto&&, execution_context&, auto&& prev_out, auto&& next_in) { next_in = std::forward<decltype(prev_out)>(prev_out); };
+static constexpr auto link_as_is = [](auto&& prev_out, auto&& next_in) { next_in = std::forward<decltype(prev_out)>(prev_out);  return true; };
 
 } // namespace pipepp

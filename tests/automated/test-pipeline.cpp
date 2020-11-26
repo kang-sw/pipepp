@@ -5,7 +5,7 @@
 
 #include "catch.hpp"
 #include "fmt/format.h"
-#include "pipepp/pipeline.hpp"
+#include "pipepp/pipepp.h"
 
 namespace pipepp_test::pipelines {
 using namespace pipepp;
@@ -17,7 +17,7 @@ struct my_shared_data : public base_shared_context {
 
 struct exec_0 {
     PIPEPP_DECLARE_OPTION_CLASS(exec_0);
-    PIPEPP_OPTION_2(bool, is_first, false, "debug.show");
+    PIPEPP_OPTION_FULL(bool, is_first, false, "debug.show");
 
     using input_type = std::tuple<double>;
     using output_type = std::tuple<double, double>;
@@ -82,7 +82,7 @@ TEST_CASE("pipeline compilation", "")
     std::atomic_int ordering = 0;
 
     using pipeline_type = pipeline<my_shared_data, exec_0>;
-    auto pl = pipeline_type::create("0.0", 64, &exec_0::factory);
+    auto pl = pipeline_type::make("0.0", 64, &exec_0::factory);
     auto _0 = pl->front();
     auto _1_0
       = _0.create_and_link_output(

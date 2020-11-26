@@ -13,7 +13,6 @@
 #include "kangsw/thread_pool.hxx"
 #include "kangsw/thread_utility.hxx"
 #include "pipepp/execution_context.hpp"
-#include "pipepp/options.hpp"
 
 namespace pipepp {
 namespace detail {
@@ -73,9 +72,13 @@ struct base_shared_context {
     operator detail::option_base const &() const { return *global_options_; }
     auto launch_time_point() const { return launched_; }
 
+    /** shared context를 상속하는 클래스에서 재정의해, 재사용된 shared context의 초기화를 처리할 수 있습니다. */
+    virtual void reload(){}
+
 private:
     detail::option_base const* global_options_;
     std::chrono::system_clock::time_point launched_;
+    fence_index_t fence_;
 };
 
 enum class executor_condition_t : uint8_t {
@@ -119,15 +122,13 @@ struct pipe_id_gen {
  */
 class pipe_base final : public std::enable_shared_from_this<pipe_base> {
 public:
-    using output_link_adapter_type = std::function<bool(base_shared_context&, execution_context&, std::any const& output, std::any& input)>;
+    using output_link_adapter_type = std::function<bool(base_shared_context&, execution_context&, std::any const& output, std::any& input, option_base const& nxt_opt)>;
     using output_handler_type = std::function<void(pipe_error, base_shared_context&, execution_context&, std::any const&)>;
     using system_clock = std::chrono::system_clock;
 
-    explicit pipe_base(std::string name, bool optional_pipe = false)
-        : name_(name)
-    {
-        input_slot_.is_optional_ = optional_pipe;
-    }
+    explicit pipe_base(std::string name, bool optional_pipe = false);
+
+    ~pipe_base();
 
 public:
     struct tweak_t {
@@ -318,8 +319,8 @@ public:
     auto& output_links() const { return output_links_; }
 
     /** 파이프 옵션 반환 */
-    auto& options() { return executor_options_; }
-    auto& options() const { return executor_options_; }
+    auto& options() { return *executor_options_; }
+    auto& options() const { return *executor_options_; }
 
     /** 입력 가능 상태인지 확인 */
     bool can_submit_input_direct() const { return !_active_exec_slot()._is_executor_busy(); }
@@ -332,6 +333,8 @@ public:
     bool is_optional_input() const { return input_slot_.is_optional_; }
     size_t num_executors() const { return executor_slots_.size(); }
     void executor_conditions(std::vector<executor_condition_t>& conds) const;
+
+    auto current_fence_index() const { return input_slot_.active_input_fence_.load(std::memory_order_relaxed); }
 
     /** 출력 인터벌 반환 */
     auto output_interval() const
@@ -420,7 +423,7 @@ private:
     std::vector<output_handler_type> output_handlers_;
 
     kangsw::timer_thread_pool* ref_workers_ = nullptr;
-    option_base executor_options_;
+    std::unique_ptr<option_base> executor_options_;
 
     /** 일시 정지 처리 */
     std::atomic_bool paused_;
@@ -439,7 +442,7 @@ private:
 template <typename Shared_, typename PrevOut_, typename NextIn_, typename Fn_>
 void pipe_base::connect_output_to(pipe_base& other, Fn_&& fn)
 {
-    auto wrapper = [fn_ = std::move(fn)](base_shared_context& shared, execution_context& ec, std::any const& prev_out, std::any& next_in) {
+    auto wrapper = [fn_ = std::move(fn)](base_shared_context& shared, execution_context& ec, std::any const& prev_out, std::any& next_in, option_base const& next_option) {
         if (next_in.type() != typeid(NextIn_)) {
             next_in.emplace<NextIn_>();
         }
@@ -451,28 +454,66 @@ void pipe_base::connect_output_to(pipe_base& other, Fn_&& fn)
         using PO = PrevOut_ const&;
         using NI = NextIn_&;
         using EC = execution_context&;
+        using NO = option_base const&; // input link's option
 
         auto& sd = static_cast<Shared_&>(shared);
         auto& po = std::any_cast<PrevOut_ const&>(prev_out);
         auto& ni = std::any_cast<NextIn_&>(next_in);
+        auto& no = next_option;
+
+        using std::is_invocable_r_v;
 
         // clang-format off
         bool R = true;
-        if constexpr (std::is_invocable_r_v<void, Fn_>)                         { fn_(); }
-        else if constexpr (std::is_invocable_r_v<bool, Fn_, SD, PO, NI>)        { R = fn_(sd, po, ni); }
-        else if constexpr (std::is_invocable_r_v<bool, Fn_, NI>)                { R = fn_(ni); }
-        else if constexpr (std::is_invocable_r_v<bool, Fn_, SD, NI>)            { R = fn_(sd, ni); }
-        else if constexpr (std::is_invocable_r_v<bool, Fn_, SD, EC, NI>)        { R = fn_(sd, ec, ni); }
-        else if constexpr (std::is_invocable_r_v<bool, Fn_, PO, NI>)            { R = fn_(po, ni); }
-        else if constexpr (std::is_invocable_r_v<bool, Fn_, EC, PO, NI>)        { R = fn_(ec, po, ni); }
-        else if constexpr (std::is_invocable_r_v<bool, Fn_, SD, EC, PO, NI>)    { R = fn_(sd, ec, po, ni); }
-        else if constexpr (std::is_invocable_r_v<void, Fn_, SD, PO, NI>)        { fn_(sd, po, ni); }
-        else if constexpr (std::is_invocable_r_v<void, Fn_, NI>)                { fn_(ni); }
-        else if constexpr (std::is_invocable_r_v<void, Fn_, SD, NI>)            { fn_(sd, ni); }
-        else if constexpr (std::is_invocable_r_v<void, Fn_, SD, EC, NI>)        { fn_(sd, ec, ni); }
-        else if constexpr (std::is_invocable_r_v<void, Fn_, PO, NI>)            { fn_(po, ni); }
-        else if constexpr (std::is_invocable_r_v<void, Fn_, EC, PO, NI>)        { fn_(ec, po, ni); }
-        else if constexpr (std::is_invocable_r_v<void, Fn_, SD, EC, PO, NI>)    { fn_(sd, ec, po, ni); }
+        if      constexpr  (is_invocable_r_v<void, Fn_                    >) { fn_(                       ); }
+        else if constexpr  (is_invocable_r_v<bool, Fn_,             NI    >) { R  = fn_(            ni    ); }
+        else if constexpr  (is_invocable_r_v<bool, Fn_,         PO, NI    >) { R  = fn_(        po, ni    ); }
+        else if constexpr  (is_invocable_r_v<bool, Fn_,     EC, PO, NI    >) { R  = fn_(    ec, po, ni    ); }
+        else if constexpr  (is_invocable_r_v<bool, Fn_, SD,     PO, NI    >) { R  = fn_(sd,     po, ni    ); }
+        else if constexpr  (is_invocable_r_v<bool, Fn_, SD,         NI    >) { R  = fn_(sd,         ni    ); }
+        else if constexpr  (is_invocable_r_v<bool, Fn_, SD, EC,     NI    >) { R  = fn_(sd, ec,     ni    ); }
+        else if constexpr  (is_invocable_r_v<bool, Fn_, SD, EC, PO, NI    >) { R  = fn_(sd, ec, po, ni    ); }
+
+        else if constexpr  (is_invocable_r_v<bool, Fn_,             NI, NO>) { R  = fn_(            ni, no); }
+        else if constexpr  (is_invocable_r_v<bool, Fn_,         PO, NI, NO>) { R  = fn_(        po, ni, no); }
+        else if constexpr  (is_invocable_r_v<bool, Fn_,     EC, PO, NI, NO>) { R  = fn_(    ec, po, ni, no); }
+        else if constexpr  (is_invocable_r_v<bool, Fn_, SD,     PO, NI, NO>) { R  = fn_(sd,     po, ni, no); }
+        else if constexpr  (is_invocable_r_v<bool, Fn_, SD,         NI, NO>) { R  = fn_(sd,         ni, no); }
+        else if constexpr  (is_invocable_r_v<bool, Fn_, SD, EC,     NI, NO>) { R  = fn_(sd, ec,     ni, no); }
+        else if constexpr  (is_invocable_r_v<bool, Fn_, SD, EC, PO, NI, NO>) { R  = fn_(sd, ec, po, ni, no); }
+
+        else if constexpr  (is_invocable_r_v<NI,   Fn_                    >) { ni = fn_(                  ); }
+        else if constexpr  (is_invocable_r_v<NI,   Fn_, SD                >) { ni = fn_(sd                ); }
+        else if constexpr  (is_invocable_r_v<NI,   Fn_, SD, EC            >) { ni = fn_(sd, ec            ); }
+        else if constexpr  (is_invocable_r_v<NI,   Fn_, SD,     PO        >) { ni = fn_(sd,     po        ); }
+        else if constexpr  (is_invocable_r_v<NI,   Fn_,         PO        >) { ni = fn_(        po        ); }
+        else if constexpr  (is_invocable_r_v<NI,   Fn_,     EC, PO        >) { ni = fn_(    ec, po        ); }
+        else if constexpr  (is_invocable_r_v<NI,   Fn_, SD, EC, PO        >) { ni = fn_(sd, ec, po        ); }
+        
+        else if constexpr  (is_invocable_r_v<NI,   Fn_                , NO>) { ni = fn_(                no); }
+        else if constexpr  (is_invocable_r_v<NI,   Fn_, SD            , NO>) { ni = fn_(sd            , no); }
+        else if constexpr  (is_invocable_r_v<NI,   Fn_, SD, EC        , NO>) { ni = fn_(sd, ec        , no); }
+        else if constexpr  (is_invocable_r_v<NI,   Fn_, SD,     PO    , NO>) { ni = fn_(sd,     po    , no); }
+        else if constexpr  (is_invocable_r_v<NI,   Fn_,         PO    , NO>) { ni = fn_(        po    , no); }
+        else if constexpr  (is_invocable_r_v<NI,   Fn_,     EC, PO    , NO>) { ni = fn_(    ec, po    , no); }
+        else if constexpr  (is_invocable_r_v<NI,   Fn_, SD, EC, PO    , NO>) { ni = fn_(sd, ec, po    , no); }
+
+        else if constexpr  (is_invocable_r_v<void, Fn_,             NI    >) {      fn_(            ni    ); }
+        else if constexpr  (is_invocable_r_v<void, Fn_, SD,         NI    >) {      fn_(sd,         ni    ); }
+        else if constexpr  (is_invocable_r_v<void, Fn_, SD, EC,     NI    >) {      fn_(sd, ec,     ni    ); }
+        else if constexpr  (is_invocable_r_v<void, Fn_, SD,     PO, NI    >) {      fn_(sd,     po, ni    ); }
+        else if constexpr  (is_invocable_r_v<void, Fn_,         PO, NI    >) {      fn_(        po, ni    ); }
+        else if constexpr  (is_invocable_r_v<void, Fn_,     EC, PO, NI    >) {      fn_(    ec, po, ni    ); }
+        else if constexpr  (is_invocable_r_v<void, Fn_, SD, EC, PO, NI    >) {      fn_(sd, ec, po, ni    ); }
+        
+        else if constexpr  (is_invocable_r_v<void, Fn_,             NI, NO>) {      fn_(            ni, no); }
+        else if constexpr  (is_invocable_r_v<void, Fn_, SD,         NI, NO>) {      fn_(sd,         ni, no); }
+        else if constexpr  (is_invocable_r_v<void, Fn_, SD, EC,     NI, NO>) {      fn_(sd, ec,     ni, no); }
+        else if constexpr  (is_invocable_r_v<void, Fn_, SD,     PO, NI, NO>) {      fn_(sd,     po, ni, no); }
+        else if constexpr  (is_invocable_r_v<void, Fn_,         PO, NI, NO>) {      fn_(        po, ni, no); }
+        else if constexpr  (is_invocable_r_v<void, Fn_,     EC, PO, NI, NO>) {      fn_(    ec, po, ni, no); }
+        else if constexpr  (is_invocable_r_v<void, Fn_, SD, EC, PO, NI, NO>) {      fn_(sd, ec, po, ni, no); }
+
         else { static_assert(false, "No available invocable method"); }
         // clang-format on
 
@@ -528,10 +569,26 @@ public:
             output.emplace<output_type>();
         }
 
-        return std::invoke(
-          &executor_type::invoke, &exec_,
-          *context_,
-          std::any_cast<input_type&>(input), std::any_cast<output_type&>(output));
+        auto& ec = *context_;
+        auto& in = std::any_cast<input_type&>(input);
+        auto& out = std::any_cast<output_type&>(output);
+
+        using std::is_invocable_r_v;
+
+        using EC = execution_context&;
+        using INR = input_type const&;
+        using OUTR = output_type&;
+        using OUT = output_type;
+        using PE = pipe_error;
+
+        // clang-format off
+        if      constexpr (is_invocable_r_v<PE, executor_type, EC, INR, OUTR>  ) { return exec_(ec, in, out); }
+        else if constexpr (is_invocable_r_v<void, executor_type, EC, INR, OUTR>) { exec_(ec, in, out); return {}; }
+        else if constexpr (is_invocable_r_v<OUT, executor_type, EC, INR>       ) { out = exec_(ec, in); return {}; }
+        else if constexpr (is_invocable_r_v<OUT, executor_type, INR>           ) { out = exec_(in); return {}; }
+        else if constexpr (is_invocable_r_v<void, executor_type, INR, OUTR>           ) { exec_(in, out); return {}; }
+        else { return std::invoke( &executor_type::invoke, &exec_, *context_, in, out); }
+        // clang-format on
     }
 
     // Non-virtual to be overriden by base class
@@ -552,5 +609,4 @@ decltype(auto) make_executor(Args_&&... args)
 {
     return std::make_unique<executor<Exec_>>(std::forward<Args_>(args)...);
 }
-
 } // namespace pipepp

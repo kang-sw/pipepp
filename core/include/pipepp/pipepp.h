@@ -2,6 +2,10 @@
 #include "pipepp/impl/pipeline.hxx"
 #include "pipepp/options.hpp"
 
+namespace pipepp {
+using options = const detail::option_base;
+}
+
 #ifndef ___PIPEPP_CONCAT
 #define ___PIPEPP_CONCAT_2(A, B) A##B
 #define ___PIPEPP_CONCAT(A, B) ___PIPEPP_CONCAT_2(A, B)

@@ -213,7 +213,7 @@ void pipepp::gui::option_panel::_update_enterbox(bool trig_modify)
             sel.text(1, value->dump());
         }
         auto& key = m.selected_proxy.key();
-        if (!m.option->verify(key)) {
+        if (!key.empty() && !m.option->verify(key)) {
             m.selected_proxy.select(false);
             correct = false;
         } else {

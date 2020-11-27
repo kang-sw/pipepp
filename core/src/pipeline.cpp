@@ -1,4 +1,3 @@
-#include <filesystem>
 #include <mutex>
 #include "pipepp/options.hpp"
 #include "pipepp/pipeline.hpp"

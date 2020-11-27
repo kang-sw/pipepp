@@ -264,14 +264,6 @@ _verify_chain<Ty_> descending()
 } // namespace verify
 
 namespace detail {
-static std::string path_tostr(const char* path, int line)
-{
-    auto out = std::string(path);
-    if (auto sz = out.find_last_of("\\/"); sz != std::string::npos) {
-        out = out.substr(sz + 1);
-    }
-    out.append(" (").append(std::to_string(line)).append(")");
-    return std::move(out);
-}
+std::string path_tostr(const char* path, int line);
 } // namespace detail
 } // namespace pipepp

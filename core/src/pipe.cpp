@@ -461,8 +461,11 @@ bool pipepp::detail::pipe_base::input_slot_t::_submit_input(fence_index_t output
         return true;
     }
 
-    bool const contains_abort = std::ranges::count(ready_conds_, input_link_state::none) == 0;
-    if (!owner_._is_selective_input() || contains_abort) {
+    bool const all_filled = std::ranges::count(ready_conds_, input_link_state::none) == 0;
+    bool const contains_abort = all_filled && !is_all_input_link_ready;
+    if ((!owner_._is_selective_input() && should_abort_input)
+        || contains_abort // 선택적 입력인 경우 모두 채워질 때까지 유예합니다.
+    ) {
         // 선택적 입력이 아니라면 즉시 abort를 propagate하고, 선택적 입력이라면 전체가 결과를 반환할 때까지 대기합니다.
         if (owner_.output_links_.empty() == false) {
             owner_.destruction_guard_.lock();

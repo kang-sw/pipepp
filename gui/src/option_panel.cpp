@@ -135,6 +135,8 @@ void pipepp::gui::option_panel::_cb_tree_selected(nana::arg_treebox const& a)
     m.input_title.caption(opts.names().at(key));
     m.input_descr.reset(fmt::format("{}\t<{}>\n  @ \"{}\"\n", name, value.type_name(), opts.paths().at(key)));
     m.input_descr.append(opts.description().at(key), true);
+    m.input_descr.caret_pos({0, 0});
+    m.input_descr.append(" ", true);
 
     auto& list = m.input_array_object_list;
     list.clear();

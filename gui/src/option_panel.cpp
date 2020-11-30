@@ -312,7 +312,7 @@ void pipepp::gui::option_panel::reload(std::weak_ptr<detail::pipeline_base> pl, 
                 category = category.substr(first_dot);
             } else {
                 category_name = category;
-                name = std::move(category);
+                name += std::move(category);
                 category = {};
             }
 

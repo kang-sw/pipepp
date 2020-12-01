@@ -11,6 +11,8 @@ pipepp::detail::pipeline_base::pipeline_base()
 
 pipepp::detail::pipeline_base::~pipeline_base()
 {
+    sync();
+    pipes_.clear();
 }
 
 void pipepp::detail::pipeline_base::sync()

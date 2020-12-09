@@ -580,13 +580,14 @@ public:
         using OUTR = output_type&;
         using OUT = output_type;
         using PE = pipe_error;
+        auto constexpr ok = pipe_error::ok;
 
         // clang-format off
         if      constexpr (is_invocable_r_v<PE, executor_type, EC, INR, OUTR>  ) { return exec_(ec, in, out); }
-        else if constexpr (is_invocable_r_v<void, executor_type, EC, INR, OUTR>) { exec_(ec, in, out); return {}; }
-        else if constexpr (is_invocable_r_v<OUT, executor_type, EC, INR>       ) { out = exec_(ec, in); return {}; }
-        else if constexpr (is_invocable_r_v<OUT, executor_type, INR>           ) { out = exec_(in); return {}; }
-        else if constexpr (is_invocable_r_v<void, executor_type, INR, OUTR>           ) { exec_(in, out); return {}; }
+        else if constexpr (is_invocable_r_v<void, executor_type, EC, INR, OUTR>) { exec_(ec, in, out); return ok; }
+        else if constexpr (is_invocable_r_v<OUT, executor_type, EC, INR>       ) { out = exec_(ec, in); return ok; }
+        else if constexpr (is_invocable_r_v<OUT, executor_type, INR>           ) { out = exec_(in); return ok; }
+        else if constexpr (is_invocable_r_v<void, executor_type, INR, OUTR>           ) { exec_(in, out); return ok; }
         else { return std::invoke( &executor_type::invoke, &exec_, *context_, in, out); }
         // clang-format on
     }

@@ -329,6 +329,7 @@ public:
     {
         auto shared = _fetch_shared();
         shared_data_init_func(static_cast<shared_data_type&>(*shared));
+        shared->reload();
         return pipes_.front()->try_submit(std::move(input), std::move(shared));
     }
 

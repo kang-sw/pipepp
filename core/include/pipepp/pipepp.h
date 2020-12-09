@@ -1,6 +1,11 @@
 #pragma once
 #include "pipepp/impl/pipeline.hxx"
 #include "pipepp/options.hpp"
+#include <sstream>
+
+namespace pipepp {
+using options = const detail::option_base;
+}
 
 #ifndef ___PIPEPP_CONCAT
 #define ___PIPEPP_CONCAT_2(A, B) A##B
@@ -97,6 +102,8 @@
 #define PIPEPP_ELAPSE_SCOPE_DYNAMIC(NAME) ___PIPEPP_ELAPSE_SCOPE_DYNAMIC(NAME)
 #define PIPEPP_STORE_DEBUG_DATA_DYNAMIC(NAME, VALUE) ___call_PIPEPP_REGISTER_CONTEXT.store_debug_data(NAME, (VALUE));
 #define PIPEPP_STORE_DEBUG_DATA(NAME, VALUE) ___PIPEPP_STORE_DEBUG_DATA(NAME, VALUE)
+#define PIPEPP_STORE_DEBUG_DATA_DYNAMIC_STR(NAME, VALUE) ___call_PIPEPP_REGISTER_CONTEXT.store_debug_data(NAME, (std::stringstream{} << VALUE).str());
+#define PIPEPP_STORE_DEBUG_STR(NAME, VALUE) ___PIPEPP_STORE_DEBUG_DATA(NAME, (std::stringstream{} << VALUE).str())
 #define PIPEPP_CAPTURE_DEBUG_DATA(VALUE) ___PIPEPP_STORE_DEBUG_DATA(#VALUE, VALUE)
 #define PIPEPP_STORE_DEBUG_DATA_COND(NAME, VALUE, COND) ___PIPEPP_STORE_DEBUG_DATA_COND(NAME, VALUE, COND)
 #define PIPEPP_CAPTURE_DEBUG_DATA_COND(VALUE, COND) ___PIPEPP_STORE_DEBUG_DATA_COND(#VALUE, VALUE, COND)

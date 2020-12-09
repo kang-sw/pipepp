@@ -183,7 +183,15 @@ public:
               },
               data.data);
 
-            text_.fgcolor(is_obsolete() ? colors::dim_gray : colapsed_or_subscribed_ ? colors::yellow : colors::lawn_green);
+            text_.fgcolor(is_obsolete()
+                            ? colors::dim_gray
+                            : colapsed_or_subscribed_
+                                ? colors::yellow
+                                : std::get_if<std::any>(&data.data)
+                                    ? colors::orange
+                                    : std::get_if<std::string>(&data.data)
+                                        ? color(204, 102, 0)
+                                        : colors::green);
             text_.bgcolor(colapsed_or_subscribed_ ? colors::dark_green : colors::black);
         }
 

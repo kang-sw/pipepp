@@ -83,8 +83,7 @@ pipepp::gui::pipe_detail_panel::pipe_detail_panel(nana::window owner, const nana
                 auto proxy = m.pipeline.lock()->get_pipe(m.pipe);
                 unchecked_notify(proxy.name(), arg.item.value<execution_context_data::debug_data_entity>());
             }
-        }
-        else {
+        } else {
             auto& notify = m.board_ref->debug_data_subscriber;
             if (notify) {
                 auto proxy = m.pipeline.lock()->get_pipe(m.pipe);
@@ -104,6 +103,27 @@ pipepp::gui::pipe_detail_panel::pipe_detail_panel(nana::window owner, const nana
         }
         m.pipeline.lock()->get_pipe(m.pipe).mark_option_dirty();
     };
+
+    events().resized([&](auto&&) {
+        if (size().height > size().width) {
+            div(""
+                "margin=2"
+                "<vert"
+                // "   <w_timers weight=200 margin=[0,0,2,0]>"
+                "   <w_vals margin=[0,0,2,0]>"
+                "   <w_opts>"
+                ">");
+        } else {
+            div(""
+                "margin=2"
+                "<"
+                // "   <w_timers weight=200 margin=[0,0,2,0]>"
+                "   <w_vals margin=[0,0,2,0]>"
+                "   <w_opts>"
+                ">");
+        }
+        collocate();
+    });
 }
 
 pipepp::gui::pipe_detail_panel::~pipe_detail_panel() = default;

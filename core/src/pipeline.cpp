@@ -1,4 +1,3 @@
-#include <filesystem>
 #include <mutex>
 #include "pipepp/options.hpp"
 #include "pipepp/pipeline.hpp"
@@ -12,6 +11,8 @@ pipepp::detail::pipeline_base::pipeline_base()
 
 pipepp::detail::pipeline_base::~pipeline_base()
 {
+    sync();
+    pipes_.clear();
 }
 
 void pipepp::detail::pipeline_base::sync()
@@ -140,7 +141,6 @@ std::shared_ptr<pipepp::base_shared_context> pipepp::detail::pipeline_base::_fet
     ref->launched_ = std::chrono::system_clock::now();
     ref->fence_ = pipes_.front()->current_fence_index();
 
-    ref->reload();
     return ref;
 }
 

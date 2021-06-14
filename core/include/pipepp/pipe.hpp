@@ -8,10 +8,10 @@
 #include <type_traits>
 #include <vector>
 
-#include "kangsw/misc.hxx"
-#include "kangsw/ptr_proxy.hxx"
-#include "kangsw/thread_pool.hxx"
-#include "kangsw/thread_utility.hxx"
+#include "kangsw/helpers/misc.hxx"
+#include "kangsw/helpers/ptr_proxy.hxx"
+#include "kangsw/thread/thread_pool.hxx"
+#include "kangsw/thread/thread_utility.hxx"
 #include "pipepp/execution_context.hpp"
 
 namespace pipepp {

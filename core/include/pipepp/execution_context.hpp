@@ -5,9 +5,9 @@
 #include <string>
 #include <variant>
 
-#include "kangsw/hash_index.hxx"
-#include "kangsw/misc.hxx"
-#include "kangsw/spinlock.hxx"
+#include "kangsw/helpers/hash_index.hxx"
+#include "kangsw/helpers/misc.hxx"
+#include "kangsw/thread/spinlock.hxx"
 
 namespace pipepp {
 namespace detail {

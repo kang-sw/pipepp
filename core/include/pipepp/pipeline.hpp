@@ -3,8 +3,8 @@
 #include <functional>
 #include <memory>
 #include <typeinfo>
-#include "kangsw/misc.hxx"
-#include "kangsw/thread_pool.hxx"
+#include "kangsw/helpers/misc.hxx"
+#include "kangsw/thread/thread_pool.hxx"
 #include "nlohmann/json_fwd.hpp"
 #include "pipepp/pipe.hpp"
 

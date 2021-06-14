@@ -1,8 +1,10 @@
 #include <bitset>
 #include <cassert>
 #include "fmt/format.h"
-#include "kangsw/enum_arithmetic.hxx"
-#include "kangsw/misc.hxx"
+#include "kangsw/helpers/enum_arithmetic.hxx"
+#include "kangsw/helpers/misc.hxx"
+#include "kangsw/helpers/hash_index.hxx"
+#include "kangsw/thread/thread_pool.hxx"
 #include "pipepp/options.hpp"
 #include "pipepp/pipepp.h"
 

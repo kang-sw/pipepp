@@ -147,7 +147,7 @@ inline auto pipepp::detail::pipeline_base::get_pipe(std::string_view s)
         }
     }
 
-    return std::move(rval);
+    return rval;
 }
 
 } // namespace detail

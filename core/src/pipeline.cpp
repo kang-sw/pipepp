@@ -92,9 +92,17 @@ void pipepp::detail::pipeline_base::import_options(nlohmann::json const& in)
             }
         } else if (l.is_array() && r.is_array()) {
             int i;
+
+            // 크기가 같다면 재귀적으로 방문 (업데이트)
             for (i = 0; i < std::min(l.size(), r.size()); ++i) {
                 recurse(recurse, l[i], r[i]);
             }
+
+            // 새 배열이 더 작다면 현재 배열을 discard
+            while (r.size() < l.size()) {
+                l.erase(l.size() - 1);
+            }
+
             // 만약 r의 크기가 더 크다면, 일단 복사.
             for (; i < r.size(); ++i) {
                 l[i] = r[i];

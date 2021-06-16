@@ -114,7 +114,7 @@ struct _option_instance {
         verifier(initv);
 
         verify_function_t verify = [fn = std::move(verifier)](nlohmann::json& arg) -> bool {
-            Ty_ value = arg;
+            Ty_ value = arg.get<Ty_>();
 
             if (!fn(value)) { return arg = value, false; }
             return true;

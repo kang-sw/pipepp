@@ -148,7 +148,10 @@ void pipepp::gui::option_panel::_cb_tree_selected(nana::arg_treebox const& a)
         item.value(&json_value.value());
     }
     list.auto_draw(true);
-    cat.at(0).select(true, true);
+
+    if (cat.size()) {
+        cat.at(0).select(true, true);
+    }
 }
 
 void pipepp::gui::option_panel::_cb_json_list_selected(nana::arg_listbox const& a)

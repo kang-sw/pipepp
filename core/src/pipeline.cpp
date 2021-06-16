@@ -75,7 +75,7 @@ void pipepp::detail::pipeline_base::export_options(nlohmann::json& opts)
 
 void pipepp::detail::pipeline_base::import_options(nlohmann::json const& in)
 {
-    // Àç±ÍÀûÀ¸·Î ¿É¼ÇÀ» ´ëÀÔÇÕ´Ï´Ù.
+    // ì¬ê·€ì ìœ¼ë¡œ ì˜µì…˜ì„ ëŒ€ì…í•©ë‹ˆë‹¤.
     auto _lck = options().lock_write();
     if (!in.contains("___shared") || !in.contains("___pipes") || !in.contains("___suspended")) { return; }
     options().value().merge_patch(in["___shared"]);
@@ -95,8 +95,8 @@ void pipepp::detail::pipeline_base::import_options(nlohmann::json const& in)
             for (i = 0; i < std::min(l.size(), r.size()); ++i) {
                 recurse(recurse, l[i], r[i]);
             }
-            // ¸¸¾à rÀÇ Å©±â°¡ ´õ Å©´Ù¸é, ÀÏ´Ü º¹»ç.
-            while (i < r.size()) {
+            // ë§Œì•½ rì˜ í¬ê¸°ê°€ ë” í¬ë‹¤ë©´, ì¼ë‹¨ ë³µì‚¬.
+            for (; i < r.size(); ++i) {
                 l[i] = r[i];
             }
         } else if (strcmp(l.type_name(), r.type_name()) == 0) {
@@ -127,7 +127,7 @@ std::shared_ptr<pipepp::base_shared_context> pipepp::detail::pipeline_base::_fet
     std::shared_ptr<base_shared_context> ref = {};
     for (auto& ptr : fence_objects_) {
         if (ptr.use_count() == 1) {
-            // ¸¸¾à ´Ù¸¥ ·¹ÆÛ·±½º°¡ ¸ğµÎ ÇØÁ¦µÇ¾ú´Ù¸é, Àç»ç¿ëÇÕ´Ï´Ù.
+            // ë§Œì•½ ë‹¤ë¥¸ ë ˆí¼ëŸ°ìŠ¤ê°€ ëª¨ë‘ í•´ì œë˜ì—ˆë‹¤ë©´, ì¬ì‚¬ìš©í•©ë‹ˆë‹¤.
             ref = ptr;
             break;
         }

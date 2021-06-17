@@ -125,11 +125,15 @@ public: // methods
      */
     bool consume_option_dirty_flag() { return !inv_opt_dirty_.test_and_set(std::memory_order::relaxed); }
 
+    /**
+     * 옵션의 더티 프래그를 마킹합니다.
+     */
+    void mark_dirty() { inv_opt_dirty_.clear(std::memory_order::relaxed); }
+
 public:                    // internal public methods
     void _clear_records(); // invoke() 이전 호출
     void _internal__set_option(detail::option_base* opt) { options_ = opt; }
     void _swap_data_buff(); // invoke() 이후 호출
-    void _mark_dirty() { inv_opt_dirty_.clear(std::memory_order::relaxed); }
 
     /**
      * 읽기 버퍼를 추출합니다.

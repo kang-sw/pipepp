@@ -19,7 +19,7 @@ namespace detail {
 class pipeline_base;
 }
 
-/** ÆÄÀÌÇÁ ¿¡·¯ Çü½Ä */
+/** íŒŒì´í”„ ì—ëŸ¬ í˜•ì‹ */
 enum class pipe_error {
     ok,
     warning,
@@ -28,7 +28,7 @@ enum class pipe_error {
     fatal
 };
 
-/** ÆÄÀÌÇÁ ¿¹¿Ü Çü½Ä */
+/** íŒŒì´í”„ ì˜ˆì™¸ í˜•ì‹ */
 class pipe_exception : public std::exception {
 public:
     explicit pipe_exception(const char* msg)
@@ -57,14 +57,14 @@ public:
 };
 
 /**
- * Fence object´Â pipeline¿¡ µ¥ÀÌÅÍ¸¦ Ã³À½À¸·Î ÀÔ·ÂÇÒ ¶§ »ı¼ºµÇ´Â ¿ÀºêÁ§Æ®·Î, °¢°¢ÀÇ pipe¿¡ ÀÇÇØ Ã³¸®µÉ ¶§ °øÀ¯µÇ´Â ¿ÀºêÁ§Æ® Çü½ÄÀÔ´Ï´Ù.
+ * Fence objectëŠ” pipelineì— ë°ì´í„°ë¥¼ ì²˜ìŒìœ¼ë¡œ ì…ë ¥í•  ë•Œ ìƒì„±ë˜ëŠ” ì˜¤ë¸Œì íŠ¸ë¡œ, ê°ê°ì˜ pipeì— ì˜í•´ ì²˜ë¦¬ë  ë•Œ ê³µìœ ë˜ëŠ” ì˜¤ë¸Œì íŠ¸ í˜•ì‹ì…ë‹ˆë‹¤.
  */
 enum class fence_index_t : size_t { none = 0 };
 
-/** °¢°¢ÀÇ Pipe´Â »ı¼º ½Ã ºÎ¿©µÈ °íÀ¯ÇÑ pipe id¸¦ °®½À´Ï´Ù. */
+/** ê°ê°ì˜ PipeëŠ” ìƒì„± ì‹œ ë¶€ì—¬ëœ ê³ ìœ í•œ pipe idë¥¼ ê°–ìŠµë‹ˆë‹¤. */
 enum class pipe_id_t : size_t { none = -1 };
 
-/** fence shared dataÀÇ ±âº» »ó¼ÓÇüÀÔ´Ï´Ù. */
+/** fence shared dataì˜ ê¸°ë³¸ ìƒì†í˜•ì…ë‹ˆë‹¤. */
 struct base_shared_context {
     friend class detail::pipeline_base;
     virtual ~base_shared_context() = default;
@@ -72,8 +72,8 @@ struct base_shared_context {
     operator detail::option_base const &() const { return *global_options_; }
     auto launch_time_point() const { return launched_; }
 
-    /** shared context¸¦ »ó¼ÓÇÏ´Â Å¬·¡½º¿¡¼­ ÀçÁ¤ÀÇÇØ, Àç»ç¿ëµÈ shared contextÀÇ ÃÊ±âÈ­¸¦ Ã³¸®ÇÒ ¼ö ÀÖ½À´Ï´Ù. */
-    virtual void reload(){}
+    /** shared contextë¥¼ ìƒì†í•˜ëŠ” í´ë˜ìŠ¤ì—ì„œ ì¬ì •ì˜í•´, ì¬ì‚¬ìš©ëœ shared contextì˜ ì´ˆê¸°í™”ë¥¼ ì²˜ë¦¬í•  ìˆ˜ ìˆìŠµë‹ˆë‹¤. */
+    virtual void reload() {}
 
 private:
     detail::option_base const* global_options_;
@@ -91,7 +91,7 @@ enum class executor_condition_t : uint8_t {
 
 namespace detail {
 
-/** ±âº» ½ÇÇà±â. */
+/** ê¸°ë³¸ ì‹¤í–‰ê¸°. */
 class executor_base {
 public:
     virtual ~executor_base() = default;
@@ -100,8 +100,8 @@ public:
 public:
     void set_context_ref(execution_context* ref) { context_ = ref, context_->_clear_records(); }
 
-    // ½ÇÁ¦ ½ÇÇà±âÀÇ ·¹ÆÛ·±½º¸¦ È¹µæÇÕ´Ï´Ù.
-    // ÃßÈÄ, json_option_interface¸¦ »ó¼ÓÇÏ´Â ½ÇÇà±â µî¿¡ »ç¿ë
+    // ì‹¤ì œ ì‹¤í–‰ê¸°ì˜ ë ˆí¼ëŸ°ìŠ¤ë¥¼ íšë“í•©ë‹ˆë‹¤.
+    // ì¶”í›„, json_option_interfaceë¥¼ ìƒì†í•˜ëŠ” ì‹¤í–‰ê¸° ë“±ì— ì‚¬ìš©
     template <typename Ty_> Ty_ const* actual_executor() const { return dynamic_cast<Ty_ const*>(_get_actual_executor()); }
     template <typename Ty_> Ty_* actual_executor() { return dynamic_cast<Ty_*>(const_cast<void*>(_get_actual_executor())); }
 
@@ -118,7 +118,7 @@ struct pipe_id_gen {
 };
 
 /**
- * ÆÄÀÌÇÁ ±âº» Å¬·¡½º
+ * íŒŒì´í”„ ê¸°ë³¸ í´ë˜ìŠ¤
  */
 class pipe_base final : public std::enable_shared_from_this<pipe_base> {
 public:
@@ -142,7 +142,7 @@ public:
         kangsw::ptr_proxy<const bool> is_optional;
     };
 
-    /** pre launch tweak È¹µæ */
+    /** pre launch tweak íšë“ */
     tweak_t get_prelaunch_tweaks();
     const_tweak_t read_tweaks() const;
 
@@ -155,28 +155,28 @@ public:
         {
         }
 
-        /** ready condition °³¼ö ¼³Á¤. ÃÊ±âÈ­ ÇÔ¼ö */
+        /** ready condition ê°œìˆ˜ ì„¤ì •. ì´ˆê¸°í™” í•¨ìˆ˜ */
         void _supply_input_to_active_executor(bool is_initial_call = true);
 
     public:
         /**
-         * ÀÔ·Â ÀÎµ¦½º °ËÁõÇÏ±â
+         * ì…ë ¥ ì¸ë±ìŠ¤ ê²€ì¦í•˜ê¸°
          */
         fence_index_t active_input_fence() const { return active_input_fence_; }
 
         /**
-         * @return has_value() == falseÀÌ¸é ÇöÀç ÀÔ·ÂÀ» ¹ö·Á¾ß ÇÕ´Ï´Ù.
+         * @return has_value() == falseì´ë©´ í˜„ì¬ ì…ë ¥ì„ ë²„ë ¤ì•¼ í•©ë‹ˆë‹¤.
          */
         std::optional<bool> can_submit_input(fence_index_t output_fence) const;
         /**
-         * ÀÔ·Â µ¥ÀÌÅÍ °ø±Ş ¿Ï·á ÈÄ È£ÃâÇÕ´Ï´Ù.
-         * ready_conds_ÀÇ ÇØ´ç ÀÎµ¦½º¸¦ È°¼ºÈ­ÇÕ´Ï´Ù.
-         * ready_conds_ÀÇ ¸ğµç ÀÎµ¦½º°¡ has_value()¸¦ ¸®ÅÏÇÏ¸é ÀÔ·Â ½ÃÄö½º°¡ Á¾·áµË´Ï´Ù.
+         * ì…ë ¥ ë°ì´í„° ê³µê¸‰ ì™„ë£Œ í›„ í˜¸ì¶œí•©ë‹ˆë‹¤.
+         * ready_conds_ì˜ í•´ë‹¹ ì¸ë±ìŠ¤ë¥¼ í™œì„±í™”í•©ë‹ˆë‹¤.
+         * ready_conds_ì˜ ëª¨ë“  ì¸ë±ìŠ¤ê°€ has_value()ë¥¼ ë¦¬í„´í•˜ë©´ ì…ë ¥ ì‹œí€€ìŠ¤ê°€ ì¢…ë£Œë©ë‹ˆë‹¤.
          *
-         * ³»ºÎÀûÀ¸·Î´Â owner_¿¡°Ô ÀÔ·Â ½ÃÄö½º °»½Å ¿äÃ»
-         * ÀÔ·ÂÀÌ qualified µÇ¸é owner_ÀÇ ÀÔ·Â °¡´É fence index°¡ 1 Áõ°¡ÇÕ´Ï´Ù. »õ·Î¿î fence index´Â È°¼ºÈ­µÈ executor_slot¿¡ ÇÒ´çµË´Ï´Ù. ±×·¯³ª, È°¼ºÈ­µÈ executor_slotÀÌ ¿©ÀüÈ÷ ½ÇÇà ÁßÀÌ¸é active_slot()À» ¾òÀ» ¼ö ¾øÀ¸¸ç, µû¶ó¼­ ÀÔ·Â ¶ÇÇÑ disable »óÅÂ°¡ µË´Ï´Ù.
+         * ë‚´ë¶€ì ìœ¼ë¡œëŠ” owner_ì—ê²Œ ì…ë ¥ ì‹œí€€ìŠ¤ ê°±ì‹  ìš”ì²­
+         * ì…ë ¥ì´ qualified ë˜ë©´ owner_ì˜ ì…ë ¥ ê°€ëŠ¥ fence indexê°€ 1 ì¦ê°€í•©ë‹ˆë‹¤. ìƒˆë¡œìš´ fence indexëŠ” í™œì„±í™”ëœ executor_slotì— í• ë‹¹ë©ë‹ˆë‹¤. ê·¸ëŸ¬ë‚˜, í™œì„±í™”ëœ executor_slotì´ ì—¬ì „íˆ ì‹¤í–‰ ì¤‘ì´ë©´ active_slot()ì„ ì–»ì„ ìˆ˜ ì—†ìœ¼ë©°, ë”°ë¼ì„œ ì…ë ¥ ë˜í•œ disable ìƒíƒœê°€ ë©ë‹ˆë‹¤.
          *
-         * @returns true ¹İÈ¯½Ã Ã³¸® ¿Ï·á, false ¹İÈ¯ ½Ã retry°¡ ÇÊ¿äÇÕ´Ï´Ù.
+         * @returns true ë°˜í™˜ì‹œ ì²˜ë¦¬ ì™„ë£Œ, false ë°˜í™˜ ì‹œ retryê°€ í•„ìš”í•©ë‹ˆë‹¤.
          */
         bool _submit_input(
           fence_index_t output_fence,
@@ -186,13 +186,18 @@ public:
           bool abort_current = false);
 
         /**
-         * ÁÖ¾îÁø ÀÔ·Â µ¥ÀÌÅÍ·Î Áï½Ã ½ÇÇàÇÕ´Ï´Ù. ÀÔ·Â ¸µÅ©°¡ ¾ø´Â °æ¿ì¿¡¸¸ °¡´É.(ÀÖÀ¸¸é ¿¹¿Ü ´øÁü)
-         * ¿ÜºÎ¿¡¼­ ÆÄÀÌÇÁ¶óÀÎ¿¡ Á÷Á¢ ÀÔ·ÂÀ» °ø±ŞÇÒ ¼ö ÀÖ½À´Ï´Ù.
+         * ì£¼ì–´ì§„ ì…ë ¥ ë°ì´í„°ë¡œ ì¦‰ì‹œ ì‹¤í–‰í•©ë‹ˆë‹¤. ì…ë ¥ ë§í¬ê°€ ì—†ëŠ” ê²½ìš°ì—ë§Œ ê°€ëŠ¥.(ìˆìœ¼ë©´ ì˜ˆì™¸ ë˜ì§)
+         * ì™¸ë¶€ì—ì„œ íŒŒì´í”„ë¼ì¸ì— ì§ì ‘ ì…ë ¥ì„ ê³µê¸‰í•  ìˆ˜ ìˆìŠµë‹ˆë‹¤.
          *
-         * ´Ü, ÀÌ¸¦ À§ÇØ Àû¾îµµ ÇÏ³ªÀÇ ½ÇÇà±â°¡ ºñ¾î ÀÖ¾î¾ß ÇÕ´Ï´Ù. ¾Æ´Ï¸é false¸¦ ¹İÈ¯ÇÕ´Ï´Ù.
+         * ë‹¨, ì´ë¥¼ ìœ„í•´ ì ì–´ë„ í•˜ë‚˜ì˜ ì‹¤í–‰ê¸°ê°€ ë¹„ì–´ ìˆì–´ì•¼ í•©ë‹ˆë‹¤. ì•„ë‹ˆë©´ falseë¥¼ ë°˜í™˜í•©ë‹ˆë‹¤.
          */
         bool _submit_input_direct(std::any&& input, std::shared_ptr<base_shared_context> fence_object);
         bool _can_submit_input_direct() const;
+
+        /**
+         * ì‹¤í–‰ê¸° í™œì„±í™” ëŒ€ê¸°
+         */
+        bool _wait_for_executor() const;
 
     private:
         void _prepare_next();
@@ -225,15 +230,20 @@ public:
             context_._internal__set_option(options);
         }
 
-    public: // ½ÇÇà ¹®¸Æ °ü·Ã
+    public: // ì‹¤í–‰ ë¬¸ë§¥ ê´€ë ¨
         executor_base* executor() const { return executor_.get(); }
         execution_context const& context_read() const { return context_; }
         execution_context& context_write() { return context_; }
         fence_index_t fence_index() const { return fence_index_; }
         bool _is_executor_busy() const { return fence_index_ != fence_index_t::none; }
         bool _is_output_order() const { return index_ == owner_._pending_output_slot_index(); }
-        bool _is_busy() const { return timer_scope_total_.has_value(); }
+        bool _is_busy() const { return _is_executor_busy() || busy_flag_.test(); }
         auto latest_exec_result() const { return latest_execution_result_.load(std::memory_order_relaxed); }
+
+        /**
+         * Executorê°€ í•œê°€í•´ì§ˆ ë•Œê¹Œì§€ ëŒ€ê¸°í•©ë‹ˆë‹¤.
+         */
+        bool _wait_ready(std::chrono::milliseconds duration = std::chrono::milliseconds{10}) const;
 
     public:
         struct launch_args_t {
@@ -247,35 +257,35 @@ public:
     private:
         void _swap_exec_context() { context_._swap_data_buff(); }
 
-    private: // ´Ü°èº°·Î µî·ÏµÇ´Â Äİ¹é ¸ñ·Ï
+    private: // ë‹¨ê³„ë³„ë¡œ ë“±ë¡ë˜ëŠ” ì½œë°± ëª©ë¡
         /**
-         * ½ÇÇà ¿Ï·á ÈÄ ºñµ¿±âÀûÀ¸·Î È£ÃâµÇ´Â Äİ¹éÀÔ´Ï´Ù.
-         * ¿¬°áµÈ Ãâ·Â ÇÚµé·¯ °¢°¢À» iterateÇÕ´Ï´Ù.
+         * ì‹¤í–‰ ì™„ë£Œ í›„ ë¹„ë™ê¸°ì ìœ¼ë¡œ í˜¸ì¶œë˜ëŠ” ì½œë°±ì…ë‹ˆë‹¤.
+         * ì—°ê²°ëœ ì¶œë ¥ í•¸ë“¤ëŸ¬ ê°ê°ì„ iterateí•©ë‹ˆë‹¤.
          *
-         *  ¸ÕÀú owner_¿¡°Ô ÇöÀç ½½·Ô ÀÎ½ºÅÏ½º°¡ Ãâ·ÂÇÒ Â÷·Ê°¡ ¸Â´ÂÁö ÁúÀÇ ÇÊ¿ä.
-         *      output_fence == input_fence: Ãâ·Â ÁØºñ
+         *  ë¨¼ì € owner_ì—ê²Œ í˜„ì¬ ìŠ¬ë¡¯ ì¸ìŠ¤í„´ìŠ¤ê°€ ì¶œë ¥í•  ì°¨ë¡€ê°€ ë§ëŠ”ì§€ ì§ˆì˜ í•„ìš”.
+         *      output_fence == input_fence: ì¶œë ¥ ì¤€ë¹„
          *      output_fence <  input_fence: discard
-         *      output_fence >  input_fence: Ã³¸® Áß. ´ë±â ÇÊ¿ä
-         *  ¾Æ´Ï¸é ´ë±âÇÕ´Ï´Ù. ¸¸¾à ´ë»ó ¸µÅ©ÀÇ fence_index°¡ Ãâ·Â fence_indexº¸´Ù ³ô´Ù¸é, ÀÌ´Â ÇØ´ç fence°¡ invalidated µÈ °ÍÀ¸·Î ¾Æ¹«°Íµµ ÇÏÁö ¾Ê½À´Ï´Ù.
+         *      output_fence >  input_fence: ì²˜ë¦¬ ì¤‘. ëŒ€ê¸° í•„ìš”
+         *  ì•„ë‹ˆë©´ ëŒ€ê¸°í•©ë‹ˆë‹¤. ë§Œì•½ ëŒ€ìƒ ë§í¬ì˜ fence_indexê°€ ì¶œë ¥ fence_indexë³´ë‹¤ ë†’ë‹¤ë©´, ì´ëŠ” í•´ë‹¹ fenceê°€ invalidated ëœ ê²ƒìœ¼ë¡œ ì•„ë¬´ê²ƒë„ í•˜ì§€ ì•ŠìŠµë‹ˆë‹¤.
          *
-         *  1) ½ÇÆĞ ½Ã
-         *      submit_input¿¡ false Àü´Ş. ÀÚµ¿À¸·Î °°Àº ´Ü°èÀÇ ´Ù¸¥ Ãâ·Âµµ ÀüºÎ ¹«È¿È­
+         *  1) ì‹¤íŒ¨ ì‹œ
+         *      submit_inputì— false ì „ë‹¬. ìë™ìœ¼ë¡œ ê°™ì€ ë‹¨ê³„ì˜ ë‹¤ë¥¸ ì¶œë ¥ë„ ì „ë¶€ ë¬´íš¨í™”
          *      
-         *  2-A) ¼º°ø ½Ã - ÇÊ¼öÀû ÀÔ·Â
-         *      Ãâ·Â µ¥ÀÌÅÍ¸¦ ÀÔ·Â µ¥ÀÌÅÍ¿¡ ¿¬°áÇÕ´Ï´Ù(Äİ¹é).
-         *      ¿¬°áµÈ ÀÔ·Â ½½·ÔÀÌ °¡´É »óÅÂ
+         *  2-A) ì„±ê³µ ì‹œ - í•„ìˆ˜ì  ì…ë ¥
+         *      ì¶œë ¥ ë°ì´í„°ë¥¼ ì…ë ¥ ë°ì´í„°ì— ì—°ê²°í•©ë‹ˆë‹¤(ì½œë°±).
+         *      ì—°ê²°ëœ ì…ë ¥ ìŠ¬ë¡¯ì´ ê°€ëŠ¥ ìƒíƒœ
          *          (this->output_fence_index == other->input_fence_index)
-         *      °¡ µÉ ¶§ ±îÁö ´ë±â
+         *      ê°€ ë  ë•Œ ê¹Œì§€ ëŒ€ê¸°
          *      
-         *  2-B) ¼º°ø ½Ã - ¼±ÅÃÀû ÀÔ·Â
-         *      ¿¬°áµÈ ÀÔ·Â ½½·ÔÀÌ °¡´É »óÅÂÀÎÁö Á¡°ËÇÕ´Ï´Ù.
-         *      1) °¡´É »óÅÂ¶ó¸é, Ãâ·Â µ¥ÀÌÅÍ¸¦ ÀÔ·Â µ¥ÀÌÅÍ¿¡ ¿¬°áÇÕ´Ï´Ù
-         *      2) ¾Æ´Ï¶ó¸é, sumit_input¿¡ false Àü´Ş. Áï½Ã incrementÇÕ´Ï´Ù.
+         *  2-B) ì„±ê³µ ì‹œ - ì„ íƒì  ì…ë ¥
+         *      ì—°ê²°ëœ ì…ë ¥ ìŠ¬ë¡¯ì´ ê°€ëŠ¥ ìƒíƒœì¸ì§€ ì ê²€í•©ë‹ˆë‹¤.
+         *      1) ê°€ëŠ¥ ìƒíƒœë¼ë©´, ì¶œë ¥ ë°ì´í„°ë¥¼ ì…ë ¥ ë°ì´í„°ì— ì—°ê²°í•©ë‹ˆë‹¤
+         *      2) ì•„ë‹ˆë¼ë©´, sumit_inputì— false ì „ë‹¬. ì¦‰ì‹œ incrementí•©ë‹ˆë‹¤.
          *
-         *  ¸ğµç Ãâ·ÂÀ» Ã³¸®ÇÑ ÈÄ¿£, ready_conditions_¸¦ ºñ¿ì°í ÀÔ·Â °¡´É »óÅÂ·Î ÀüÈ¯
+         *  ëª¨ë“  ì¶œë ¥ì„ ì²˜ë¦¬í•œ í›„ì—”, ready_conditions_ë¥¼ ë¹„ìš°ê³  ì…ë ¥ ê°€ëŠ¥ ìƒíƒœë¡œ ì „í™˜
          *
          */
-        void _launch_callback(); // ÆÄ¶ó¹ÌÅÍ´Â ³ªÁß¿¡ Ãß°¡
+        void _launch_callback(); // íŒŒë¼ë¯¸í„°ëŠ” ë‚˜ì¤‘ì— ì¶”ê°€
         void _perform_post_output();
         void _perform_output_link(size_t output_index, bool aborting);
 
@@ -297,6 +307,9 @@ public:
         std::optional<execution_context::timer_scope_indicator> timer_scope_link_;
 
         size_t index_;
+        std::atomic_flag busy_flag_;
+
+        mutable std::pair<std::condition_variable, std::mutex> done_notify_;
     };
 
 public:
@@ -311,76 +324,77 @@ public:
 public:
     pipe_id_t id() const { return id_; }
     auto& name() const { return name_; }
-    /** launch()ÀÇ È£Ãâ ¿©ºÎ ¹İÈ¯ */
+    /** launch()ì˜ í˜¸ì¶œ ì—¬ë¶€ ë°˜í™˜ */
     bool is_launched() const { return input_slot_.active_input_fence_.load(std::memory_order_relaxed) > fence_index_t::none; }
 
-    /** ÀÔÃâ·Â ³ëµå ¹İÈ¯ */
+    /** ì…ì¶œë ¥ ë…¸ë“œ ë°˜í™˜ */
     auto& input_links() const { return input_links_; }
     auto& output_links() const { return output_links_; }
 
-    /** ÆÄÀÌÇÁ ¿É¼Ç ¹İÈ¯ */
+    /** íŒŒì´í”„ ì˜µì…˜ ë°˜í™˜ */
     auto& options() { return *executor_options_; }
     auto& options() const { return *executor_options_; }
 
-    /** ÀÔ·Â °¡´É »óÅÂÀÎÁö È®ÀÎ */
+    /** ì…ë ¥ ê°€ëŠ¥ ìƒíƒœì¸ì§€ í™•ì¸ */
     bool can_submit_input_direct() const { return !_active_exec_slot()._is_executor_busy(); }
     bool is_paused() const { return paused_.load(std::memory_order_relaxed); }
     void pause() { paused_.store(true, std::memory_order_relaxed); }
     void unpause() { paused_.store(false, std::memory_order_relaxed); }
     bool recently_aborted() const { return recently_input_aborted_.load(std::memory_order::relaxed); }
+    bool wait_active_slot_idle(std::chrono::milliseconds timeout) const { return _active_exec_slot()._wait_ready(timeout); }
 
-    /** »óÅÂ Á¡°Ë */
+    /** ìƒíƒœ ì ê²€ */
     bool is_optional_input() const { return input_slot_.is_optional_; }
     size_t num_executors() const { return executor_slots_.size(); }
     void executor_conditions(std::vector<executor_condition_t>& conds) const;
 
     auto current_fence_index() const { return input_slot_.active_input_fence_.load(std::memory_order_relaxed); }
 
-    /** Ãâ·Â ÀÎÅÍ¹ú ¹İÈ¯ */
+    /** ì¶œë ¥ ì¸í„°ë²Œ ë°˜í™˜ */
     auto output_interval() const
     {
         return latest_interval_.load(std::memory_order_relaxed);
     }
     auto output_latency() const { return latest_output_latency_.load(std::memory_order_relaxed); }
 
-    /** ¿É¼Ç º¯°æ ÈÄ È£Ãâ, mark dirty */
+    /** ì˜µì…˜ ë³€ê²½ í›„ í˜¸ì¶œ, mark dirty */
     void mark_dirty();
 
 public:
-    /** ÀÔ·Â ¿¬°áÀÚ */
+    /** ì…ë ¥ ì—°ê²°ì */
     template <typename Shared_, typename PrevOut_, typename NextIn_, typename Fn_>
     void connect_output_to(pipe_base& other, Fn_&&);
 
-    /** ÆÄÀÌÇÁ¶óÀÎÀ» ½Ãµ¿ÇÕ´Ï´Ù. */
+    /** íŒŒì´í”„ë¼ì¸ì„ ì‹œë™í•©ë‹ˆë‹¤. */
     void launch(size_t num_executors, std::function<std::unique_ptr<executor_base>()>&& factory);
 
-    /** launchÀÇ ÆíÀÇ¼º ·¡ÆÛÀÔ´Ï´Ù. */
+    /** launchì˜ í¸ì˜ì„± ë˜í¼ì…ë‹ˆë‹¤. */
     template <typename Fn_, typename... Args_>
     void launch_by(size_t num_executors, Fn_&& factory, Args_&&... args);
 
-    /** ÀÔ·Â °ø±Ş ½Ãµµ */
+    /** ì…ë ¥ ê³µê¸‰ ì‹œë„ */
     bool try_submit(std::any&& input, std::shared_ptr<base_shared_context> fence_object) { return input_slot_._submit_input_direct(std::move(input), std::move(fence_object)); }
 
-    /** °¡µ¿ ÁßÀÎ ÆÄÀÌÇÁ ÀÖ´ÂÁö È®ÀÎ */
+    /** ê°€ë™ ì¤‘ì¸ íŒŒì´í”„ ìˆëŠ”ì§€ í™•ì¸ */
     bool is_async_operation_running() const { return destruction_guard_.is_locked(); }
 
-    /** context ÀĞ¾îµéÀÌ±â */
+    /** context ì½ì–´ë“¤ì´ê¸° */
     execution_context const* latest_execution_context() const { return latest_exec_context_.load(std::memory_order_relaxed); }
 
-    /** Ãâ·Â ÇÚµé·¯ Ãß°¡ */
+    /** ì¶œë ¥ í•¸ë“¤ëŸ¬ ì¶”ê°€ */
     void add_output_handler(output_handler_type handler) { output_handlers_.emplace_back(std::move(handler)); };
 
 private:
-    /** thisÃâ·Â->toÀÔ·Â ¹æÇâÀ¸·Î ¿¬°áÇÕ´Ï´Ù. */
+    /** thisì¶œë ¥->toì…ë ¥ ë°©í–¥ìœ¼ë¡œ ì—°ê²°í•©ë‹ˆë‹¤. */
     void _connect_output_to_impl(pipe_base* other, output_link_adapter_type adapter);
 
-    /** Ãâ·ÂÀÌ ¿Ï·áµÈ ½½·Ô¿¡¼­ È£ÃâÇÕ´Ï´Ù. ´ÙÀ½ ½½·ÔÀ» ÀÔ·Â È°¼ºÈ­ */
+    /** ì¶œë ¥ì´ ì™„ë£Œëœ ìŠ¬ë¡¯ì—ì„œ í˜¸ì¶œí•©ë‹ˆë‹¤. ë‹¤ìŒ ìŠ¬ë¡¯ì„ ì…ë ¥ í™œì„±í™” */
     void _rotate_output_order(executor_slot* ref);
 
-    /** ´ÙÀ½ ÀÔ·Â ½½·ÔÀ» È°¼ºÈ­. */
+    /** ë‹¤ìŒ ì…ë ¥ ìŠ¬ë¡¯ì„ í™œì„±í™”. */
     size_t _rotate_slot() { return active_exec_slot_.fetch_add(1); }
 
-    /** Ãâ·ÂÇÒ Â÷·Ê°¡ µÈ ½ÇÇà ½½·Ô ¹İÈ¯ */
+    /** ì¶œë ¥í•  ì°¨ë¡€ê°€ ëœ ì‹¤í–‰ ìŠ¬ë¡¯ ë°˜í™˜ */
     size_t _pending_output_slot_index() const { return output_exec_slot_.load(std::memory_order_relaxed) % executor_slots_.size(); }
 
 public:
@@ -401,19 +415,19 @@ private:
     pipe_id_t const id_ = pipe_id_gen::generate();
     std::string name_;
 
-    /** ¸ğµç ÆÄÀÌÇÁ ÀÔ·ÂÀ» Ã³¸®ÇÕ´Ï´Ù. */
+    /** ëª¨ë“  íŒŒì´í”„ ì…ë ¥ì„ ì²˜ë¦¬í•©ë‹ˆë‹¤. */
     input_slot_t input_slot_{*this};
 
-    /** ½ÇÇà±âÀÇ °³¼ö´Â ÆÄÀÌÇÁ¶óÀÎ ½Ãµ¿ ÀÌÈÄ º¯ÇÏÁö ¾Ê¾Æ¾ß ÇÕ´Ï´Ù. */
+    /** ì‹¤í–‰ê¸°ì˜ ê°œìˆ˜ëŠ” íŒŒì´í”„ë¼ì¸ ì‹œë™ ì´í›„ ë³€í•˜ì§€ ì•Šì•„ì•¼ í•©ë‹ˆë‹¤. */
     std::vector<std::unique_ptr<executor_slot>> executor_slots_;
-    std::atomic_size_t active_exec_slot_; // idle ½½·Ô ¼±ÅÃ(¹İµå½Ã ¼øÂ÷Àû)
-    std::atomic_size_t output_exec_slot_; // Ãâ·Â ½½·Ô ¼±ÅÃ
+    std::atomic_size_t active_exec_slot_; // idle ìŠ¬ë¡¯ ì„ íƒ(ë°˜ë“œì‹œ ìˆœì°¨ì )
+    std::atomic_size_t output_exec_slot_; // ì¶œë ¥ ìŠ¬ë¡¯ ì„ íƒ
 
-    /** ¸ğµç ÀÔÃâ·Â ¸µÅ©´Â ÆÄÀÌÇÁ¶óÀÎ ½Ãµ¿ ÀÌÈÄ º¯ÇÏÁö ¾Ê¾Æ¾ß ÇÕ´Ï´Ù. */
+    /** ëª¨ë“  ì…ì¶œë ¥ ë§í¬ëŠ” íŒŒì´í”„ë¼ì¸ ì‹œë™ ì´í›„ ë³€í•˜ì§€ ì•Šì•„ì•¼ í•©ë‹ˆë‹¤. */
     std::vector<input_link_desc> input_links_;
     std::vector<output_link_desc> output_links_;
 
-    /** °¡Àå ÃÖ±Ù¿¡ ½ÇÇàµÈ execution Á¤º¸ */
+    /** ê°€ì¥ ìµœê·¼ì— ì‹¤í–‰ëœ execution ì •ë³´ */
     std::atomic<execution_context const*> latest_exec_context_;
     std::atomic<fence_index_t> latest_output_fence_;
     std::atomic<system_clock::duration> latest_interval_;
@@ -425,13 +439,13 @@ private:
     kangsw::timer_thread_pool* ref_workers_ = nullptr;
     std::unique_ptr<option_base> executor_options_;
 
-    /** ÀÏ½Ã Á¤Áö Ã³¸® */
+    /** ì¼ì‹œ ì •ì§€ ì²˜ë¦¬ */
     std::atomic_bool paused_;
 
-    /** »óÅÂ ÇÃ·¡±× */
+    /** ìƒíƒœ í”Œë˜ê·¸ */
     std::atomic_bool recently_input_aborted_;
 
-    /** ¼³Á¤ ÇÃ·¡±× */
+    /** ì„¤ì • í”Œë˜ê·¸ */
     bool mode_selective_output_ = false;
     bool mode_selectie_input_ = false;
 
@@ -535,8 +549,8 @@ void pipe_base::launch_by(size_t num_executors, Fn_&& factory, Args_&&... args)
 
 } // namespace detail
 /**
- * µ¶¸³µÈ ¾Ë°í¸®Áò ½ÇÇà±â ÇÏ³ª¸¦ Á¤ÀÇÇÕ´Ï´Ù.
- * ÆÄÀÌÇÁ¿¡ °ø±ŞÇÏ´Â ¸ğµç ½ÇÇà±â´Â ÀÌ Å¬·¡½º¸¦ »ó¼ÓÇØ¾ß ÇÕ´Ï´Ù.
+ * ë…ë¦½ëœ ì•Œê³ ë¦¬ì¦˜ ì‹¤í–‰ê¸° í•˜ë‚˜ë¥¼ ì •ì˜í•©ë‹ˆë‹¤.
+ * íŒŒì´í”„ì— ê³µê¸‰í•˜ëŠ” ëª¨ë“  ì‹¤í–‰ê¸°ëŠ” ì´ í´ë˜ìŠ¤ë¥¼ ìƒì†í•´ì•¼ í•©ë‹ˆë‹¤.
  */
 template <typename Exec_>
 class executor final : public detail::executor_base {

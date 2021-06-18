@@ -2,8 +2,8 @@
 #include <cassert>
 #include "fmt/format.h"
 #include "kangsw/helpers/enum_arithmetic.hxx"
-#include "kangsw/helpers/misc.hxx"
 #include "kangsw/helpers/hash_index.hxx"
+#include "kangsw/helpers/misc.hxx"
 #include "kangsw/thread/thread_pool.hxx"
 #include "pipepp/options.hpp"
 #include "pipepp/pipepp.h"
@@ -60,6 +60,22 @@ void pipepp::detail::pipe_base::input_slot_t::_propagate_fence_abortion(fence_in
     }
 }
 
+bool pipepp::detail::pipe_base::executor_slot::_wait_ready(std::chrono::milliseconds duration) const
+{
+    using namespace std::literals;
+
+    // 잠깐동안 spinlock 돌리면서 대기
+    for (auto begin = system_clock::now();
+         system_clock::now() - begin < 50us;) {
+        if (!_is_busy()) { return true; }
+
+        std::this_thread::yield();
+    }
+
+    std::unique_lock _lock{done_notify_.second};
+    return done_notify_.first.wait_for(_lock, duration, [this]() { return !_is_busy(); });
+}
+
 void pipepp::detail::pipe_base::executor_slot::_launch_async(launch_args_t arg)
 {
     std::lock_guard destruction_guard{owner_.destruction_guard_};
@@ -90,6 +106,7 @@ void pipepp::detail::pipe_base::executor_slot::_launch_callback()
     pipe_error exec_res;
 
     PIPEPP_REGISTER_CONTEXT(context_write());
+    busy_flag_.test_and_set();
     timer_scope_total_ = context_write().timer_scope("Total Execution Time");
 
     PIPEPP_ELAPSE_BLOCK("A. Executor Run Time")
@@ -151,11 +168,17 @@ void pipepp::detail::pipe_base::executor_slot::_perform_post_output()
     fence_index_.store(fence_index_t::none, std::memory_order_seq_cst);
 
     owner_.destruction_guard_.unlock();
+
+    // 이벤트 알림
+    busy_flag_.clear();
+    done_notify_.first.notify_all();
 }
 
 void pipepp::detail::pipe_base::executor_slot::_perform_output_link(size_t output_index, bool aborting)
 {
     PIPEPP_REGISTER_CONTEXT(context_write());
+    system_clock::duration total_wait_overhead = {};
+
     for (; output_index < owner_.output_links_.size();) {
         assert(_is_output_order());
 
@@ -176,9 +199,9 @@ void pipepp::detail::pipe_base::executor_slot::_perform_output_link(size_t outpu
 
             // 만약 optional인 경우, 입력이 준비되지 않았다면 abort에 true를 지정해,
             //현재 입력 fence를 즉시 취소합니다.
-            bool const abort_optional = aborting || (slot.is_optional_ && !*check);
-            bool const can_try_submit = *check || abort_optional;
-            if (can_try_submit && slot._submit_input(fence_index_, owner_.id(), input_manip, fence_object_, abort_optional)) {
+            bool const should_abort = aborting || (slot.is_optional_ && !*check);
+            bool const can_try_submit = *check || should_abort;
+            if (can_try_submit && slot._submit_input(fence_index_, owner_.id(), input_manip, fence_object_, should_abort)) {
                 // no need to retry.
                 // go to next index.
                 ++output_index;
@@ -198,8 +221,17 @@ void pipepp::detail::pipe_base::executor_slot::_perform_output_link(size_t outpu
 
         // 다음 출력 콜백을 예약합니다.
         // workers().add_timer(delay, &executor_slot::_output_link_callback, this, output_index, aborting);
-        if (delay > 0us) { std::this_thread::sleep_for(delay); }
+        if (delay > 0us) {
+            auto begin = system_clock::now();
+            {
+                slot._wait_for_executor();
+            }
+            total_wait_overhead += system_clock::now() - begin;
+        }
     }
+
+    PIPEPP_STORE_DEBUG_DATA("Total Wait Overhead Ms",
+                            (std::chrono::duration<float, std::milli>(total_wait_overhead)).count());
     _perform_post_output();
 }
 
@@ -325,9 +357,9 @@ void pipepp::detail::pipe_base::executor_conditions(std::vector<executor_conditi
                          ? recently_aborted()
                              ? executor_condition_t::idle_aborted
                              : executor_condition_t::idle_output
-                         : exec.latest_exec_result() > pipe_error::warning
-                             ? executor_condition_t::idle_aborted
-                             : executor_condition_t::idle;
+                       : exec.latest_exec_result() > pipe_error::warning
+                         ? executor_condition_t::idle_aborted
+                         : executor_condition_t::idle;
         }
     }
 }
@@ -494,9 +526,7 @@ bool pipepp::detail::pipe_base::input_slot_t::_submit_input_direct(std::any&& in
         throw pipe_exception("input cannot directly fed when there's any input link existing");
     }
 
-    if (owner_._active_exec_slot()._is_executor_busy()) {
-        return false;
-    }
+    if (owner_._active_exec_slot()._is_executor_busy()) { return false; }
 
     active_input_fence_object_ = std::move(fence_object);
     cached_input_.first = std::move(input);
@@ -509,4 +539,10 @@ bool pipepp::detail::pipe_base::input_slot_t::_submit_input_direct(std::any&& in
 bool pipepp::detail::pipe_base::input_slot_t::_can_submit_input_direct() const
 {
     return owner_._active_exec_slot()._is_executor_busy() == false;
+}
+
+bool pipepp::detail::pipe_base::input_slot_t::_wait_for_executor() const
+{
+    using namespace std::literals;
+    return owner_._active_exec_slot()._wait_ready(10ms);
 }

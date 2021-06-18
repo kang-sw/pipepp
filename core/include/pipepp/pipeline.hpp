@@ -320,7 +320,7 @@ public:
 
 public:
     // check if suppliable
-    bool can_suply() const { return pipes_.front()->can_submit_input_direct(); }
+    bool can_suply() const { return !pipes_.front()->is_paused() && pipes_.front()->can_submit_input_direct(); }
 
     // supply input (trigger)
     template <typename Fn_>
@@ -331,6 +331,11 @@ public:
         shared_data_init_func(static_cast<shared_data_type&>(*shared));
         shared->reload();
         return pipes_.front()->try_submit(std::move(input), std::move(shared));
+    }
+
+    bool wait_supliable(std::chrono::milliseconds timeout = std::chrono::milliseconds{10}) const
+    {
+        return !pipes_.front()->is_paused() && pipes_.front()->wait_active_slot_idle(timeout);
     }
 
 protected:

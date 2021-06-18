@@ -73,6 +73,7 @@ bool pipepp::detail::pipe_base::executor_slot::_wait_ready(std::chrono::millisec
     }
 
     std::unique_lock _lock{done_notify_.second};
+    if ( !_is_busy() ) { return true; } // Mutex 잠그는 동안 끝났을 가능성 ...
     return done_notify_.first.wait_for(_lock, duration, [this]() { return !_is_busy(); });
 }
 
@@ -223,9 +224,7 @@ void pipepp::detail::pipe_base::executor_slot::_perform_output_link(size_t outpu
         // workers().add_timer(delay, &executor_slot::_output_link_callback, this, output_index, aborting);
         if (delay > 0us) {
             auto begin = system_clock::now();
-            {
-                slot._wait_for_executor();
-            }
+            slot._wait_for_executor();
             total_wait_overhead += system_clock::now() - begin;
         }
     }

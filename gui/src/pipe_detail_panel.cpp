@@ -105,7 +105,7 @@ pipepp::gui::pipe_detail_panel::pipe_detail_panel(nana::window owner, const nana
     };
 
     events().resized([&](auto&&) {
-        if (size().height > size().width) {
+        if (size().height > size().width * 2 / 3) {
             div(""
                 "margin=2"
                 "<vert"
@@ -176,7 +176,7 @@ void pipepp::gui::pipe_detail_panel::update(std::shared_ptr<execution_context_da
     return;
     auto proxy = m.pipeline.lock()->get_pipe(m.pipe);
 
-    // -- Å¸ÀÌ¸Ó ¹®ÀÚ¿­ ºôµå
+    // -- íƒ€ì´ë¨¸ ë¬¸ìì—´ ë¹Œë“œ
     {
         auto pos = m.timers.text_position().front();
         size_t horizontal_chars = num_timer_text_view_horizontal_chars - 8;
@@ -223,23 +223,23 @@ void pipepp::gui::pipe_detail_panel::update(std::shared_ptr<execution_context_da
         m.timers.append(" ", true);
     }
 
-    // -- µğ¹ö±× ¿É¼Ç ºôµå
-    // pipeline_board Å½»ö
+    // -- ë””ë²„ê·¸ ì˜µì…˜ ë¹Œë“œ
+    // pipeline_board íƒìƒ‰
     auto subscr_ptr = m.board_ref ? &m.board_ref->debug_data_subscriber : nullptr;
     m.values.auto_draw(false);
     // auto showing = m.values.first_visible();
     auto list = m.values.at(0);
     for (auto& dbg : data->debug_data) {
-        // ÀÌ¸§ ¹× Ä«Å×°í¸®·Î Å½»ö
-        [&]() { // ³»ºÎ ·çÇÁ¸¦ °£ÆíÇÏ°Ô ºüÁ®³ª°¡±â À§ÇØ lambda·Î °¨½Ó
+        // ì´ë¦„ ë° ì¹´í…Œê³ ë¦¬ë¡œ íƒìƒ‰
+        [&]() { // ë‚´ë¶€ ë£¨í”„ë¥¼ ê°„í¸í•˜ê²Œ ë¹ ì ¸ë‚˜ê°€ê¸° ìœ„í•´ lambdaë¡œ ê°ìŒˆ
             for (auto& item : list) {
-                // ¾ÆÀÌÅÛÀ» °Ë»öÇØ ÀÌ¸§°ú Ä«Å×°í¸®°¡ Áßº¹µÈ °æ¿ì µ¥ÀÌÅÍ¸¸ °»½ÅÇÕ´Ï´Ù.
+                // ì•„ì´í…œì„ ê²€ìƒ‰í•´ ì´ë¦„ê³¼ ì¹´í…Œê³ ë¦¬ê°€ ì¤‘ë³µëœ ê²½ìš° ë°ì´í„°ë§Œ ê°±ì‹ í•©ë‹ˆë‹¤.
                 auto& entry = item.value<execution_context_data::debug_data_entity>();
                 if (entry.category_id == dbg.category_id && entry.name == dbg.name) {
                     item.resolve_from(dbg);
                     if (item.checked() && subscr_ptr && *subscr_ptr) {
-                        // ¸¸¾à Ã¼Å©µÇ¾ú°í, ±¸µ¶ ÇÔ¼ö°¡ Á¸ÀçÇÑ´Ù¸é È£ÃâÇÕ´Ï´Ù.
-                        // ÀÌ ¶§ ±¸µ¶ ÇÔ¼ö°¡ false ¹İÈ¯ ½Ã uncheck
+                        // ë§Œì•½ ì²´í¬ë˜ì—ˆê³ , êµ¬ë… í•¨ìˆ˜ê°€ ì¡´ì¬í•œë‹¤ë©´ í˜¸ì¶œí•©ë‹ˆë‹¤.
+                        // ì´ ë•Œ êµ¬ë… í•¨ìˆ˜ê°€ false ë°˜í™˜ ì‹œ uncheck
                         if ((*subscr_ptr)(proxy.name(), dbg) == false) {
                             item.check(false);
                         }
@@ -248,7 +248,7 @@ void pipepp::gui::pipe_detail_panel::update(std::shared_ptr<execution_context_da
                 }
             }
 
-            // ´ëÀÀµÇ´Â ¾ÆÀÌÅÛÀ» Ã£Áö ¸øÇÑ °æ¿ì¿¡¸¸ »õ·Î¿î ¿ä¼Ò »ğÀÔ
+            // ëŒ€ì‘ë˜ëŠ” ì•„ì´í…œì„ ì°¾ì§€ ëª»í•œ ê²½ìš°ì—ë§Œ ìƒˆë¡œìš´ ìš”ì†Œ ì‚½ì…
             list.append(dbg, true);
         }();
     }

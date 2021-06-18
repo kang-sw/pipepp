@@ -624,4 +624,13 @@ decltype(auto) make_executor(Args_&&... args)
 {
     return std::make_unique<executor<Exec_>>(std::forward<Args_>(args)...);
 }
+
+template <typename Exec_, typename... Args_>
+decltype(auto) factory(Args_&&... args)
+{
+    return [... args = std::forward<Args_>(args)]() mutable {
+        return std::make_unique<executor<Exec_>>(std::forward<Args_>(args)...);
+    };
+}
+
 } // namespace pipepp

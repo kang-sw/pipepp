@@ -6,6 +6,7 @@
 #include <unordered_set>
 #include <variant>
 #include "kangsw/helpers/misc.hxx"
+#include "kangsw/thread/spinlock.hxx"
 #include "nlohmann/json.hpp"
 
 namespace pipepp {
@@ -27,7 +28,7 @@ public:
 
     auto lock_read(bool trial = false) const
     {
-        return trial ? std::shared_lock{lock_, std::try_to_lock} : std::shared_lock{lock_};
+        return trial ? std::unique_lock{lock_, std::try_to_lock} : std::unique_lock{lock_};
     }
     auto lock_write(bool trial = false) const
     {
@@ -60,7 +61,7 @@ private:
     std::map<std::string, std::string> names_;
     std::map<std::string, verify_function_t> verifiers_;
     std::map<std::string, std::string> paths_;
-    mutable std::shared_mutex lock_;
+    mutable kangsw::spinlock lock_;
 };
 
 template <typename Exec_>

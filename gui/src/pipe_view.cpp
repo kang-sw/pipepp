@@ -1,7 +1,7 @@
 #include <chrono>
 #include "fmt/format.h"
-#include "kangsw/misc.hxx"
-#include "kangsw/zip.hxx"
+#include "kangsw/helpers/misc.hxx"
+#include "kangsw/helpers/zip.hxx"
 #include "nana/basic_types.hpp"
 #include "nana/gui/detail/general_events.hpp"
 #include "nana/gui/drawing.hpp"

@@ -1,6 +1,6 @@
 #include <mutex>
 
-#include "kangsw/hash_index.hxx"
+#include "kangsw/helpers/hash_index.hxx"
 #include "pipepp/execution_context.hpp"
 
 kangsw::safe_string_table& pipepp::string_pool()

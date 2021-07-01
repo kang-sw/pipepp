@@ -87,8 +87,11 @@ using options = const detail::option_base;
     }
 
 /**
- *
  * Declares new pipeline option for scope and category.
+ *
+ * PIPEPP_OPTION(Name, DefaultValue, Description, Verifier)
+ *
+ * Verifier: \ref pipepp::verify
  */
 #define PIPEPP_OPTION(...)                                  \
     ___PIPEPP_MSVC_BUG_REOLSVER(                            \

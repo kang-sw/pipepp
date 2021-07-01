@@ -5,9 +5,9 @@
 #include <string>
 #include <variant>
 
-#include "kangsw/hash_index.hxx"
-#include "kangsw/misc.hxx"
-#include "kangsw/spinlock.hxx"
+#include "kangsw/helpers/hash_index.hxx"
+#include "kangsw/helpers/misc.hxx"
+#include "kangsw/thread/spinlock.hxx"
 
 namespace pipepp {
 namespace detail {
@@ -15,17 +15,17 @@ class option_base;
 } // namespace detail
 
 /**
- * Àü¿ª string tableÀ» ¾ò¾î¿É´Ï´Ù. ¸ğµç execution_context´Â ÀÌ ÇÔ¼ö¸¦ »ç¿ë.
+ * ì „ì—­ string tableì„ ì–»ì–´ì˜µë‹ˆë‹¤. ëª¨ë“  execution_contextëŠ” ì´ í•¨ìˆ˜ë¥¼ ì‚¬ìš©.
  */
 kangsw::safe_string_table& string_pool();
 
 /**
- * ½ÇÇà ¹®¸Æ µ¥ÀÌÅÍ Çü½Ä
+ * ì‹¤í–‰ ë¬¸ë§¥ ë°ì´í„° í˜•ì‹
  *
- * °èÃşÀû Å¸ÀÌ¸Ó Á¤º¸
- * °èÃşÀû µ¥ÀÌÅÍ Á¤º¸
+ * ê³„ì¸µì  íƒ€ì´ë¨¸ ì •ë³´
+ * ê³„ì¸µì  ë°ì´í„° ì •ë³´
  *
- * ¸¦ ÀúÀåÇÏ°í ÀÖ½À´Ï´Ù.
+ * ë¥¼ ì €ì¥í•˜ê³  ìˆìŠµë‹ˆë‹¤.
  */
 struct execution_context_data {
     using clock = std::chrono::system_clock;
@@ -55,27 +55,27 @@ public:
 };
 
 /**
- * ½ÇÇà ¹®¸Æ Å¬·¡½º.
- * µğ¹ö±ë ¹× ¸ğ´ÏÅÍ¸µÀ» À§ÇÑ Å¬·¡½º·Î,
+ * ì‹¤í–‰ ë¬¸ë§¥ í´ë˜ìŠ¤.
+ * ë””ë²„ê¹… ë° ëª¨ë‹ˆí„°ë§ì„ ìœ„í•œ í´ë˜ìŠ¤ë¡œ,
  *
- * 1) µğ¹ö±× ÇÃ·¡±× Á¦¾î
- * 2) µğ¹ö±× µ¥ÀÌÅÍ ÀúÀå
- * 3) ±¸°£º° °èÃşÀû ½ÇÇà ½Ã°£ °èÃø
- * 4) ¿É¼Ç¿¡ ´ëÇÑ Á¢±Ù Á¦¾î(¿É¼Ç ÀÎ½ºÅÏ½º´Â pipe¿¡ Á¸Àç, ½ÇÇà ¹®¸ÆÀº ·¹ÆÛ·±½º ÀĞ±â Àü¿ë)
+ * 1) ë””ë²„ê·¸ í”Œë˜ê·¸ ì œì–´
+ * 2) ë””ë²„ê·¸ ë°ì´í„° ì €ì¥
+ * 3) êµ¬ê°„ë³„ ê³„ì¸µì  ì‹¤í–‰ ì‹œê°„ ê³„ì¸¡
+ * 4) ì˜µì…˜ì— ëŒ€í•œ ì ‘ê·¼ ì œì–´(ì˜µì…˜ ì¸ìŠ¤í„´ìŠ¤ëŠ” pipeì— ì¡´ì¬, ì‹¤í–‰ ë¬¸ë§¥ì€ ë ˆí¼ëŸ°ìŠ¤ ì½ê¸° ì „ìš©)
  *
- * µîÀÇ ±â´ÉÀ» Á¦°øÇÕ´Ï´Ù.
+ * ë“±ì˜ ê¸°ëŠ¥ì„ ì œê³µí•©ë‹ˆë‹¤.
  *
- * ³»ºÎ¿¡ µÎ °³ÀÇ µ¥ÀÌÅÍ ¹öÆÛ¸¦ °®°í ÀÖÀ¸¸ç, ±âº»ÀûÀ¸·Î clear_records°¡ È£ÃâµÉ ¶§¸¶´Ù µÎ °³ÀÇ ¹öÆÛ¸¦ ½º¿ÒÇÕ´Ï´Ù.
- * ÀÌ¸¦ ÅëÇØ ¸Ş¸ğ¸® ÀçÇÒ´çÀ» ¹æÁöÇÒ ¼ö ÀÖ´Âµ¥, ¸¸¾à ¿ÜºÎ¿¡¼­ context¸¦ ¿äÃ»ÇÑ °æ¿ì ¹é ¹öÆÛÀÇ ¿ÀºêÁ§Æ®¸¦ ³Ñ±â°í Àç»ı¼ºÇÕ´Ï´Ù.
+ * ë‚´ë¶€ì— ë‘ ê°œì˜ ë°ì´í„° ë²„í¼ë¥¼ ê°–ê³  ìˆìœ¼ë©°, ê¸°ë³¸ì ìœ¼ë¡œ clear_recordsê°€ í˜¸ì¶œë  ë•Œë§ˆë‹¤ ë‘ ê°œì˜ ë²„í¼ë¥¼ ìŠ¤ì™‘í•©ë‹ˆë‹¤.
+ * ì´ë¥¼ í†µí•´ ë©”ëª¨ë¦¬ ì¬í• ë‹¹ì„ ë°©ì§€í•  ìˆ˜ ìˆëŠ”ë°, ë§Œì•½ ì™¸ë¶€ì—ì„œ contextë¥¼ ìš”ì²­í•œ ê²½ìš° ë°± ë²„í¼ì˜ ì˜¤ë¸Œì íŠ¸ë¥¼ ë„˜ê¸°ê³  ì¬ìƒì„±í•©ë‹ˆë‹¤.
  */
 class execution_context {
 public:
     template <typename Ty_> using lock_type = std::unique_lock<Ty_>;
     using clock = std::chrono::system_clock;
 
-    // TODO: µğ¹ö±× ÇÃ·¡±× Á¦¾î
-    // TODO: µğ¹ö±× µ¥ÀÌÅÍ ÀúÀå(variant<bool, long, double, string, any> [])
-    // TODO: ½ÇÇà ½Ã°£ °èÃø±â
+    // TODO: ë””ë²„ê·¸ í”Œë˜ê·¸ ì œì–´
+    // TODO: ë””ë²„ê·¸ ë°ì´í„° ì €ì¥(variant<bool, long, double, string, any> [])
+    // TODO: ì‹¤í–‰ ì‹œê°„ ê³„ì¸¡ê¸°
 
 public:
     struct timer_scope_indicator {
@@ -98,40 +98,46 @@ public:
 public: // accessor
     auto const& option() const { return *options_; }
     operator detail::option_base const &() const { return *options_; }
+    auto& option() { return *options_; }
+    operator detail::option_base&() { return *options_; }
 
 public: // methods
     /**
-     * @brief ÀÔ·ÂÀ» ÃßÃâ °¡´ÉÇÑ »óÅÂÀÎÁö È®ÀÎÇÕ´Ï´Ù.
-     * @return ÇöÀç ÀÔ·ÂÀ» ÃßÃâ °¡´ÉÇÏ¸é true
+     * @brief ì…ë ¥ì„ ì¶”ì¶œ ê°€ëŠ¥í•œ ìƒíƒœì¸ì§€ í™•ì¸í•©ë‹ˆë‹¤.
+     * @return í˜„ì¬ ì…ë ¥ì„ ì¶”ì¶œ ê°€ëŠ¥í•˜ë©´ true
      */
     bool can_consume_read_buffer() const { return rd_buf_valid_.test(std::memory_order_relaxed); }
 
     /**
-     * ÇöÀç ¹üÀ§¿¡ À¯È¿ÇÑ Å¸ÀÌ¸Ó¸¦ »ı¼ºÇÕ´Ï´Ù.
-     * Ä«Å×°í¸®¸¦ ÇÏ³ª Áõ°¡½ÃÅµ´Ï´Ù. 
+     * í˜„ì¬ ë²”ìœ„ì— ìœ íš¨í•œ íƒ€ì´ë¨¸ë¥¼ ìƒì„±í•©ë‹ˆë‹¤.
+     * ì¹´í…Œê³ ë¦¬ë¥¼ í•˜ë‚˜ ì¦ê°€ì‹œí‚µë‹ˆë‹¤. 
      */
     timer_scope_indicator timer_scope(kangsw::hash_pack name);
 
     /**
-     * µğ¹ö±× º¯¼ö¸¦ »õ·Ó°Ô ÀúÀåÇÕ´Ï´Ù.
+     * ë””ë²„ê·¸ ë³€ìˆ˜ë¥¼ ìƒˆë¡­ê²Œ ì €ì¥í•©ë‹ˆë‹¤.
      */
     template <typename Ty_>
     void store_debug_data(kangsw::hash_pack, Ty_&& value);
 
     /**
-     * ¿É¼ÇÀÇ ´õÆ¼ ¿©ºÎ È®ÀÎ ¹× ÇÃ·¡±× Á¦°Å
+     * ì˜µì…˜ì˜ ë”í‹° ì—¬ë¶€ í™•ì¸ ë° í”Œë˜ê·¸ ì œê±°
      */
     bool consume_option_dirty_flag() { return !inv_opt_dirty_.test_and_set(std::memory_order::relaxed); }
 
+    /**
+     * ì˜µì…˜ì˜ ë”í‹° í”„ë˜ê·¸ë¥¼ ë§ˆí‚¹í•©ë‹ˆë‹¤.
+     */
+    void mark_dirty() { inv_opt_dirty_.clear(std::memory_order::relaxed); }
+
 public:                    // internal public methods
-    void _clear_records(); // invoke() ÀÌÀü È£Ãâ
-    void _internal__set_option(detail::option_base const* opt) { options_ = opt; }
-    void _swap_data_buff(); // invoke() ÀÌÈÄ È£Ãâ
-    void _mark_dirty() { inv_opt_dirty_.clear(std::memory_order::relaxed); }
+    void _clear_records(); // invoke() ì´ì „ í˜¸ì¶œ
+    void _internal__set_option(detail::option_base* opt) { options_ = opt; }
+    void _swap_data_buff(); // invoke() ì´í›„ í˜¸ì¶œ
 
     /**
-     * ÀĞ±â ¹öÆÛ¸¦ ÃßÃâÇÕ´Ï´Ù.
-     * ´ÙÀ½ _clear_records() È£Ãâ Àü±îÁö µ¥ÀÌÅÍ¸¦ ÃßÃâÇÒ ¼ö ¾ø´Â »óÅÂ°¡ µË´Ï´Ù.
+     * ì½ê¸° ë²„í¼ë¥¼ ì¶”ì¶œí•©ë‹ˆë‹¤.
+     * ë‹¤ìŒ _clear_records() í˜¸ì¶œ ì „ê¹Œì§€ ë°ì´í„°ë¥¼ ì¶”ì¶œí•  ìˆ˜ ì—†ëŠ” ìƒíƒœê°€ ë©ë‹ˆë‹¤.
      */
     std::shared_ptr<execution_context_data> _consume_read_buffer();
 
@@ -140,7 +146,7 @@ private: // private methods
     auto& _wr() { return context_data_[front_data_buffer_]; }
 
 private:
-    class detail::option_base const* options_ = {};
+    class detail::option_base* options_ = {};
 
     std::array<std::shared_ptr<execution_context_data>, 2> context_data_;
     bool front_data_buffer_ = false;

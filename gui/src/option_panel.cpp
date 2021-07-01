@@ -148,7 +148,10 @@ void pipepp::gui::option_panel::_cb_tree_selected(nana::arg_treebox const& a)
         item.value(&json_value.value());
     }
     list.auto_draw(true);
-    cat.at(0).select(true, true);
+
+    if (cat.size()) {
+        cat.at(0).select(true, true);
+    }
 }
 
 void pipepp::gui::option_panel::_cb_json_list_selected(nana::arg_listbox const& a)
@@ -216,12 +219,13 @@ void pipepp::gui::option_panel::_update_enterbox(bool trig_modify)
         }
         auto& key = m.selected_proxy.key();
         if (!key.empty() && !m.option->verify(key)) {
+            _refresh_item(m.selected_proxy);
             m.selected_proxy.select(false);
             correct = false;
         } else {
             _refresh_item(m.selected_proxy);
-            API::refresh_window(m.items);
         }
+        API::refresh_window(m.items);
 
         if (on_dirty) { on_dirty(m.selected_proxy.key()); }
         m.input_enter.select(true);

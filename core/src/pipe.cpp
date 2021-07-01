@@ -1,8 +1,10 @@
 #include <bitset>
 #include <cassert>
 #include "fmt/format.h"
-#include "kangsw/enum_arithmetic.hxx"
-#include "kangsw/misc.hxx"
+#include "kangsw/helpers/enum_arithmetic.hxx"
+#include "kangsw/helpers/hash_index.hxx"
+#include "kangsw/helpers/misc.hxx"
+#include "kangsw/thread/thread_pool.hxx"
 #include "pipepp/options.hpp"
 #include "pipepp/pipepp.h"
 
@@ -10,16 +12,16 @@ std::optional<bool> pipepp::detail::pipe_base::input_slot_t::can_submit_input(fe
 {
     auto active = active_input_fence();
     if (output_fence < active) {
-        // ¿©·¯ °¡Áö ÀÌÀ¯¿¡ ÀÇÇØ, ÀÔ·Â fence°¡ °İ»óµÈ °æ¿ìÀÔ´Ï´Ù.
-        // non-opt ¹İÈ¯ --> È£ÃâÀÚ´Â Àç½ÃµµÇÏÁö ¾ÊÀ¸¸ç, ÀÌÀü ´Ü°èÀÇ Ãâ·ÂÀº ¹ö·ÁÁı´Ï´Ù.
+        // ì—¬ëŸ¬ ê°€ì§€ ì´ìœ ì— ì˜í•´, ì…ë ¥ fenceê°€ ê²©ìƒëœ ê²½ìš°ì…ë‹ˆë‹¤.
+        // non-opt ë°˜í™˜ --> í˜¸ì¶œìëŠ” ì¬ì‹œë„í•˜ì§€ ì•Šìœ¼ë©°, ì´ì „ ë‹¨ê³„ì˜ ì¶œë ¥ì€ ë²„ë ¤ì§‘ë‹ˆë‹¤.
         return {};
     }
 
-    // ¶ÇÇÑ, ÀÌ¿ë °¡´ÉÇÑ ÀÔ·Â ½½·ÔÀÌ ÀÖ¾î¾ß ÇÕ´Ï´Ù.
+    // ë˜í•œ, ì´ìš© ê°€ëŠ¥í•œ ì…ë ¥ ìŠ¬ë¡¯ì´ ìˆì–´ì•¼ í•©ë‹ˆë‹¤.
     bool is_idle = owner_._active_exec_slot()._is_executor_busy() == false;
 
-    // fence == active : ÀÔ·Â ½½·ÔÀÌ ÁØºñµÇ¾ú½À´Ï´Ù.
-    //       >         : ¾ÆÁ÷ ÆÄÀÌÇÁ°¡ Ã³¸®ÁßÀ¸·Î, ÀÔ·Â ½½·ÔÀÌ ÁØºñµÇÁö ¾Ê¾Ò½À´Ï´Ù.
+    // fence == active : ì…ë ¥ ìŠ¬ë¡¯ì´ ì¤€ë¹„ë˜ì—ˆìŠµë‹ˆë‹¤.
+    //       >         : ì•„ì§ íŒŒì´í”„ê°€ ì²˜ë¦¬ì¤‘ìœ¼ë¡œ, ì…ë ¥ ìŠ¬ë¡¯ì´ ì¤€ë¹„ë˜ì§€ ì•Šì•˜ìŠµë‹ˆë‹¤.
     return is_idle && output_fence == active;
 }
 
@@ -43,7 +45,7 @@ void pipepp::detail::pipe_base::input_slot_t::_propagate_fence_abortion(fence_in
         if (query_result.value() && link_input._submit_input(pending_fence, owner_.id(), {}, {}, true)) {
             ++output_link_index;
         } else {
-            delay = 100us;
+            while (!link_input._wait_for_executor());
         }
     } else {
         ++output_link_index;
@@ -53,9 +55,26 @@ void pipepp::detail::pipe_base::input_slot_t::_propagate_fence_abortion(fence_in
         owner_._thread_pool().add_timer(
           delay, &input_slot_t::_propagate_fence_abortion, this, pending_fence, output_link_index);
     } else {
-        // Å»Ãâ Á¶°Ç ... ÀüÆÄ ¿Ï·áÇÔ
+        // íƒˆì¶œ ì¡°ê±´ ... ì „íŒŒ ì™„ë£Œí•¨
         owner_.destruction_guard_.unlock();
     }
+}
+
+bool pipepp::detail::pipe_base::executor_slot::_wait_ready(std::chrono::milliseconds duration) const
+{
+    using namespace std::literals;
+
+    // ì ê¹ë™ì•ˆ spinlock ëŒë¦¬ë©´ì„œ ëŒ€ê¸°
+    for (auto begin = system_clock::now();
+         system_clock::now() - begin < 50us;) {
+        if (!_is_busy()) { return true; }
+
+        std::this_thread::yield();
+    }
+
+    std::unique_lock _lock{done_notify_.second};
+    if ( !_is_busy() ) { return true; } // Mutex ì ê·¸ëŠ” ë™ì•ˆ ëë‚¬ì„ ê°€ëŠ¥ì„± ...
+    return done_notify_.first.wait_for(_lock, duration, [this]() { return !_is_busy(); });
 }
 
 void pipepp::detail::pipe_base::executor_slot::_launch_async(launch_args_t arg)
@@ -81,13 +100,14 @@ void pipepp::detail::pipe_base::executor_slot::_launch_callback()
 {
     using namespace kangsw::literals;
 
-    // ½ÇÇà±â ½Ãµ¿
+    // ì‹¤í–‰ê¸° ì‹œë™
     std::lock_guard destruction_guard{owner_.destruction_guard_};
 
     executor()->set_context_ref(&context_write());
     pipe_error exec_res;
 
     PIPEPP_REGISTER_CONTEXT(context_write());
+    busy_flag_.test_and_set();
     timer_scope_total_ = context_write().timer_scope("Total Execution Time");
 
     PIPEPP_ELAPSE_BLOCK("A. Executor Run Time")
@@ -97,12 +117,12 @@ void pipepp::detail::pipe_base::executor_slot::_launch_callback()
           std::memory_order_relaxed);
     }
 
-    // Ãâ·Â ¼ø¼­±îÁö ´ë±â
+    // ì¶œë ¥ ìˆœì„œê¹Œì§€ ëŒ€ê¸°
     using namespace std::literals;
     PIPEPP_ELAPSE_BLOCK("B. Await for output order")
     while (!_is_output_order()) { std::this_thread::sleep_for(50us); }
 
-    // ¸ÕÀú, ¿¬°áµÈ ÀÏ¹İ ÇÚµé·¯¸¦ ¸ğµÎ Ã³¸®ÇÕ´Ï´Ù.
+    // ë¨¼ì €, ì—°ê²°ëœ ì¼ë°˜ í•¸ë“¤ëŸ¬ë¥¼ ëª¨ë‘ ì²˜ë¦¬í•©ë‹ˆë‹¤.
     PIPEPP_ELAPSE_BLOCK("C. Output Handler Overhead")
     {
         auto fence_obj = fence_object_.get();
@@ -129,31 +149,37 @@ void pipepp::detail::pipe_base::executor_slot::_perform_post_output()
     }
 
     auto constexpr RELAXED = std::memory_order_relaxed;
-    // -- ¿¬°áµÈ ¸ğµç Ãâ·ÂÀ» Ã³¸®ÇÑ °æ¿ìÀÔ´Ï´Ù.
-    // Å¸ÀÌ¸Ó °ü·Ã ·ÎÁ÷ Ã³¸®
+    // -- ì—°ê²°ëœ ëª¨ë“  ì¶œë ¥ì„ ì²˜ë¦¬í•œ ê²½ìš°ì…ë‹ˆë‹¤.
+    // íƒ€ì´ë¨¸ ê´€ë ¨ ë¡œì§ ì²˜ë¦¬
     timer_scope_link_.reset();
     timer_scope_total_.reset();
     owner_._refresh_interval_timer();
     owner_._update_latest_latency(fence_object_->launch_time_point());
 
-    // ½ÇÇà±âÀÇ ³»ºÎ »óÅÂ¸¦ Á¤¸®ÇÕ´Ï´Ù.
+    // ì‹¤í–‰ê¸°ì˜ ë‚´ë¶€ ìƒíƒœë¥¼ ì •ë¦¬í•©ë‹ˆë‹¤.
     fence_object_.reset();
-    owner_._rotate_output_order(this); // Ãâ·Â ¼ø¼­ È¸Àü
+    owner_._rotate_output_order(this); // ì¶œë ¥ ìˆœì„œ íšŒì „
 
-    // ½ÇÇà ¹®¸Æ ¹öÆÛ¸¦ ÀüÈ¯ÇÕ´Ï´Ù.
+    // ì‹¤í–‰ ë¬¸ë§¥ ë²„í¼ë¥¼ ì „í™˜í•©ë‹ˆë‹¤.
     _swap_exec_context();
     owner_.latest_exec_context_.store(&context_read(), RELAXED);
     owner_.latest_output_fence_.store(fence_index_.load(RELAXED), RELAXED);
 
-    // fence_index_´Â ÀÏÁ¾ÀÇ lock ¿ªÇÒÀ» ¼öÇàÇÏ¹Ç·Î, °¡Àå ¸¶Áö¸·¿¡ ÁöÁ¤ÇÕ´Ï´Ù.
+    // fence_index_ëŠ” ì¼ì¢…ì˜ lock ì—­í• ì„ ìˆ˜í–‰í•˜ë¯€ë¡œ, ê°€ì¥ ë§ˆì§€ë§‰ì— ì§€ì •í•©ë‹ˆë‹¤.
     fence_index_.store(fence_index_t::none, std::memory_order_seq_cst);
 
     owner_.destruction_guard_.unlock();
+
+    // ì´ë²¤íŠ¸ ì•Œë¦¼
+    busy_flag_.clear();
+    done_notify_.first.notify_all();
 }
 
 void pipepp::detail::pipe_base::executor_slot::_perform_output_link(size_t output_index, bool aborting)
 {
     PIPEPP_REGISTER_CONTEXT(context_write());
+    system_clock::duration total_wait_overhead = {};
+
     for (; output_index < owner_.output_links_.size();) {
         assert(_is_output_order());
 
@@ -172,18 +198,18 @@ void pipepp::detail::pipe_base::executor_slot::_perform_output_link(size_t outpu
                 return link.handler(*fence_object_, context_write(), cached_output_, out, link.pipe->options());
             };
 
-            // ¸¸¾à optionalÀÎ °æ¿ì, ÀÔ·ÂÀÌ ÁØºñµÇÁö ¾Ê¾Ò´Ù¸é abort¿¡ true¸¦ ÁöÁ¤ÇØ,
-            //ÇöÀç ÀÔ·Â fence¸¦ Áï½Ã Ãë¼ÒÇÕ´Ï´Ù.
-            bool const abort_optional = aborting || (slot.is_optional_ && !*check);
-            bool const can_try_submit = *check || abort_optional;
-            if (can_try_submit && slot._submit_input(fence_index_, owner_.id(), input_manip, fence_object_, abort_optional)) {
+            // ë§Œì•½ optionalì¸ ê²½ìš°, ì…ë ¥ì´ ì¤€ë¹„ë˜ì§€ ì•Šì•˜ë‹¤ë©´ abortì— trueë¥¼ ì§€ì •í•´,
+            //í˜„ì¬ ì…ë ¥ fenceë¥¼ ì¦‰ì‹œ ì·¨ì†Œí•©ë‹ˆë‹¤.
+            bool const should_abort = aborting || (slot.is_optional_ && !*check);
+            bool const can_try_submit = *check || should_abort;
+            if (can_try_submit && slot._submit_input(fence_index_, owner_.id(), input_manip, fence_object_, should_abort)) {
                 // no need to retry.
                 // go to next index.
                 ++output_index;
 
                 if (!link.pipe->is_paused() && owner_._is_selective_output() && !aborting && !slot.is_optional_) {
-                    // Optional Ãâ·ÂÀÌ ¾Æ´Ñ Ãâ·Â ³ëµå¿¡ ´ëÇØ, ¼º°øÀûÀ¸·Î ÀÔ·ÂÀ» Á¦ÃâÇÑ °æ¿ìÀÔ´Ï´Ù.
-                    // selective Ãâ·ÂÀÌ È°¼ºÈ­µÇ¾ú´Ù¸é, ³ª¸ÓÁö Ãâ·Â ¸µÅ©¸¦ ¹ö¸³´Ï´Ù.
+                    // Optional ì¶œë ¥ì´ ì•„ë‹Œ ì¶œë ¥ ë…¸ë“œì— ëŒ€í•´, ì„±ê³µì ìœ¼ë¡œ ì…ë ¥ì„ ì œì¶œí•œ ê²½ìš°ì…ë‹ˆë‹¤.
+                    // selective ì¶œë ¥ì´ í™œì„±í™”ë˜ì—ˆë‹¤ë©´, ë‚˜ë¨¸ì§€ ì¶œë ¥ ë§í¬ë¥¼ ë²„ë¦½ë‹ˆë‹¤.
                     aborting = true;
                 }
             } else {
@@ -194,10 +220,17 @@ void pipepp::detail::pipe_base::executor_slot::_perform_output_link(size_t outpu
             ++output_index;
         }
 
-        // ´ÙÀ½ Ãâ·Â Äİ¹éÀ» ¿¹¾àÇÕ´Ï´Ù.
+        // ë‹¤ìŒ ì¶œë ¥ ì½œë°±ì„ ì˜ˆì•½í•©ë‹ˆë‹¤.
         // workers().add_timer(delay, &executor_slot::_output_link_callback, this, output_index, aborting);
-        if (delay > 0us) { std::this_thread::sleep_for(delay); }
+        if (delay > 0us) {
+            auto begin = system_clock::now();
+            while (!slot._wait_for_executor()) {}
+            total_wait_overhead += system_clock::now() - begin;
+        }
     }
+
+    PIPEPP_STORE_DEBUG_DATA("Total Wait Overhead Ms",
+                            (std::chrono::duration<float, std::milli>(total_wait_overhead)).count());
     _perform_post_output();
 }
 
@@ -241,16 +274,16 @@ void pipepp::detail::pipe_base::_connect_output_to_impl(pipe_base* other, pipepp
         throw pipe_link_exception("cannot link with itself");
     }
 
-    // Ãâ·ÂÀ» ´ë»óÀÇ ÀÔ·Â¿¡ ¿¬°áÇÕ´Ï´Ù.
-    // - Áßº¹µÇÁö ¾Ê¾Æ¾ß ÇÕ´Ï´Ù.
-    // - Ãâ·ÂÀÌ ÀÔ·ÂÀ¸·Î ¼øÈ¯ÇÏÁö ¾Ê¾Æ¾ß ÇÕ´Ï´Ù.
-    // - Ãâ·ÂÀº ÀÚ½ÅÀ» Æ÷ÇÔÇÑ, ÀÔ·ÂÀº ºÎ¸ğ Áß °¡Àå °¡±î¿î optional ³ëµå¸¦ °øÀ¯ÇØ¾ß ÇÕ´Ï´Ù.
+    // ì¶œë ¥ì„ ëŒ€ìƒì˜ ì…ë ¥ì— ì—°ê²°í•©ë‹ˆë‹¤.
+    // - ì¤‘ë³µë˜ì§€ ì•Šì•„ì•¼ í•©ë‹ˆë‹¤.
+    // - ì¶œë ¥ì´ ì…ë ¥ìœ¼ë¡œ ìˆœí™˜í•˜ì§€ ì•Šì•„ì•¼ í•©ë‹ˆë‹¤.
+    // - ì¶œë ¥ì€ ìì‹ ì„ í¬í•¨í•œ, ì…ë ¥ì€ ë¶€ëª¨ ì¤‘ ê°€ì¥ ê°€ê¹Œìš´ optional ë…¸ë“œë¥¼ ê³µìœ í•´ì•¼ í•©ë‹ˆë‹¤.
     for (auto& out : output_links_) {
         if (out.pipe->id() == other->id())
             throw pipe_link_exception("pipe link duplication");
     }
 
-    // Àç±ÍÀû Å½»öÀ» À§ÇÑ predicate ÇÔ¼ö
+    // ì¬ê·€ì  íƒìƒ‰ì„ ìœ„í•œ predicate í•¨ìˆ˜
     //
     auto output_recurse = [](pipe_base* ty, auto emplacer) {
         for (auto& out : ty->output_links_) {
@@ -263,8 +296,8 @@ void pipepp::detail::pipe_base::_connect_output_to_impl(pipe_base* other, pipepp
         }
     };
 
-    // Ãâ·Â ÆÄÀÌÇÁÀÇ ¼øÈ¯ ¿©ºÎ °Ë»ç
-    // other ³ëµåÀÇ Ãâ·Â ³ëµå¸¦ Àç±ÍÀûÀ¸·Î Å½»öÇØ, ÀÔ·Â ³ëµå¿Í ¼øÈ¯ÇÏ´ÂÁö °Ë»öÇÕ´Ï´Ù.
+    // ì¶œë ¥ íŒŒì´í”„ì˜ ìˆœí™˜ ì—¬ë¶€ ê²€ì‚¬
+    // other ë…¸ë“œì˜ ì¶œë ¥ ë…¸ë“œë¥¼ ì¬ê·€ì ìœ¼ë¡œ íƒìƒ‰í•´, ì…ë ¥ ë…¸ë“œì™€ ìˆœí™˜í•˜ëŠ”ì§€ ê²€ìƒ‰í•©ë‹ˆë‹¤.
     if (
       bool is_met = false;
       kangsw::recurse_for_each(other, [&](pipe_base* node, auto emplacer) {
@@ -278,7 +311,7 @@ void pipepp::detail::pipe_base::_connect_output_to_impl(pipe_base* other, pipepp
         throw pipe_link_exception("cyclic link found");
     }
 
-    // °¢°¢ °¡Àå °¡±î¿î optional node, °¡Àå ¸Õ essential node¸¦ °øÀ¯ÇØ¾ß ÇÔ (Ç×»ó true·Î °¡Á¤)
+    // ê°ê° ê°€ì¥ ê°€ê¹Œìš´ optional node, ê°€ì¥ ë¨¼ essential nodeë¥¼ ê³µìœ í•´ì•¼ í•¨ (í•­ìƒ trueë¡œ ê°€ì •)
     pipe_base *optional_to = nullptr, *optional_from = nullptr;
     size_t min_depth = -1;
     kangsw::recurse_for_each(other, [&, my_id = id()](pipe_base* node, size_t depth, auto emplacer) {
@@ -323,9 +356,9 @@ void pipepp::detail::pipe_base::executor_conditions(std::vector<executor_conditi
                          ? recently_aborted()
                              ? executor_condition_t::idle_aborted
                              : executor_condition_t::idle_output
-                         : exec.latest_exec_result() > pipe_error::warning
-                             ? executor_condition_t::idle_aborted
-                             : executor_condition_t::idle;
+                       : exec.latest_exec_result() > pipe_error::warning
+                         ? executor_condition_t::idle_aborted
+                         : executor_condition_t::idle;
         }
     }
 }
@@ -333,7 +366,7 @@ void pipepp::detail::pipe_base::executor_conditions(std::vector<executor_conditi
 void pipepp::detail::pipe_base::mark_dirty()
 {
     for (auto& exec_ptr : executor_slots_) {
-        exec_ptr->context_write()._mark_dirty();
+        exec_ptr->context_write().mark_dirty();
     }
 }
 
@@ -347,7 +380,7 @@ void pipepp::detail::pipe_base::launch(size_t num_executors, std::function<std::
         throw std::invalid_argument("invalid number of executors");
     }
 
-    // °¢ ½½·Ô ÀÎ½ºÅÏ½º´Â µ¿ÀÏÇÑ ½ÇÇà±â¸¦ °¡Á®¾ß ÇÏ¹Ç·Î, ÆÑÅä¸® ÇÔ¼ö¸¦ ¹Ş¾Æ¿Í¼­ »ı¼ºÇÕ´Ï´Ù.
+    // ê° ìŠ¬ë¡¯ ì¸ìŠ¤í„´ìŠ¤ëŠ” ë™ì¼í•œ ì‹¤í–‰ê¸°ë¥¼ ê°€ì ¸ì•¼ í•˜ë¯€ë¡œ, íŒ©í† ë¦¬ í•¨ìˆ˜ë¥¼ ë°›ì•„ì™€ì„œ ìƒì„±í•©ë‹ˆë‹¤.
     for (auto index : kangsw::iota(num_executors)) {
         executor_slots_.emplace_back(std::make_unique<executor_slot>(*this, factory(), index, &options()));
     }
@@ -382,14 +415,14 @@ void pipepp::detail::pipe_base::input_slot_t::_supply_input_to_active_executor(b
     }
 
     if (owner_._active_exec_slot()._is_executor_busy()) {
-        // Â÷·Ê°¡ µÈ ½ÇÇà ½½·ÔÀÌ ¿©ÀüÈ÷ ¹Ù»Ş´Ï´Ù.
-        // Àç½Ãµµ¸¦ ¿äÃ»ÇÕ´Ï´Ù.
+        // ì°¨ë¡€ê°€ ëœ ì‹¤í–‰ ìŠ¬ë¡¯ì´ ì—¬ì „íˆ ë°”ì©ë‹ˆë‹¤.
+        // ì¬ì‹œë„ë¥¼ ìš”ì²­í•©ë‹ˆë‹¤.
         using namespace std::chrono_literals;
         owner_._thread_pool().add_timer(200us, &input_slot_t::_supply_input_to_active_executor, this, false);
         return;
     }
 
-    // ÀÔ·ÂÀÌ ¸ğµÎ ÁØºñµÇ¾úÀ¸¹Ç·Î, ½ÇÇà±â¿¡ ÀÔ·ÂÀ» ³Ñ±é´Ï´Ù.
+    // ì…ë ¥ì´ ëª¨ë‘ ì¤€ë¹„ë˜ì—ˆìœ¼ë¯€ë¡œ, ì‹¤í–‰ê¸°ì— ì…ë ¥ì„ ë„˜ê¹ë‹ˆë‹¤.
     auto& exec = owner_._active_exec_slot();
     exec._launch_async({
       std::move(active_input_fence_object_),
@@ -397,9 +430,9 @@ void pipepp::detail::pipe_base::input_slot_t::_supply_input_to_active_executor(b
       std::move(cached_input_.first),
     });
 
-    // ´ÙÀ½ ÀÔ·Â ¹ŞÀ» ÁØºñ ¿Ï·á
-    owner_._rotate_slot(); // ÀÔ·ÂÀ» ¹ŞÀ» ½ÇÇà±â ½½·Ô È¸Àü
-    _prepare_next();       // ÀÔ·Â ½½·Ô Å¬¸®¾î
+    // ë‹¤ìŒ ì…ë ¥ ë°›ì„ ì¤€ë¹„ ì™„ë£Œ
+    owner_._rotate_slot(); // ì…ë ¥ì„ ë°›ì„ ì‹¤í–‰ê¸° ìŠ¬ë¡¯ íšŒì „
+    _prepare_next();       // ì…ë ¥ ìŠ¬ë¡¯ í´ë¦¬ì–´
 
     owner_.destruction_guard_.unlock();
 }
@@ -411,14 +444,14 @@ bool pipepp::detail::pipe_base::input_slot_t::_submit_input(fence_index_t output
 
     auto active_fence = active_input_fence();
     if (output_fence < active_fence) {
-        // ¿©·¯ °¡Áö ÀÌÀ¯¿¡ ÀÇÇØ, ÀÔ·Â fence°¡ °İ»óµÈ °æ¿ìÀÔ´Ï´Ù.
-        // true¸¦ ¹İÈ¯ --> È£ÃâÀÚ´Â Àç½ÃµµÇÏÁö ¾ÊÀ¸¸ç, ÀÌÀü ´Ü°èÀÇ Ãâ·ÂÀº ¹ö·ÁÁı´Ï´Ù.
+        // ì—¬ëŸ¬ ê°€ì§€ ì´ìœ ì— ì˜í•´, ì…ë ¥ fenceê°€ ê²©ìƒëœ ê²½ìš°ì…ë‹ˆë‹¤.
+        // trueë¥¼ ë°˜í™˜ --> í˜¸ì¶œìëŠ” ì¬ì‹œë„í•˜ì§€ ì•Šìœ¼ë©°, ì´ì „ ë‹¨ê³„ì˜ ì¶œë ¥ì€ ë²„ë ¤ì§‘ë‹ˆë‹¤.
         return true;
     }
 
     if (active_fence < output_fence) {
-        // ½ÇÇà ½½·ÔÀÌ ÁØºñÁßÀÔ´Ï´Ù.
-        // false¸¦ ¹İÈ¯ÇØ Àç½Ãµµ¸¦ ¿äÃ»ÇÕ´Ï´Ù.
+        // ì‹¤í–‰ ìŠ¬ë¡¯ì´ ì¤€ë¹„ì¤‘ì…ë‹ˆë‹¤.
+        // falseë¥¼ ë°˜í™˜í•´ ì¬ì‹œë„ë¥¼ ìš”ì²­í•©ë‹ˆë‹¤.
         return false;
     }
 
@@ -441,15 +474,15 @@ bool pipepp::detail::pipe_base::input_slot_t::_submit_input(fence_index_t output
 
     bool should_abort_input = abort_current || owner_.is_paused();
 
-    // fence object°¡ ºñ¾î ÀÖ´Ù¸é, Ã¤¿ó´Ï´Ù.
+    // fence objectê°€ ë¹„ì–´ ìˆë‹¤ë©´, ì±„ì›ë‹ˆë‹¤.
     if (active_input_fence_object_ == nullptr) {
         active_input_fence_object_ = fence_obj;
     }
 
-    // ÀÔ·ÂÀ» Àü´ŞÇÕ´Ï´Ù. ¸¸¾à ÀÔ·Â¿¡ ½ÇÆĞÇÑ´Ù¸é, Áï½Ã ÀÔ·ÂÀ» Ãë¼ÒÇÏ°Ô µË´Ï´Ù.
+    // ì…ë ¥ì„ ì „ë‹¬í•©ë‹ˆë‹¤. ë§Œì•½ ì…ë ¥ì— ì‹¤íŒ¨í•œë‹¤ë©´, ì¦‰ì‹œ ì…ë ¥ì„ ì·¨ì†Œí•˜ê²Œ ë©ë‹ˆë‹¤.
     if (!should_abort_input) { should_abort_input = !input_manip(cached_input_.first); }
 
-    // ÇØ´çÇÏ´Â ÀÔ·Â ½½·ÔÀ» Ã¤¿ì°Å³ª, ¹ö¸³´Ï´Ù.
+    // í•´ë‹¹í•˜ëŠ” ì…ë ¥ ìŠ¬ë¡¯ì„ ì±„ìš°ê±°ë‚˜, ë²„ë¦½ë‹ˆë‹¤.
     ready_conds_[input_index] = should_abort_input ? input_link_state::discarded : input_link_state::valid;
 
     bool const is_all_input_link_ready
@@ -464,20 +497,20 @@ bool pipepp::detail::pipe_base::input_slot_t::_submit_input(fence_index_t output
     bool const all_filled = std::ranges::count(ready_conds_, input_link_state::none) == 0;
     bool const contains_abort = all_filled && !is_all_input_link_ready;
     if ((!owner_._is_selective_input() && should_abort_input)
-        || contains_abort // ¼±ÅÃÀû ÀÔ·ÂÀÎ °æ¿ì ¸ğµÎ Ã¤¿öÁú ¶§±îÁö À¯¿¹ÇÕ´Ï´Ù.
+        || contains_abort // ì„ íƒì  ì…ë ¥ì¸ ê²½ìš° ëª¨ë‘ ì±„ì›Œì§ˆ ë•Œê¹Œì§€ ìœ ì˜ˆí•©ë‹ˆë‹¤.
     ) {
-        // ¼±ÅÃÀû ÀÔ·ÂÀÌ ¾Æ´Ï¶ó¸é Áï½Ã abort¸¦ propagateÇÏ°í, ¼±ÅÃÀû ÀÔ·ÂÀÌ¶ó¸é ÀüÃ¼°¡ °á°ú¸¦ ¹İÈ¯ÇÒ ¶§±îÁö ´ë±âÇÕ´Ï´Ù.
+        // ì„ íƒì  ì…ë ¥ì´ ì•„ë‹ˆë¼ë©´ ì¦‰ì‹œ abortë¥¼ propagateí•˜ê³ , ì„ íƒì  ì…ë ¥ì´ë¼ë©´ ì „ì²´ê°€ ê²°ê³¼ë¥¼ ë°˜í™˜í•  ë•Œê¹Œì§€ ëŒ€ê¸°í•©ë‹ˆë‹¤.
         if (owner_.output_links_.empty() == false) {
             owner_.destruction_guard_.lock();
             owner_._thread_pool().add_task(&input_slot_t::_propagate_fence_abortion, this, active_input_fence(), 0);
         }
 
-        // ´ÙÀ½ ÀÎµ¦½º·Î ³Ñ¾î°©´Ï´Ù.
+        // ë‹¤ìŒ ì¸ë±ìŠ¤ë¡œ ë„˜ì–´ê°‘ë‹ˆë‹¤.
         owner_._update_abort_received(true);
         _prepare_next();
     }
 
-    // ÀÔ·ÂÀÌ ¼º°øÀûÀ¸·Î Á¦ÃâµÇ¾ú°Å³ª, abort°¡ Ã³¸®µÇ¾ú½À´Ï´Ù.
+    // ì…ë ¥ì´ ì„±ê³µì ìœ¼ë¡œ ì œì¶œë˜ì—ˆê±°ë‚˜, abortê°€ ì²˜ë¦¬ë˜ì—ˆìŠµë‹ˆë‹¤.
     return true;
 }
 
@@ -492,9 +525,7 @@ bool pipepp::detail::pipe_base::input_slot_t::_submit_input_direct(std::any&& in
         throw pipe_exception("input cannot directly fed when there's any input link existing");
     }
 
-    if (owner_._active_exec_slot()._is_executor_busy()) {
-        return false;
-    }
+    if (owner_._active_exec_slot()._is_executor_busy()) { return false; }
 
     active_input_fence_object_ = std::move(fence_object);
     cached_input_.first = std::move(input);
@@ -507,4 +538,10 @@ bool pipepp::detail::pipe_base::input_slot_t::_submit_input_direct(std::any&& in
 bool pipepp::detail::pipe_base::input_slot_t::_can_submit_input_direct() const
 {
     return owner_._active_exec_slot()._is_executor_busy() == false;
+}
+
+bool pipepp::detail::pipe_base::input_slot_t::_wait_for_executor() const
+{
+    using namespace std::literals;
+    return owner_._active_exec_slot()._wait_ready(10ms);
 }

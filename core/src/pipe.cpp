@@ -45,7 +45,7 @@ void pipepp::detail::pipe_base::input_slot_t::_propagate_fence_abortion(fence_in
         if (query_result.value() && link_input._submit_input(pending_fence, owner_.id(), {}, {}, true)) {
             ++output_link_index;
         } else {
-            delay = 100us;
+            while (!link_input._wait_for_executor());
         }
     } else {
         ++output_link_index;
@@ -224,7 +224,7 @@ void pipepp::detail::pipe_base::executor_slot::_perform_output_link(size_t outpu
         // workers().add_timer(delay, &executor_slot::_output_link_callback, this, output_index, aborting);
         if (delay > 0us) {
             auto begin = system_clock::now();
-            slot._wait_for_executor();
+            while (!slot._wait_for_executor()) {}
             total_wait_overhead += system_clock::now() - begin;
         }
     }

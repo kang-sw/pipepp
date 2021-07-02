@@ -59,14 +59,19 @@ pipeline<SharedData_, InitialExec_>::create(std::string name, size_t num_executo
     return {weak_from_this(), ref};
 }
 
-template <typename SharedData_, typename Exec_>
-template <typename LnkFn_, typename FactoryFn_, typename... FactoryArgs_>
-pipe_proxy<SharedData_, typename std::invoke_result_t<FactoryFn_, FactoryArgs_...>::element_type::executor_type>
-pipe_proxy<SharedData_, Exec_>::create_and_link_output(std::string name, size_t num_executors, LnkFn_&& linker, FactoryFn_&& factory, FactoryArgs_&&... args)
+template <typename SharedData_, typename InitialExec_> template <typename Exec_, size_t NumExec_, typename ... ContructorArgs_> pipe_proxy<SharedData_, Exec_> pipeline<SharedData_, InitialExec_>::create(std::string name, ContructorArgs_&&... args)
 {
-    auto pl = _lock();
-    auto dest = pl->create(std::move(name), num_executors, std::forward<FactoryFn_>(factory), std::forward<FactoryArgs_>(args)...);
-    return link_output(dest, std::forward<LnkFn_>(linker));
+    return create(std::move(name), NumExec_, pipepp::factory<Exec_>(std::forward<ContructorArgs_>(args)...));
 }
+
+//template <typename SharedData_, typename Exec_>
+//template <typename LnkFn_, typename FactoryFn_, typename... FactoryArgs_>
+//pipe_proxy<SharedData_, typename std::invoke_result_t<FactoryFn_, FactoryArgs_...>::element_type::executor_type>
+//pipe_proxy<SharedData_, Exec_>::create_and_link_output(std::string name, size_t num_executors, LnkFn_&& linker, FactoryFn_&& factory, FactoryArgs_&&... args)
+//{
+//    auto pl = _lock();
+//    auto dest = pl->create(std::move(name), num_executors, std::forward<FactoryFn_>(factory), std::forward<FactoryArgs_>(args)...);
+//    return link_to(dest, std::forward<LnkFn_>(linker));
+//}
 
 } // namespace pipepp

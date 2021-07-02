@@ -596,6 +596,8 @@ public:
         using PE = pipe_error;
         auto constexpr ok = pipe_error::ok;
 
+        // TODO: Make this to receive shared_context reference
+
         // clang-format off
         if      constexpr (is_invocable_r_v<PE, executor_type, EC, INR, OUTR>  ) { return exec_(ec, in, out); }
         else if constexpr (is_invocable_r_v<void, executor_type, EC, INR, OUTR>) { exec_(ec, in, out); return ok; }

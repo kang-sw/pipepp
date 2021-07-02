@@ -9,6 +9,9 @@
 #include "pipepp/pipe.hpp"
 
 namespace pipepp {
+static constexpr auto link_as_is =
+  [](auto&& prev_out, auto&& next_in) { next_in = std::forward<decltype(prev_out)>(prev_out);  return true; };
+
 namespace detail {
 
 class pipeline_base : public std::enable_shared_from_this<pipeline_base> {
@@ -53,7 +56,6 @@ protected:
 
     std::vector<std::tuple<size_t, std::function<factory_return_type(void)>>> adapters_;
 };
-
 class pipe_proxy_base {
     friend class pipeline_base;
     friend class std::optional<pipe_proxy_base>;
@@ -120,7 +122,6 @@ public:
     auto configure_tweaks() { return pipe().get_prelaunch_tweaks(); }
     auto tweaks() { return pipe().read_tweaks(); }
 
-
 protected:
     std::weak_ptr<pipeline_base> pipeline_;
     pipe_base* pipe_;
@@ -151,6 +152,17 @@ inline auto pipepp::detail::pipeline_base::get_pipe(std::string_view s)
     return rval;
 }
 
+template <typename Exec_, typename Dest_>
+concept _has_link_to = requires(Exec_, Dest_)
+{
+    Exec_::link_to;// (*(typename Exec_::output_type*)0, *(typename Dest_::input_type*)0);
+};
+
+template <typename Exec_, typename Dest_>
+concept _has_link_from = requires(Exec_, Dest_)
+{
+    Dest_::link_from;//(*(typename Exec_::output_type*)0, *(typename Dest_::input_type*)0);
+};
 } // namespace detail
 
 // template <typename SharedData_, typename InitialExec_>
@@ -228,6 +240,29 @@ public:
 
         pipe_proxy<shared_data_type, Dest_, pipe_proxy> retval{pipeline_, *dest.pipe_, *this};
         return retval;
+    }
+
+    /**
+     * Searches linker function automatically.
+     *
+     * Priority:
+     *      1) prev out == next in := link_as_is
+     *      2) Exec_ has link_to and is invocable with Shared, PrevOut, NextIn
+     *      3) Dest_ has link_from and is invocable with Shared, PrevOut, NextIn
+     *
+     */
+    template <typename Dest_, typename OtherPrev_>
+    auto link_to(pipe_proxy<shared_data_type, Dest_, OtherPrev_> dest)
+    {
+        if constexpr (std::is_same_v<output_type, typename Dest_::input_type>) {
+            return link_to(dest, link_as_is);
+        } else if constexpr (detail::_has_link_to<Exec_, Dest_>) {
+            return link_to(dest, &Exec_::link_to);
+        } else if constexpr (detail::_has_link_from<Exec_, Dest_>) {
+            return link_to(dest, &Dest_::link_from);
+        } else {
+            static_assert(false);
+        }
     }
 
     /**
@@ -357,7 +392,5 @@ protected:
 
 private:
 };
-
-static constexpr auto link_as_is = [](auto&& prev_out, auto&& next_in) { next_in = std::forward<decltype(prev_out)>(prev_out);  return true; };
 
 } // namespace pipepp

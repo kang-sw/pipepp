@@ -298,7 +298,7 @@ public:
         execution_context context_;
 
         std::shared_ptr<base_shared_context> fence_object_;
-        std::atomic<fence_index_t> fence_index_ = fence_index_t::none;
+        alignas(64) std::atomic<fence_index_t> fence_index_ = fence_index_t::none;
 
         std::any cached_input_;
         std::any cached_output_;
@@ -307,7 +307,7 @@ public:
         std::optional<execution_context::timer_scope_indicator> timer_scope_link_;
 
         size_t index_;
-        std::atomic_flag busy_flag_;
+        alignas(64) std::atomic_flag busy_flag_;
 
         mutable std::pair<std::condition_variable, std::mutex> done_notify_;
     };

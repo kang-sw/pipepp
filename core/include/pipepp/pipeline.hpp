@@ -120,6 +120,7 @@ public:
     auto configure_tweaks() { return pipe().get_prelaunch_tweaks(); }
     auto tweaks() { return pipe().read_tweaks(); }
 
+
 protected:
     std::weak_ptr<pipeline_base> pipeline_;
     pipe_base* pipe_;
@@ -155,11 +156,11 @@ inline auto pipepp::detail::pipeline_base::get_pipe(std::string_view s)
 // template <typename SharedData_, typename InitialExec_>
 // class pipeline;
 
-template <typename SharedData_, typename Exec_>
+template <typename SharedData_, typename Exec_, typename Prev_ = nullptr_t>
 class pipe_proxy final : public detail::pipe_proxy_base {
     template <typename, typename>
     friend class pipeline;
-    template <typename, typename>
+    template <typename, typename, typename>
     friend class pipe_proxy;
 
 public:
@@ -175,7 +176,38 @@ private:
     {
     }
 
+    pipe_proxy(const std::weak_ptr<detail::pipeline_base>& pipeline, detail::pipe_base& pipe_ref, Prev_ prv)
+        : pipe_proxy_base(pipeline, pipe_ref)
+        , _prv(prv)
+    {
+    }
+
 public:
+    template <typename OtherPrev_>
+    auto& operator=(pipe_proxy<SharedData_, Exec_, OtherPrev_> const& o)
+    {
+        return pipe_proxy_base::operator=(o), *this;
+    }
+
+    auto& operator=(pipe_proxy const& o)
+    {
+        return memcpy(this, &o, sizeof *this), *this;
+    }
+
+    /**
+     * Traverse previous nodes
+     */
+    template <size_t N_ = 1>
+    auto& prev()
+    {
+        if constexpr (N_ <= 1) { return _prv; }
+        if constexpr (N_ > 1) { return _prv.template prev<N_ - 1>(); }
+    }
+
+    auto set_optional_input() { return configure_tweaks().is_optional = true, *this; }
+    auto set_selective_input() { return configure_tweaks().selective_input = true, *this; }
+    auto set_selective_output() { return configure_tweaks().selective_output = true, *this; }
+
     /**
      * AVAILABLE LINKER SIGNATURES
      *  (                                                           )\n
@@ -186,17 +218,18 @@ public:
      *  (Exec Context,  Prev Output,    Next Input                  )\n
      *  (Shared Data,   Exec Context,   Prev Output,    Next Input  )\n
      */
-    template <typename Dest_, typename LnkFn_>
-    pipe_proxy<shared_data_type, Dest_> link_to(pipe_proxy<shared_data_type, Dest_> dest, LnkFn_&& linker)
+    template <typename Dest_, typename OtherPrev_, typename LnkFn_>
+    auto link_to(pipe_proxy<shared_data_type, Dest_, OtherPrev_> dest, LnkFn_&& linker)
     {
         using prev_output_type = output_type;
         using next_input_type = typename Dest_::input_type;
         pipe().connect_output_to<shared_data_type, prev_output_type, next_input_type>(
-            dest.pipe(), std::forward<LnkFn_>(linker));
+          dest.pipe(), std::forward<LnkFn_>(linker));
 
-        return dest;
+        pipe_proxy<shared_data_type, Dest_, pipe_proxy> retval{pipeline_, *dest.pipe_, *this};
+        return retval;
     }
-    
+
     /**
      * AVAILABLE OUTPUT HANDLER SIGNATURES
      *
@@ -210,7 +243,7 @@ public:
      *   (Pipe Err,     SharedData,     Exec Context,   Result  )\n
      */
     template <typename Fn_>
-    pipe_proxy& add_output_handler(Fn_&& handler)
+    auto& add_output_handler(Fn_&& handler)
     {
         auto wrapper = [fn_ = std::move(handler)](pipe_error e, base_shared_context& s, execution_context& ec, std::any const& o) {
             auto& sd = static_cast<SharedData_&>(s);
@@ -247,11 +280,12 @@ private:
     }
 
 private:
+    Prev_ _prv;
 };
 
 template <typename SharedData_, typename InitialExec_>
 class pipeline final : public detail::pipeline_base {
-    template <typename, typename>
+    template <typename, typename, typename>
     friend class pipe_proxy;
 
 public:

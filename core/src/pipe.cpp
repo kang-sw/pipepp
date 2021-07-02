@@ -45,7 +45,7 @@ void pipepp::detail::pipe_base::input_slot_t::_propagate_fence_abortion(fence_in
         if (query_result.value() && link_input._submit_input(pending_fence, owner_.id(), {}, {}, true)) {
             ++output_link_index;
         } else {
-            while (!link_input._wait_for_executor());
+            for (size_t n_wait = 50; !link_input._wait_for_executor() && n_wait > 0; --n_wait) {}
         }
     } else {
         ++output_link_index;

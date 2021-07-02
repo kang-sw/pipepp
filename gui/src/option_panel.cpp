@@ -96,7 +96,7 @@ pipepp::gui::option_panel::option_panel(nana::window wd, bool visible)
 
     events().resized([&](auto&&) {
         if (automatic_vertical_swap) {
-            vertical(size().width < size().height);
+            vertical(size().width * 2 / 3 < size().height);
         }
     });
 }

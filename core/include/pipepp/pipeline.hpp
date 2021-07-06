@@ -151,18 +151,6 @@ inline auto pipepp::detail::pipeline_base::get_pipe(std::string_view s)
 
     return rval;
 }
-
-template <typename Exec_, typename Dest_>
-concept _has_link_to = requires(Exec_, Dest_)
-{
-    Exec_::link_to;// (*(typename Exec_::output_type*)0, *(typename Dest_::input_type*)0);
-};
-
-template <typename Exec_, typename Dest_>
-concept _has_link_from = requires(Exec_, Dest_)
-{
-    Dest_::link_from;//(*(typename Exec_::output_type*)0, *(typename Dest_::input_type*)0);
-};
 } // namespace detail
 
 // template <typename SharedData_, typename InitialExec_>
@@ -256,9 +244,9 @@ public:
     {
         if constexpr (std::is_same_v<output_type, typename Dest_::input_type>) {
             return link_to(dest, link_as_is);
-        } else if constexpr (detail::_has_link_to<Exec_, Dest_>) {
+        } else if constexpr (requires() { this->link_to(dest, &Exec_::link_to); }) {
             return link_to(dest, &Exec_::link_to);
-        } else if constexpr (detail::_has_link_from<Exec_, Dest_>) {
+        } else if constexpr (requires() { this->link_to(dest, &Dest_::link_from); }) {
             return link_to(dest, &Dest_::link_from);
         } else {
             static_assert(false);

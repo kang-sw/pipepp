@@ -73,7 +73,7 @@ bool pipepp::detail::pipe_base::executor_slot::_wait_ready(std::chrono::millisec
     }
 
     std::unique_lock _lock{done_notify_.second};
-    if ( !_is_busy() ) { return true; } // Mutex 잠그는 동안 끝났을 가능성 ...
+    if (!_is_busy()) { return true; } // Mutex 잠그는 동안 끝났을 가능성 ...
     return done_notify_.first.wait_for(_lock, duration, [this]() { return !_is_busy(); });
 }
 
@@ -113,7 +113,7 @@ void pipepp::detail::pipe_base::executor_slot::_launch_callback()
     PIPEPP_ELAPSE_BLOCK("A. Executor Run Time")
     {
         latest_execution_result_.store(
-          exec_res = executor()->invoke__(cached_input_, cached_output_),
+          exec_res = executor()->invoke__(*fence_object_, cached_input_, cached_output_),
           std::memory_order_relaxed);
     }
 

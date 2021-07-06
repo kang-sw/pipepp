@@ -25,7 +25,7 @@ struct test_exec {
         : prefix(pfx)
     {}
 
-    pipe_error invoke(execution_context& exec, input_type& input, output_type& output)
+    pipe_error operator()(execution_context& exec, input_type const& input, output_type& output)
     {
         using namespace std::chrono_literals;
         if (prefix.ends_with("opt")) {
@@ -44,7 +44,7 @@ struct test_exec {
         logger << (to_print.c_str());
         lock.unlock();
 
-        input.contributes.clear();
+        // input.contributes.clear();
         output.contrib = prefix;
         return pipe_error::warning;
     }

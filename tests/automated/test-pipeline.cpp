@@ -21,7 +21,7 @@ struct exec_0 {
     using input_type = std::tuple<double>;
     using output_type = std::tuple<double, double>;
 
-    pipe_error invoke(execution_context& so, input_type& i, output_type& o)
+    pipe_error operator()(execution_context& so, input_type const& i, output_type& o)
     {
         PIPEPP_REGISTER_CONTEXT(so);
 
@@ -49,7 +49,7 @@ struct exec_1 {
     using input_type = std::tuple<double, double>;
     using output_type = std::tuple<double>;
 
-    pipe_error invoke(execution_context& so, input_type& i, output_type& o)
+    pipe_error operator()(execution_context& so, input_type const& i, output_type& o)
     {
         using namespace std::literals;
         std::this_thread::sleep_for(1ms);

@@ -61,7 +61,7 @@ pipeline<SharedData_, InitialExec_>::create(std::string name, size_t num_executo
 
 template <typename SharedData_, typename InitialExec_> template <typename Exec_, size_t NumExec_, typename ... ContructorArgs_> pipe_proxy<SharedData_, Exec_> pipeline<SharedData_, InitialExec_>::create(std::string name, ContructorArgs_&&... args)
 {
-    return create(std::move(name), NumExec_, pipepp::factory<Exec_>(std::forward<ContructorArgs_>(args)...));
+    return create(std::move(name), NumExec_, pipepp::factory<Exec_, SharedData_>(std::forward<ContructorArgs_>(args)...));
 }
 
 //template <typename SharedData_, typename Exec_>

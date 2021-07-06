@@ -95,7 +95,7 @@ namespace detail {
 class executor_base {
 public:
     virtual ~executor_base() = default;
-    virtual pipe_error invoke__(std::any& input, std::any& output) = 0;
+    virtual pipe_error invoke__(base_shared_context& shared, std::any& input, std::any& output) = 0;
 
 public:
     void set_context_ref(execution_context* ref) { context_ = ref, context_->_clear_records(); }
@@ -552,7 +552,7 @@ void pipe_base::launch_by(size_t num_executors, Fn_&& factory, Args_&&... args)
  * 독립된 알고리즘 실행기 하나를 정의합니다.
  * 파이프에 공급하는 모든 실행기는 이 클래스를 상속해야 합니다.
  */
-template <typename Exec_>
+template <typename Exec_, typename SharedData_ = nullptr_t>
 class executor final : public detail::executor_base {
 public:
     using executor_type = Exec_;
@@ -574,7 +574,7 @@ public:
     }
 
 public:
-    pipe_error invoke__(std::any& input, std::any& output) override
+    pipe_error invoke__(base_shared_context& shared, std::any& input, std::any& output) override
     {
         if (input.type() != typeid(input_type)) {
             throw pipe_input_exception("input type not match");
@@ -586,30 +586,47 @@ public:
         auto& ec = *context_;
         auto& in = std::any_cast<input_type&>(input);
         auto& out = std::any_cast<output_type&>(output);
+        auto& sd = (SharedData_&)(shared);
 
         using std::is_invocable_r_v;
+        using std::is_invocable_v;
 
+        using EXC = executor_type;
         using EC = execution_context&;
         using INR = input_type const&;
         using OUTR = output_type&;
         using OUT = output_type;
         using PE = pipe_error;
+        using SD = SharedData_;
         auto constexpr ok = pipe_error::ok;
 
         // TODO: Make this to receive shared_context reference
 
+        auto errflt = []<typename T>(T r) {
+            if constexpr (std::is_same_v<pipe_error, T>) {
+                return r;
+            } else if constexpr(std::is_same_v<void, T>){
+                return pipe_error::ok;
+            } else {
+                return !!r ? pipe_error::ok : pipe_error::abort;
+            }
+        };
+
         // clang-format off
-        if      constexpr (is_invocable_r_v<PE, executor_type, EC, INR, OUTR>  ) { return exec_(ec, in, out); }
-        else if constexpr (is_invocable_r_v<void, executor_type, EC, INR, OUTR>) { exec_(ec, in, out); return ok; }
-        else if constexpr (is_invocable_r_v<OUT, executor_type, EC, INR>       ) { out = exec_(ec, in); return ok; }
-        else if constexpr (is_invocable_r_v<OUT, executor_type, INR>           ) { out = exec_(in); return ok; }
-        else if constexpr (is_invocable_r_v<void, executor_type, INR, OUTR>           ) { exec_(in, out); return ok; }
-        else { return std::invoke( &executor_type::invoke, &exec_, *context_, in, out); }
+        if      constexpr (is_invocable_v<EXC, EC,     INR, OUTR>) { return errflt(exec_(ec,     in, out)); }
+        else if constexpr (is_invocable_v<EXC, EC, SD, INR, OUTR>) { return errflt(exec_(ec, sd, in, out)); }
+        else if constexpr (is_invocable_v<EXC,         INR, OUTR>) { return errflt(exec_(        in, out)); }
+        else if constexpr (is_invocable_v<EXC,     SD, INR, OUTR>) { return errflt(exec_(    sd, in, out)); }
+        else if constexpr (is_invocable_v<EXC, EC, SD,      OUTR>) { return errflt(exec_(ec, sd,     out)); }
+
+        else if constexpr (is_invocable_r_v<OUTR, EXC, EC, SD, INR>) { return (out = exec_(ec, sd, in)), ok; }
+        else if constexpr (is_invocable_r_v<OUTR, EXC, EC,     INR>) { return (out = exec_(ec, in)), ok; }
+        else if constexpr (is_invocable_r_v<OUTR, EXC,         INR>) { return (out = exec_(in)), ok; }
+        else if constexpr (is_invocable_r_v<OUTR, EXC             >) { return (out = exec_(  )), ok; }
+
+        else { static_assert(false); return pipe_error::fatal; }
         // clang-format on
     }
-
-    // Non-virtual to be overriden by base class
-    pipe_error invoke(execution_context& context, input_type const& i, output_type& o) { throw; }
 
 private:
     void const* _get_actual_executor() const override { return &exec_; }
@@ -627,11 +644,11 @@ decltype(auto) make_executor(Args_&&... args)
     return std::make_unique<executor<Exec_>>(std::forward<Args_>(args)...);
 }
 
-template <typename Exec_, typename... Args_>
+template <typename Exec_, typename SharedData_ = nullptr_t, typename... Args_>
 decltype(auto) factory(Args_&&... args)
 {
     return [... args = std::forward<Args_>(args)]() mutable {
-        return std::make_unique<executor<Exec_>>(std::forward<Args_>(args)...);
+        return std::make_unique<executor<Exec_, SharedData_>>(std::forward<Args_>(args)...);
     };
 }
 

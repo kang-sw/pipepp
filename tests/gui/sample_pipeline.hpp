@@ -14,7 +14,7 @@ struct my_executor_0 {
     using input_type = int;
     using output_type = int;
 
-    pipepp::pipe_error invoke(pipepp::execution_context& o, input_type a, output_type b)
+    pipepp::pipe_error operator()(pipepp::execution_context& o, input_type a, output_type b)
     {
         PIPEPP_REGISTER_CONTEXT(o);
 

@@ -647,6 +647,10 @@ public:
         else if constexpr (is_invocable_v<EXC, EC, SD, INR, OUTR>) { return executor::errflt(exec_(ec, sd, in, out)); }
         else if constexpr (is_invocable_v<EXC,     SD, INR, OUTR>) { return executor::errflt(exec_(    sd, in, out)); }
         else if constexpr (is_invocable_v<EXC,         INR, OUTR>) { return executor::errflt(exec_(        in, out)); }
+        else if constexpr (is_invocable_v<EXC, EC,     INR      >) { return executor::errflt(exec_(ec,     in     )); }
+        else if constexpr (is_invocable_v<EXC, EC, SD, INR      >) { return executor::errflt(exec_(ec, sd, in     )); }
+        else if constexpr (is_invocable_v<EXC,     SD, INR      >) { return executor::errflt(exec_(    sd, in     )); }
+        else if constexpr (is_invocable_v<EXC,         INR      >) { return executor::errflt(exec_(        in     )); }
         else if constexpr (is_invocable_v<EXC, EC, SD,      OUTR>) { return executor::errflt(exec_(ec, sd,     out)); }
         else if constexpr (is_invocable_v<EXC,     SD,      OUTR>) { return executor::errflt(exec_(    sd,     out)); }
         else if constexpr (is_invocable_v<EXC, EC,          OUTR>) { return executor::errflt(exec_(ec,         out)); }

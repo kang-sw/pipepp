@@ -14,6 +14,14 @@ static constexpr auto link_as_is =
 
 namespace detail {
 
+class placeholder_executor {
+public:
+    using input_type = nullptr_t;
+    using output_type = nullptr_t;
+
+    void operator()() {}
+};
+
 class pipeline_base : public std::enable_shared_from_this<pipeline_base> {
 public:
     using factory_return_type = std::unique_ptr<detail::executor_base>;
@@ -306,7 +314,7 @@ private:
     Prev_ _prv;
 };
 
-template <typename SharedData_, typename InitialExec_>
+template <typename SharedData_, typename InitialExec_ = detail::placeholder_executor>
 class pipeline final : public detail::pipeline_base {
     template <typename, typename, typename>
     friend class pipe_proxy;
@@ -344,6 +352,17 @@ public:
             std::forward<Args_>(factory_args)...)};
     }
 
+    template <typename... Args_>
+    static std::shared_ptr<pipeline> make(std::string initial_pipe_name, size_t num_initial_exec = 1, Args_&&... factory_args)
+    {
+        return std::shared_ptr<pipeline>{
+          new pipeline(
+            std::move(initial_pipe_name),
+            num_initial_exec,
+            pipepp::factory<InitialExec_, SharedData_>(
+              std::forward<Args_>(factory_args)...))};
+    }
+
 public:
     initial_proxy_type front()
     {
@@ -369,7 +388,13 @@ public:
 
     bool wait_supliable(std::chrono::milliseconds timeout = std::chrono::milliseconds{10}) const
     {
-        return !pipes_.front()->is_paused() && pipes_.front()->wait_active_slot_idle(timeout);
+        auto until = std::chrono::system_clock::now() + timeout;
+        while (pipes_.front()->is_paused()) {
+            if (std::chrono::system_clock::now() > until) { return false; }
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        }
+
+        return pipes_.front()->wait_active_slot_idle(timeout);
     }
 
 protected:
@@ -380,5 +405,11 @@ protected:
 
 private:
 };
+
+template <typename Shared_, typename InitExec_>
+using pl_sptr = std::shared_ptr<pipeline<Shared_, InitExec_>>;
+
+template <typename Shared_, typename InitExec_>
+using pl_wptr = std::weak_ptr<pipeline<Shared_, InitExec_>>;
 
 } // namespace pipepp

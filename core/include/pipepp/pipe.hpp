@@ -573,6 +573,19 @@ public:
     {
     }
 
+private:
+    template <typename T>
+    static pipe_error errflt(T r)
+    {
+        if constexpr (std::is_same_v<pipe_error, T>) {
+            return r;
+        } else if constexpr (std::is_same_v<void, T>) {
+            return pipe_error::ok;
+        } else {
+            return !!r ? pipe_error::ok : pipe_error::abort;
+        }
+    }
+
 public:
     pipe_error invoke__(base_shared_context& shared, std::any& input, std::any& output) override
     {
@@ -597,32 +610,43 @@ public:
         using OUTR = output_type&;
         using OUT = output_type;
         using PE = pipe_error;
-        using SD = SharedData_;
+        using SD = SharedData_&;
         auto constexpr ok = pipe_error::ok;
 
         // TODO: Make this to receive shared_context reference
 
-        auto errflt = []<typename T>(T r) {
+        /* auto errflt = []<typename T>(T r) {
             if constexpr (std::is_same_v<pipe_error, T>) {
                 return r;
-            } else if constexpr(std::is_same_v<void, T>){
+            } else if constexpr (std::is_same_v<void, T>) {
                 return pipe_error::ok;
             } else {
                 return !!r ? pipe_error::ok : pipe_error::abort;
             }
-        };
+        };*/
 
         // clang-format off
-        if      constexpr (is_invocable_v<EXC, EC,     INR, OUTR>) { return errflt(exec_(ec,     in, out)); }
-        else if constexpr (is_invocable_v<EXC, EC, SD, INR, OUTR>) { return errflt(exec_(ec, sd, in, out)); }
-        else if constexpr (is_invocable_v<EXC,         INR, OUTR>) { return errflt(exec_(        in, out)); }
-        else if constexpr (is_invocable_v<EXC,     SD, INR, OUTR>) { return errflt(exec_(    sd, in, out)); }
-        else if constexpr (is_invocable_v<EXC, EC, SD,      OUTR>) { return errflt(exec_(ec, sd,     out)); }
-
-        else if constexpr (is_invocable_r_v<OUTR, EXC, EC, SD, INR>) { return (out = exec_(ec, sd, in)), ok; }
-        else if constexpr (is_invocable_r_v<OUTR, EXC, EC,     INR>) { return (out = exec_(ec, in)), ok; }
-        else if constexpr (is_invocable_r_v<OUTR, EXC,         INR>) { return (out = exec_(in)), ok; }
+             if constexpr (is_invocable_r_v<OUTR, EXC, EC, SD, INR>) { return (out = exec_(ec, sd, in)), ok; }
+        else if constexpr (is_invocable_r_v<OUTR, EXC, EC,     INR>) { return (out = exec_(ec,     in)), ok; }
+        else if constexpr (is_invocable_r_v<OUTR, EXC,     SD, INR>) { return (out = exec_(    sd, in)), ok; }
+        else if constexpr (is_invocable_r_v<OUTR, EXC,         INR>) { return (out = exec_(        in)), ok; }
+        else if constexpr (is_invocable_r_v<OUTR, EXC, EC, SD     >) { return (out = exec_(ec, sd    )), ok; }
+        else if constexpr (is_invocable_r_v<OUTR, EXC, EC         >) { return (out = exec_(ec        )), ok; }
+        else if constexpr (is_invocable_r_v<OUTR, EXC,     SD     >) { return (out = exec_(    sd    )), ok; }
         else if constexpr (is_invocable_r_v<OUTR, EXC             >) { return (out = exec_(  )), ok; }
+        else if constexpr (is_invocable_r_v<void, EXC             >) { return (      exec_(  )), ok; }
+
+        else if constexpr (is_invocable_v<EXC, EC,     INR, OUTR>) { return executor::errflt(exec_(ec,     in, out)); }
+        else if constexpr (is_invocable_v<EXC, EC, SD, INR, OUTR>) { return executor::errflt(exec_(ec, sd, in, out)); }
+        else if constexpr (is_invocable_v<EXC,     SD, INR, OUTR>) { return executor::errflt(exec_(    sd, in, out)); }
+        else if constexpr (is_invocable_v<EXC,         INR, OUTR>) { return executor::errflt(exec_(        in, out)); }
+        else if constexpr (is_invocable_v<EXC, EC, SD,      OUTR>) { return executor::errflt(exec_(ec, sd,     out)); }
+        else if constexpr (is_invocable_v<EXC,     SD,      OUTR>) { return executor::errflt(exec_(    sd,     out)); }
+        else if constexpr (is_invocable_v<EXC, EC,          OUTR>) { return executor::errflt(exec_(ec,         out)); }
+        else if constexpr (is_invocable_v<EXC,              OUTR>) { return executor::errflt(exec_(            out)); }
+        else if constexpr (is_invocable_v<EXC, EC               >) { return executor::errflt(exec_(ec             )); }
+        else if constexpr (is_invocable_v<EXC,     SD           >) { return executor::errflt(exec_(    sd         )); }
+        else if constexpr (is_invocable_v<EXC                   >) { return executor::errflt(exec_(               )); }
 
         else { static_assert(false); return pipe_error::fatal; }
         // clang-format on

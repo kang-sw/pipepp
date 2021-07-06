@@ -548,6 +548,13 @@ void pipe_base::launch_by(size_t num_executors, Fn_&& factory, Args_&&... args)
 }
 
 } // namespace detail
+
+template <typename T>
+struct executor_traits {
+    using input_type = typename T::input_type;
+    using output_type = typename T::output_type;
+};
+
 /**
  * 독립된 알고리즘 실행기 하나를 정의합니다.
  * 파이프에 공급하는 모든 실행기는 이 클래스를 상속해야 합니다.
@@ -556,8 +563,8 @@ template <typename Exec_, typename SharedData_ = nullptr_t>
 class executor final : public detail::executor_base {
 public:
     using executor_type = Exec_;
-    using input_type = typename executor_type::input_type;
-    using output_type = typename executor_type::output_type;
+    using input_type = typename executor_traits<executor_type>::input_type;
+    using output_type = typename executor_traits<executor_type>::output_type;
 
     static_assert(std::is_default_constructible_v<output_type>);
 

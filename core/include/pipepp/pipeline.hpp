@@ -391,10 +391,14 @@ public:
     bool can_suply() const { return !pipes_.front()->is_paused() && pipes_.front()->can_submit_input_direct(); }
 
     // supply input (trigger)
-    template <typename Fn_>
+    template <typename Fn_ = void(*)(SharedData_&)>
     bool suply(
-      input_type input, Fn_&& shared_data_init_func = [](auto&&) {})
+      input_type input,
+      Fn_&& shared_data_init_func = [](auto&&) {},
+      std::chrono::milliseconds timeout = std::chrono::milliseconds{1000})
     {
+        if (!wait_supliable(timeout)) { return false; }
+
         auto shared = _fetch_shared();
         shared_data_init_func(static_cast<shared_data_type&>(*shared));
         shared->reload();

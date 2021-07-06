@@ -394,7 +394,7 @@ public:
     template <typename Fn_ = void (*)(SharedData_&)>
     bool suply(
       input_type input,
-      Fn_&& shared_data_init_func = [](auto&&) {},
+      Fn_&& shared_data_init_func = [](auto&) {},
       std::chrono::milliseconds timeout = std::chrono::milliseconds{1000})
     {
         if (!wait_supliable(timeout)) { return false; }

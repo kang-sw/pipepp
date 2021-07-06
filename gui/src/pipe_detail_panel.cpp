@@ -3,7 +3,7 @@
 #include <chrono>
 #include <functional>
 
-#include "fmt/format.h"
+#include <format>
 #include "nana/basic_types.hpp"
 #include "nana/gui/drawing.hpp"
 #include "nana/gui/programming_interface.hpp"
@@ -184,7 +184,7 @@ void pipepp::gui::pipe_detail_panel::update(std::shared_ptr<execution_context_da
         std::string text;
         text.reserve(1024);
         auto& timers = data->timers;
-        fmt::format_to(std::back_inserter(text), "{0:<{1}}\n", "", horizontal_chars + 3);
+        std::format_to(std::back_inserter(text), "{0:<{1}}\n", "", horizontal_chars + 3);
 
         auto left_chars = horizontal_chars - 15;
 
@@ -206,7 +206,7 @@ void pipepp::gui::pipe_detail_panel::update(std::shared_ptr<execution_context_da
         for (size_t line = 1; auto& tm : timers) {
             auto left_indent = tm.category_level;
 
-            fmt::format_to(
+            std::format_to(
               std::back_inserter(text),
               "|{0:<{3}}{1:.<{4}}{2:.>15.4f} ms\n", "",
               tm.name, 1000.0 * std::chrono::duration<double>{tm.elapsed}.count(),

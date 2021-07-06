@@ -1,5 +1,5 @@
 #include <chrono>
-#include "fmt/format.h"
+#include <format>
 #include "kangsw/helpers/misc.hxx"
 #include "kangsw/helpers/zip.hxx"
 #include "nana/basic_types.hpp"
@@ -243,7 +243,7 @@ void pipepp::gui::pipe_view::update()
           kangsw::zip(lst_tm, lst_tget, lst_lerp)) {
             auto dur = std::chrono::duration<double>(time).count() * 1000.0;
             *base = std::lerp(*base, dur, 0.33);
-            *tget = fmt::format("{0:>10.4f} ms", *base);
+            *tget = std::format("{0:>10.4f} ms", *base);
         }
         nana::drawing(m.label).update();
 

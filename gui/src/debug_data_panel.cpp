@@ -2,8 +2,8 @@
 #include <cassert>
 #include <iterator>
 #include <variant>
+#include <format>
 
-#include "fmt/format.h"
 #include "nana/basic_types.hpp"
 #include "nana/gui/drawing.hpp"
 #include "nana/gui/place.hpp"
@@ -59,7 +59,7 @@ public:
         , owner_(owner)
         , m(owner.m)
     {
-        layout_.div(fmt::format("TEXT"));
+        layout_.div(std::format("TEXT"));
         layout_.collocate();
         layout_["TEXT"] << text_;
 
@@ -128,7 +128,6 @@ public:
     void refresh()
     {
         using std::string;
-        using namespace fmt;
         using insert = std::back_insert_iterator<string>;
 
         thread_local static string str_left;
@@ -139,9 +138,9 @@ public:
             auto& data = std::get<timer_data_desc>(slot_);
             using namespace std::chrono;
 
-            format_to(insert(str_left), "{0:>{1}}{3} {2} ", "",
+            std::format_to(insert(str_left), "{0:>{1}}{3} {2} ", "",
                       level * m.indent, data.name, colapsed_or_subscribed_ ? '=' : '|');
-            format_to(insert(str_right), "{0:.4f} ms", duration<double, std::milli>{data.elapsed}.count());
+            std::format_to(insert(str_right), "{0:.4f} ms", duration<double, std::milli>{data.elapsed}.count());
 
             // timer color set
             const static nana::color category_colors[] = {
@@ -166,7 +165,7 @@ public:
             text_.bgcolor(colapsed_or_subscribed_ ? colors(0x333333) : colors::black);
         } else if (is_debug_slot()) {
             auto& data = std::get<debug_data_desc>(slot_);
-            format_to(insert(str_left), "{0:>{1}}[{2}]", "", level * m.indent, data.name);
+            std::format_to(insert(str_left), "{0:>{1}}[{2}]", "", level * m.indent, data.name);
 
             std::visit(
               [&]<typename T0>(T0&& arg) {
@@ -406,23 +405,23 @@ void pipepp::gui::debug_data_panel::_update(std::shared_ptr<execution_context_da
     for (auto index : kangsw::iota{(size_t)1, timers.size()}) {
         auto& tm = timers[index];
 
-        // Category ID ±â¹ÝÀ¸·Î Å½»ö ¹× »ðÀÔ ½Ãµµ
+        // Category ID ê¸°ë°˜ìœ¼ë¡œ íƒìƒ‰ ë° ì‚½ìž… ì‹œë„
         auto [it, is_new] = m.timers.try_emplace(tm.category_id);
 
-        // Ä«Å×°í¸®¿¡ »õ·Î »ðÀÔ
+        // ì¹´í…Œê³ ë¦¬ì— ìƒˆë¡œ ì‚½ìž…
         if (is_new) {
             auto root = root_stack.at(tm.category_level - 1);
             it->second = root->append(tm);
         } else {
-            // ÀÌ¹Ì Á¸ÀçÇÏ´Â ¿£ÅÍÆ¼¸¦ ¾÷µ¥ÀÌÆ®ÇÏ´Â °æ¿ì, µ¿ ·¹º§ Ä«Å×°í¸®ÀÇ ÀÌÀü siblingÀ» ¹æ¹®,
+            // ì´ë¯¸ ì¡´ìž¬í•˜ëŠ” ì—”í„°í‹°ë¥¼ ì—…ë°ì´íŠ¸í•˜ëŠ” ê²½ìš°, ë™ ë ˆë²¨ ì¹´í…Œê³ ë¦¬ì˜ ì´ì „ siblingì„ ë°©ë¬¸,
             //
             it->second.lock()->put(tm);
         }
 
         auto ptr = it->second.lock();
         root_stack[tm.category_level] = ptr;
-        // sibling_stack[tm.category_level + 1] = 0; // ´ÙÀ½ ´Ü°èÀÇ Ä«Å×°í¸® ÀÎµ¦½º ÃÊ±âÈ­
-        ptr->sibling_order(tm.order); // ÇöÀç ´Ü°èÀÇ Ä«Å×°í¸® ÀÎµ¦½º Áõ°¡
+        // sibling_stack[tm.category_level + 1] = 0; // ë‹¤ìŒ ë‹¨ê³„ì˜ ì¹´í…Œê³ ë¦¬ ì¸ë±ìŠ¤ ì´ˆê¸°í™”
+        ptr->sibling_order(tm.order); // í˜„ìž¬ ë‹¨ê³„ì˜ ì¹´í…Œê³ ë¦¬ ì¸ë±ìŠ¤ ì¦ê°€
     }
 
     for (auto& dt : data->debug_data) {

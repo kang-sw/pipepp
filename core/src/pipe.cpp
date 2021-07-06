@@ -1,6 +1,6 @@
 #include <bitset>
 #include <cassert>
-#include "fmt/format.h"
+#include <format>
 #include "kangsw/helpers/enum_arithmetic.hxx"
 #include "kangsw/helpers/hash_index.hxx"
 #include "kangsw/helpers/misc.hxx"
@@ -188,7 +188,7 @@ void pipepp::detail::pipe_base::executor_slot::_perform_output_link(size_t outpu
         using namespace std::chrono;
         auto delay = 0us;
 
-        PIPEPP_ELAPSE_SCOPE_DYNAMIC(fmt::format(":: [{}]", link.pipe->name()).c_str());
+        PIPEPP_ELAPSE_SCOPE_DYNAMIC(std::format(":: [{}]", link.pipe->name()).c_str());
         if (link.pipe->is_launched() == false) {
             throw pipe_exception("linked pipe is not launched yet!");
         }

@@ -1,6 +1,6 @@
 #include "pipepp/gui/option_panel.hpp"
 
-#include "fmt/format.h"
+#include <format>
 #include "nana/gui/drawing.hpp"
 #include "nana/gui/place.hpp"
 #include "nana/gui/widgets/button.hpp"
@@ -110,7 +110,7 @@ void pipepp::gui::option_panel::_refresh_item(nana::drawerbase::treebox::item_pr
     auto& name = opts.names().at(keyval);
     auto& value = opts.value().at(keyval);
 
-    auto text = fmt::format("[{0:<15}] {1}", name, value.dump());
+    auto text = std::format("[{0:<15}] {1}", name, value.dump());
     item.text(std::move(text));
 }
 
@@ -133,7 +133,7 @@ void pipepp::gui::option_panel::_cb_tree_selected(nana::arg_treebox const& a)
     auto& value = opts.value().at(key);
     auto& name = opts.names().at(key);
     m.input_title.caption(opts.names().at(key));
-    m.input_descr.reset(fmt::format("{}\t<{}>\n  @ \"{}\"\n", name, value.type_name(), opts.paths().at(key)));
+    m.input_descr.reset(std::format("{}\t<{}>\n  @ \"{}\"\n", name, value.type_name(), opts.paths().at(key)));
     m.input_descr.append(opts.description().at(key), true);
     m.input_descr.caret_pos({0, 0});
     m.input_descr.append(" ", true);
@@ -346,7 +346,7 @@ void pipepp::gui::option_panel::vertical(bool do_vertical)
       ">");
 
     if (m.expanded) {
-        m.layout.div(fmt::format("{1} {0}", "<MAIN margin=[0,4,0,0]><INPUT> margin=4 gap=4", m.is_vertical ? "vert" : ""));
+        m.layout.div(std::format("{1} {0}", "<MAIN margin=[0,4,0,0]><INPUT> margin=4 gap=4", m.is_vertical ? "vert" : ""));
     } else {
         m.layout.div("<MAIN margin=4>");
     }

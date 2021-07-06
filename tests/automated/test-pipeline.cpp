@@ -1,10 +1,9 @@
 #include <algorithm>
 #include <memory>
 #include <vector>
-#include <xutility>
+#include <format>
 
 #include "catch.hpp"
-#include "fmt/format.h"
 #include "pipepp/pipepp.h"
 
 namespace pipepp_test::pipelines {
@@ -29,7 +28,7 @@ struct exec_0 {
         using namespace std::literals;
 
         PIPEPP_ELAPSE_SCOPE("Timer Default");
-        fmt::print("is_first? {}\n", is_first(so));
+        printf(std::format("is_first? {}\n", is_first(so)).c_str());
         std::this_thread::sleep_for(1ms);
         auto [val] = i;
         auto& [a, b] = o;
@@ -96,7 +95,7 @@ static void link_1_0(my_shared_data const&, exec_1::output_type const& i, exec_0
 //          .add_output_handler([&](pipe_error, my_shared_data const& so, exec_0::output_type const& val) {
 //              auto [a, b] = val;
 //              order[ordering++] = so.level;
-//              fmt::print("level {:<4}: {:>10.3}, {:>10.3}\n", so.level, a, b);
+//              std::print("level {:<4}: {:>10.3}, {:>10.3}\n", so.level, a, b);
 //              cases[so.level] += 1;
 //          });
 //

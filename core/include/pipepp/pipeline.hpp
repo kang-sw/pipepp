@@ -189,8 +189,8 @@ class pipe_proxy final : public detail::pipe_proxy_base {
 public:
     using shared_data_type = SharedData_;
     using executor_type = Exec_;
-    using input_type = typename executor_type::input_type;
-    using output_type = typename executor_type::output_type;
+    using input_type = typename executor_traits<executor_type>::input_type;
+    using output_type = typename executor_traits<executor_type>::output_type;
     using pipeline_type = pipeline<SharedData_, Exec_>;
 
 private:
@@ -245,7 +245,7 @@ public:
     auto link_to(pipe_proxy<shared_data_type, Dest_, OtherPrev_> dest, LnkFn_&& linker)
     {
         using prev_output_type = output_type;
-        using next_input_type = typename Dest_::input_type;
+        using next_input_type = typename executor_traits<Dest_>::input_type;
         pipe().connect_output_to<shared_data_type, prev_output_type, next_input_type>(
           dest.pipe(), std::forward<LnkFn_>(linker));
 
@@ -265,7 +265,7 @@ public:
     template <typename Dest_, typename OtherPrev_>
     auto link_to(pipe_proxy<shared_data_type, Dest_, OtherPrev_> dest)
     {
-        if constexpr (std::is_same_v<output_type, typename Dest_::input_type>) {
+        if constexpr (std::is_same_v<output_type, typename executor_traits<Dest_>::input_type>) {
             return link_to(dest, link_as_is);
         } else if constexpr (detail::_has_link_to<pipe_proxy, Exec_, decltype(dest)>) {
             return link_to(dest, &Exec_::link_to);
@@ -337,7 +337,7 @@ class pipeline final : public detail::pipeline_base {
 public:
     using shared_data_type = SharedData_;
     using initial_executor_type = InitialExec_;
-    using input_type = typename initial_executor_type::input_type;
+    using input_type = typename executor_traits<initial_executor_type>::input_type;
     using initial_proxy_type = pipe_proxy<shared_data_type, initial_executor_type>;
 
     ~pipeline() override { sync(); }
@@ -391,7 +391,7 @@ public:
     bool can_suply() const { return !pipes_.front()->is_paused() && pipes_.front()->can_submit_input_direct(); }
 
     // supply input (trigger)
-    template <typename Fn_ = void(*)(SharedData_&)>
+    template <typename Fn_ = void (*)(SharedData_&)>
     bool suply(
       input_type input,
       Fn_&& shared_data_init_func = [](auto&&) {},

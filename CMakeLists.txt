@@ -5,8 +5,6 @@ set(PIPEPP_CORE_ROOT "${CMAKE_SOURCE_DIR}/core")
 
 add_subdirectory(third/templates EXCLUDE_FROM_ALL)
 add_subdirectory(third/json EXCLUDE_FROM_ALL)
-
-option(MSVC_USE_STATIC_RUNTIME OFF)
 add_subdirectory(third/nana EXCLUDE_FROM_ALL)
 
 add_subdirectory(core)

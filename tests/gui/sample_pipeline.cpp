@@ -2,7 +2,7 @@
 
 std::shared_ptr<my_pipeline_type> build_pipeline()
 {
-    auto pipe = my_pipeline_type::make("Entry", 4, &pipepp::make_executor<my_executor_0>);
+    auto pipe = my_pipeline_type::make("Entry", 4);
 //
 //    auto _0 = pipe->front();
 //

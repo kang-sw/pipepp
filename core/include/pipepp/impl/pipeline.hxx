@@ -46,7 +46,7 @@ template <typename SharedData_, typename InitialExec_> template <typename Fn_, t
 template <typename SharedData_, typename InitialExec_>
 template <typename FactoryFn_, typename... FactoryArgs_>
 pipe_proxy<SharedData_, typename std::invoke_result_t<FactoryFn_, FactoryArgs_...>::element_type::executor_type>
-pipeline<SharedData_, InitialExec_>::create(std::string name, size_t num_executors, FactoryFn_&& factory, FactoryArgs_&&... args)
+pipeline<SharedData_, InitialExec_>::create_ex(std::string name, size_t num_executors, FactoryFn_&& factory, FactoryArgs_&&... args)
 {
     using factory_invoke_type = std::invoke_result_t<FactoryFn_, FactoryArgs_...>;
     using executor_type = typename factory_invoke_type::element_type;
@@ -61,7 +61,7 @@ pipeline<SharedData_, InitialExec_>::create(std::string name, size_t num_executo
 
 template <typename SharedData_, typename InitialExec_> template <typename Exec_, size_t NumExec_, typename ... ContructorArgs_> pipe_proxy<SharedData_, Exec_> pipeline<SharedData_, InitialExec_>::create(std::string name, ContructorArgs_&&... args)
 {
-    return create(std::move(name), NumExec_, pipepp::factory<Exec_, SharedData_>(std::forward<ContructorArgs_>(args)...));
+    return this->create_ex(std::move(name), NumExec_, pipepp::factory<Exec_, SharedData_>(std::forward<ContructorArgs_>(args)...));
 }
 
 //template <typename SharedData_, typename Exec_>

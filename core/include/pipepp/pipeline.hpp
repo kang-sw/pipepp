@@ -350,22 +350,11 @@ private:
 public:
     template <typename FactoryFn_, typename... FactoryArgs_>
     pipe_proxy<SharedData_, typename std::invoke_result_t<FactoryFn_, FactoryArgs_...>::element_type::executor_type>
-    create(std::string name, size_t num_executors, FactoryFn_&& factory, FactoryArgs_&&... args);
+    create_ex(std::string name, size_t num_executors, FactoryFn_&& factory, FactoryArgs_&&... args);
 
     template <typename Exec_, size_t NumExec_ = 1, typename... ContructorArgs_>
     pipe_proxy<SharedData_, Exec_>
     create(std::string name, ContructorArgs_&&... args);
-
-    template <typename Fn_, typename... Args_>
-    static std::shared_ptr<pipeline> make(std::string initial_pipe_name, size_t num_initial_exec, Fn_&& factory, Args_&&... factory_args)
-    {
-        return std::shared_ptr<pipeline>{
-          new pipeline(
-            std::move(initial_pipe_name),
-            num_initial_exec,
-            std::forward<Fn_>(factory),
-            std::forward<Args_>(factory_args)...)};
-    }
 
     template <typename... Args_>
     static std::shared_ptr<pipeline> make(std::string initial_pipe_name, size_t num_initial_exec = 1, Args_&&... factory_args)

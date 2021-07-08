@@ -641,7 +641,22 @@ public:
         else if constexpr (is_invocable_r_v<OUTR, EXC, EC         >) { return (out = exec_(ec        )), ok; }
         else if constexpr (is_invocable_r_v<OUTR, EXC,     SD     >) { return (out = exec_(    sd    )), ok; }
         else if constexpr (is_invocable_r_v<OUTR, EXC             >) { return (out = exec_(  )), ok; }
-        else if constexpr (is_invocable_r_v<void, EXC             >) { return (      exec_(  )), ok; }
+
+        else if constexpr (is_invocable_r_v<void, EXC, EC,     INR, OUTR>) { return exec_(ec,     in, out), ok; }
+        else if constexpr (is_invocable_r_v<void, EXC, EC, SD, INR, OUTR>) { return exec_(ec, sd, in, out), ok; }
+        else if constexpr (is_invocable_r_v<void, EXC,     SD, INR, OUTR>) { return exec_(    sd, in, out), ok; }
+        else if constexpr (is_invocable_r_v<void, EXC,         INR, OUTR>) { return exec_(        in, out), ok; }
+        else if constexpr (is_invocable_r_v<void, EXC, EC,     INR      >) { return exec_(ec,     in     ), ok; }
+        else if constexpr (is_invocable_r_v<void, EXC, EC, SD, INR      >) { return exec_(ec, sd, in     ), ok; }
+        else if constexpr (is_invocable_r_v<void, EXC,     SD, INR      >) { return exec_(    sd, in     ), ok; }
+        else if constexpr (is_invocable_r_v<void, EXC,         INR      >) { return exec_(        in     ), ok; }
+        else if constexpr (is_invocable_r_v<void, EXC, EC, SD,      OUTR>) { return exec_(ec, sd,     out), ok; }
+        else if constexpr (is_invocable_r_v<void, EXC,     SD,      OUTR>) { return exec_(    sd,     out), ok; }
+        else if constexpr (is_invocable_r_v<void, EXC, EC,          OUTR>) { return exec_(ec,         out), ok; }
+        else if constexpr (is_invocable_r_v<void, EXC,              OUTR>) { return exec_(            out), ok; }
+        else if constexpr (is_invocable_r_v<void, EXC, EC               >) { return exec_(ec             ), ok; }
+        else if constexpr (is_invocable_r_v<void, EXC,     SD           >) { return exec_(    sd         ), ok; }
+        else if constexpr (is_invocable_r_v<void, EXC                   >) { return exec_(               ), ok; }
 
         else if constexpr (is_invocable_v<EXC, EC,     INR, OUTR>) { return executor::errflt(exec_(ec,     in, out)); }
         else if constexpr (is_invocable_v<EXC, EC, SD, INR, OUTR>) { return executor::errflt(exec_(ec, sd, in, out)); }

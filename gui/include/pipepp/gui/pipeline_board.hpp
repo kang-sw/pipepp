@@ -90,6 +90,11 @@ public:
     void center(nana::point = {});
     nana::point center() const;
 
+    /**
+     * Get reference of internal panel
+     */
+    nana::panel<true>& graph_panel();
+
 public:
     /**
      *

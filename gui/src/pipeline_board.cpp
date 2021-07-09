@@ -63,8 +63,8 @@ struct pipepp::gui::pipeline_board::data_type {
     nana::panel<true> graph{nana::window{self}};
     nana::panel<false> tabwnd_placeholder{nana::window{self}};
     nana::button width_sizer{self};
-    bool tabbar_visible = true;
-    int tabbar_weight = 480;
+    bool tabbar_visible = false;
+    float tabbar_rate = 0.5f;
 
     nana::tabbar<std::shared_ptr<tabbar_entity>> detail_panel_tab{self};
 
@@ -75,17 +75,30 @@ public:
     {
         constexpr auto DIV_notab = "<GRAPH><SIZER weight=10>";
         constexpr auto DIV_tab = "<GRAPH>"
-                                 "<vert weight=10 <weight=20><SIZER><weight=20>>"
+                                 "<vert weight=10 <SIZER>>"
                                  "<vert weight={0} <TABBAR weight=20><TABWND>>";
         if (tabbar_visible) {
             _cache.clear();
             _cache.reserve(64);
 
+            int tabbar_weight = tabbar_rate * self.size().width;
             std::format_to(std::back_inserter(_cache), DIV_tab, tabbar_weight);
         } else {
             return DIV_notab;
         }
         return std::move(_cache);
+    }
+
+    void update_tabbar()
+    {
+        if (!tabbar_visible) {
+            for (size_t i = 0; i < detail_panel_tab.length(); ++i) {
+                detail_panel_tab.at(i)->panel->hide();
+            }
+        }
+
+        layout.div(divtext());
+        layout.collocate();
     }
 
 private:
@@ -104,7 +117,7 @@ pipepp::gui::pipeline_board::pipeline_board(const nana::window& wd, const nana::
             auto delta = arg.pos - prev_mouse_pos_;
             m.center += delta;
             _update_widget_pos();
-            nana::drawing{*this}.update();
+            nana::drawing{m.graph}.update();
         }
         prev_mouse_pos_ = arg.pos;
     });
@@ -132,6 +145,11 @@ pipepp::gui::pipeline_board::pipeline_board(const nana::window& wd, const nana::
         }
     });
 
+    events().resized([&m, this](nana::arg_resized arg) {
+        auto x = size().width;
+        m.update_tabbar();
+    });
+
     m.layout["GRAPH"] << m.graph;
     m.layout["SIZER"] << m.width_sizer;
     m.layout["TABBAR"] << m.detail_panel_tab;
@@ -146,12 +164,19 @@ pipepp::gui::pipeline_board::pipeline_board(const nana::window& wd, const nana::
         auto cursor_pos = m.width_sizer.pos() + arg.pos;
         if (arg.left_button) {
             auto delta = cursor_pos - prv;
-            m.tabbar_weight = std::clamp<int>(m.tabbar_weight - delta.x, 0, size().width - 40);
+            auto tabbar_weight = m.tabbar_rate * size().width;
+            tabbar_weight = std::clamp<int>(tabbar_weight - delta.x, 5, size().width - 40);
+            m.tabbar_rate = tabbar_weight / size().width;
 
             m.layout.div(m.divtext());
             m.layout.collocate();
         }
         prv = cursor_pos;
+    });
+
+    m.width_sizer.events().dbl_click([this, &m](auto) {
+        m.tabbar_visible = !m.tabbar_visible;
+        m.update_tabbar();
     });
 
     m.tabwnd_placeholder.events().resized([&m](nana::arg_resized rz) {
@@ -161,9 +186,12 @@ pipepp::gui::pipeline_board::pipeline_board(const nana::window& wd, const nana::
         }
     });
 
-    m.detail_panel_tab.events().tab_click([&m](auto) {
-        m.layout.div(m.divtext());
-        m.layout.collocate();
+    m.detail_panel_tab.events().tab_click([&m](auto) { m.update_tabbar(); });
+    m.detail_panel_tab.events().activated([&m](auto) { m.update_tabbar(); });
+
+    m.detail_panel_tab.events().removed([&m](auto) {
+        m.tabbar_visible &= m.detail_panel_tab.length() > 1;
+        m.update_tabbar();
     });
 
     m.layout.div(m.divtext());
@@ -201,6 +229,11 @@ void pipepp::gui::pipeline_board::center(nana::point center)
 nana::point pipepp::gui::pipeline_board::center() const
 {
     return impl_->center;
+}
+
+nana::panel<true>& pipepp::gui::pipeline_board::graph_panel()
+{
+    return impl_->graph;
 }
 
 void pipepp::gui::pipeline_board::_clear_views()
@@ -377,6 +410,8 @@ void pipepp::gui::pipeline_board::reset_pipeline(std::shared_ptr<pipepp::detail:
                 auto details = view->create_panel(*this).lock();
                 m.detail_panel_tab.append(details->caption(), *details, std::make_shared<tabbar_entity>(view, details.get()));
                 details->move(nana::rectangle{m.tabwnd_placeholder.pos(), m.tabwnd_placeholder.size()});
+                m.tabbar_visible = true;
+                m.update_tabbar();
             } else {
                 for (size_t i = 0; i < m.detail_panel_tab.length(); ++i) {
                     if (m.detail_panel_tab.at(i)->view == view) {

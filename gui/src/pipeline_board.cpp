@@ -6,6 +6,7 @@
 #include "kangsw/helpers/zip.hxx"
 #include "nana/basic_types.hpp"
 #include "nana/gui/drawing.hpp"
+#include "nana/gui/timer.hpp"
 #include "nana/gui/widgets/group.hpp"
 #include "nana/gui/widgets/tabbar.hpp"
 #include "nana/paint/graphics.hpp"
@@ -13,6 +14,8 @@
 #include "pipepp/gui/pipe_detail_panel.hpp"
 #include "pipepp/gui/pipe_view.hpp"
 #include "pipepp/pipeline.hpp"
+
+using namespace std::literals;
 
 struct pipe_widget_desc {
     std::unique_ptr<pipepp::gui::pipe_view> view;
@@ -63,6 +66,7 @@ struct pipepp::gui::pipeline_board::data_type {
     nana::panel<true> graph{nana::window{self}};
     nana::panel<false> tabwnd_placeholder{nana::window{self}};
     nana::button width_sizer{self};
+    nana::timer destroy_update_timer{16ms};
     bool tabbar_visible = false;
     float tabbar_rate = 0.5f;
 
@@ -76,7 +80,7 @@ public:
         constexpr auto DIV_notab = "<GRAPH><SIZER weight=10>";
         constexpr auto DIV_tab = "<GRAPH>"
                                  "<vert weight=10 <SIZER>>"
-                                 "<vert weight={0} <TABBAR weight=20><TABWND>>";
+                                 "<vert weight={0} <TABBAR weight=24 margin=[0, 0, 0, 0]><TABWND>>";
         if (tabbar_visible) {
             _cache.clear();
             _cache.reserve(64);
@@ -91,14 +95,20 @@ public:
 
     void update_tabbar()
     {
-        if (!tabbar_visible) {
-            for (size_t i = 0; i < detail_panel_tab.length(); ++i) {
-                detail_panel_tab.at(i)->panel->hide();
-            }
-        }
 
         layout.div(divtext());
         layout.collocate();
+    }
+
+    void destroy_update()
+    {
+        for (size_t i = 0; i < detail_panel_tab.length(); ++i) {
+            auto& ptr = detail_panel_tab.at(i);
+            if (ptr->view == nullptr) {
+                detail_panel_tab.erase(i);
+                break;
+            }
+        }
     }
 
 private:
@@ -177,6 +187,15 @@ pipepp::gui::pipeline_board::pipeline_board(const nana::window& wd, const nana::
     m.width_sizer.events().dbl_click([this, &m](auto) {
         m.tabbar_visible = !m.tabbar_visible;
         m.update_tabbar();
+
+        if (!m.tabbar_visible) {
+            for (size_t i = 0; i < m.detail_panel_tab.length(); ++i) {
+                auto& arg = *m.detail_panel_tab.at(i);
+                if (arg.view) { arg.panel->hide(); }
+            }
+        } else if (m.detail_panel_tab.length()) {
+            m.detail_panel_tab.at(m.detail_panel_tab.activated())->panel->show();
+        }
     });
 
     m.tabwnd_placeholder.events().resized([&m](nana::arg_resized rz) {
@@ -187,7 +206,13 @@ pipepp::gui::pipeline_board::pipeline_board(const nana::window& wd, const nana::
     });
 
     m.detail_panel_tab.events().tab_click([&m](auto) { m.update_tabbar(); });
-    m.detail_panel_tab.events().activated([&m](auto) { m.update_tabbar(); });
+    m.detail_panel_tab.events().activated([&m](auto) {
+        m.update_tabbar();
+        for (size_t i = 0; i < m.detail_panel_tab.length(); ++i) {
+            bool is_active = i == m.detail_panel_tab.activated();
+            m.detail_panel_tab.tab_bgcolor(i, is_active ? nana::colors::white : nana::colors::gray);
+        }
+    });
 
     m.detail_panel_tab.events().removed([&m](auto) {
         m.tabbar_visible &= m.detail_panel_tab.length() > 1;
@@ -201,6 +226,9 @@ pipepp::gui::pipeline_board::pipeline_board(const nana::window& wd, const nana::
     m.detail_panel_tab.toolbox(kit_t::scroll, true);
     m.detail_panel_tab.toolbox(kit_t::list, true);
     m.detail_panel_tab.toolbox(kit_t::close, true);
+
+    m.detail_panel_tab.close_fly(true);
+    m.destroy_update_timer.elapse([&]() { m.destroy_update(), m.destroy_update_timer.stop(); });
 }
 
 pipepp::gui::pipeline_board::~pipeline_board() = default;
@@ -412,6 +440,17 @@ void pipepp::gui::pipeline_board::reset_pipeline(std::shared_ptr<pipepp::detail:
                 details->move(nana::rectangle{m.tabwnd_placeholder.pos(), m.tabwnd_placeholder.size()});
                 m.tabbar_visible = true;
                 m.update_tabbar();
+
+                details->events().destroy([&](auto) {
+                    for (size_t i = 0; i < m.detail_panel_tab.length(); ++i) {
+                        auto& ptr = m.detail_panel_tab.at(i);
+                        if (ptr->view == view) {
+                            ptr->view = nullptr;
+                            break;
+                        }
+                    }
+                    m.destroy_update_timer.start();
+                });
             } else {
                 for (size_t i = 0; i < m.detail_panel_tab.length(); ++i) {
                     if (m.detail_panel_tab.at(i)->view == view) {

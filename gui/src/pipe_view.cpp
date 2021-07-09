@@ -125,6 +125,11 @@ void pipepp::gui::pipe_view::_label_events()
                   if (dirty) { dirty(impl_->pipe, {}); }
               });
 
+            if (details()) {
+                mn.append_splitter();
+                mn.append("&Close Detail View", [&](auto) { close_details(); });
+            }
+
             mn.popup(*this, arg.pos.x, arg.pos.y);
         }
     });
@@ -141,7 +146,15 @@ pipepp::gui::pipe_view::pipe_view(const nana::window& wd, const nana::rectangle&
     , impl_(std::make_unique<data_type>(*this))
 {
     auto& m = *impl_;
-    auto pipe_board = dynamic_cast<pipeline_board*>(nana::API::get_widget(wd));
+    
+    nana::window hnd_pipe_board = wd;
+    pipeline_board* pipe_board = nullptr;
+    do {
+        pipe_board = dynamic_cast<pipeline_board*>(nana::API::get_widget(hnd_pipe_board));
+        hnd_pipe_board = nana::API::get_parent_window(hnd_pipe_board);
+    } while (hnd_pipe_board != nullptr && pipe_board == nullptr);
+
+    assert(!!pipe_board);
     m.board_ref = pipe_board;
 
     m.layout.div("vert<MAIN weight=23><INTERVAL weight=60 margin=[0,1,0,1]><EXEC_COND margin=[0,1,0,1]>");

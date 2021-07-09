@@ -77,9 +77,9 @@ struct pipepp::gui::pipeline_board::data_type {
 public:
     std::string divtext()
     {
-        constexpr auto DIV_notab = "<GRAPH><SIZER weight=10>";
+        constexpr auto DIV_notab = "<GRAPH><SIZER weight=15>";
         constexpr auto DIV_tab = "<GRAPH>"
-                                 "<vert weight=10 <SIZER>>"
+                                 "<vert weight=15 <SIZER>>"
                                  "<vert weight={0} <TABBAR weight=24 margin=[0, 0, 0, 0]><TABWND>>";
         if (tabbar_visible) {
             _cache.clear();

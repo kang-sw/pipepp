@@ -284,6 +284,8 @@ public:
         return {};
     }
 
+    void pipe_name(std::string_view n) { pipe_name_ = n; }
+
 protected:
     void _m_move(int x, int y) override
     {
@@ -301,6 +303,7 @@ private:
             pipeline_board::data_subscribe_arg arg;
             arg.category = category_;
             arg.debug_data = &data;
+            arg.pipe_name = pipe_name_;
             subscriber.emit(arg, *this);
 
             colapsed_or_subscribed_ = !arg.expired();
@@ -310,6 +313,7 @@ private:
             pipeline_board::data_subscribe_arg arg;
             arg.category = category_;
             arg.debug_data = &data;
+            arg.pipe_name = pipe_name_;
             uncheck_handler.emit(arg, *this);
         }
     }
@@ -341,6 +345,7 @@ private:
     std::variant<timer_data_desc, debug_data_desc> slot_;
     std::string string_;
     std::string category_;
+    std::string_view pipe_name_;
 
     std::weak_ptr<inline_widget> root_;
     std::vector<std::shared_ptr<inline_widget>> children_;
@@ -403,6 +408,9 @@ void pipepp::gui::debug_data_panel::_update(std::shared_ptr<execution_context_da
 
     auto& timers = data->timers;
 
+    auto proxy = m.pipeline.lock()->get_pipe(m.pipe);
+    auto const& name = proxy.name();
+
     m.root->make_obsolete();
     m.root->sibling_order(0);
     m.root->put(timers[0]);
@@ -427,6 +435,7 @@ void pipepp::gui::debug_data_panel::_update(std::shared_ptr<execution_context_da
         root_stack[tm.category_level] = ptr;
         // sibling_stack[tm.category_level + 1] = 0; // 다음 단계의 카테고리 인덱스 초기화
         ptr->sibling_order(tm.order); // 현재 단계의 카테고리 인덱스 증가
+        ptr->pipe_name(name);
     }
 
     for (auto& dt : data->debug_data) {
@@ -439,6 +448,7 @@ void pipepp::gui::debug_data_panel::_update(std::shared_ptr<execution_context_da
             widget = root_widget->append(dt);
 
         widget->sibling_order(dt.order);
+        widget->pipe_name(name);
     }
 
     m.root->reorder();

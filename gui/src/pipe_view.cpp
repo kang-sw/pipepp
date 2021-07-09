@@ -382,6 +382,7 @@ std::weak_ptr<pipepp::gui::pipe_detail_panel> pipepp::gui::pipe_view::create_pan
     if (m.detail_view == nullptr || m.detail_view->empty()) {
         auto& p = m.detail_view = std::make_shared<pipe_detail_panel>(wd);
         p->reset_pipe(m.pipeline, m.pipe);
+        if (m.exec_data) { p->update(m.exec_data); }
 
         _refresh_btn_color(true);
         return p;

@@ -8,6 +8,7 @@
 #include "nana/gui/drawing.hpp"
 #include "nana/gui/timer.hpp"
 #include "nana/gui/widgets/group.hpp"
+#include "nana/gui/widgets/label.hpp"
 #include "nana/gui/widgets/tabbar.hpp"
 #include "nana/paint/graphics.hpp"
 #include "pipepp/gui/basic_utility.hpp"
@@ -29,6 +30,37 @@ struct line_desc {
     size_t index_offset;
     size_t index_count;
     bool is_optional_connection;
+};
+
+class trivial_subscriber_label : public nana::panel<true> {
+public:
+    explicit trivial_subscriber_label(nana::window par)
+        : panel(par, true)
+    {
+        layout_.div("<NAME><VALUE> <margin=3 weight=20 <vert weight=20 <EXIT> > >");
+        layout_["NAME"] << name_;
+        layout_["VALUE"] << value_;
+        layout_["EXIT"] << exit_;
+
+        exit_.caption("-");
+        exit_.transparent(true);
+
+        nana::paint::font fnt("consolas", 11.0);
+        name_.typeface(fnt);
+        value_.typeface(fnt);
+        exit_.typeface(fnt);
+    }
+
+    void set_name(std::string const& n) { name_.caption(n); }
+    void set_value(std::string const& n) { value_.caption(n); }
+
+    auto& on_exit() { return exit_.events().click; }
+
+private:
+    nana::place layout_{*this};
+    nana::label name_{*this};
+    nana::label value_{*this};
+    nana::button exit_{*this};
 };
 
 struct tabbar_entity {
@@ -63,6 +95,8 @@ struct pipepp::gui::pipeline_board::data_type {
     std::vector<nana::point> all_points;
     std::vector<line_desc> line_descriptions; // all_points
 
+    std::map<std::string, std::unique_ptr<trivial_subscriber_label>> subscriptions;
+
     nana::panel<true> graph{nana::window{self}};
     nana::panel<false> tabwnd_placeholder{nana::window{self}};
     nana::button width_sizer{self};
@@ -78,7 +112,7 @@ public:
     std::string divtext()
     {
         constexpr auto DIV_notab = "<GRAPH><SIZER weight=15>";
-        constexpr auto DIV_tab = "<GRAPH>"
+        constexpr auto DIV_tab = "<GRAPH arrange=[variable,16,repeated]>"
                                  "<vert weight=15 <SIZER>>"
                                  "<vert weight={0} <TABBAR weight=24 margin=[0, 0, 0, 0]><TABWND>>";
         if (tabbar_visible) {
@@ -109,6 +143,15 @@ public:
                 break;
             }
         }
+    }
+
+    void subscribe_update_notify(data_subscribe_arg const& arg)
+    {
+
+    }
+
+    void unsubscribe_notify(data_subscribe_arg const& arg)
+    {
     }
 
 private:
@@ -175,7 +218,7 @@ pipepp::gui::pipeline_board::pipeline_board(const nana::window& wd, const nana::
         if (arg.left_button) {
             auto delta = cursor_pos - prv;
             auto tabbar_weight = m.tabbar_rate * size().width;
-            tabbar_weight = std::clamp<int>(tabbar_weight - delta.x, 5, size().width - 40);
+            tabbar_weight = std::clamp<int>(tabbar_weight - delta.x, 55, size().width - 40);
             m.tabbar_rate = tabbar_weight / size().width;
 
             m.layout.div(m.divtext());
@@ -229,6 +272,11 @@ pipepp::gui::pipeline_board::pipeline_board(const nana::window& wd, const nana::
 
     m.detail_panel_tab.close_fly(true);
     m.destroy_update_timer.elapse([&]() { m.destroy_update(), m.destroy_update_timer.stop(); });
+
+    typeface({"consolas", 11.0});
+
+    debug_data_subscriber(std::bind(&data_type::subscribe_update_notify, &m, std::placeholders::_1));
+    debug_data_unchecked(std::bind(&data_type::unsubscribe_notify, &m, std::placeholders::_1));
 }
 
 pipepp::gui::pipeline_board::~pipeline_board() = default;
@@ -453,6 +501,7 @@ void pipepp::gui::pipeline_board::reset_pipeline(std::shared_ptr<pipepp::detail:
                 for (size_t i = 0; i < m.detail_panel_tab.length(); ++i) {
                     if (m.detail_panel_tab.at(i)->view == view) {
                         m.detail_panel_tab.activated(i);
+                        m.detail_panel_tab.at(i)->panel->show();
                         break;
                     }
                 }

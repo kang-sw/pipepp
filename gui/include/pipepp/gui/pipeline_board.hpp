@@ -98,6 +98,7 @@ public:
 public:
     struct data_subscribe_arg : nana::event_arg {
         std::string_view category;
+        std::string_view pipe_name;
         execution_context_data::debug_data_entity const* debug_data;
 
         void expire() const { expired_ = true; }

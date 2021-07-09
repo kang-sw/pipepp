@@ -230,7 +230,7 @@ public:
 
     void width(unsigned v)
     {
-        if (v == ~unsigned{}) { v = 0; }
+        if (v > 1u << 31) { v = 10; }
         size({v, m.elem_height});
         for (auto& w : children_) { w->width(v); }
     }

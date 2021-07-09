@@ -85,19 +85,19 @@ pipepp::gui::pipe_detail_panel::pipe_detail_panel(nana::window owner)
     m.values.append_header("Name", header_div);
     m.values.append_header("Value", header_div);
     m.values.events().checked([&](nana::arg_listbox const& arg) {
-        if (arg.item.checked() == false) {
-            auto& unchecked_notify = m.board_ref->debug_data_unchecked;
-            if (unchecked_notify) {
-                auto proxy = m.pipeline.lock()->get_pipe(m.pipe);
-                unchecked_notify(proxy.name(), arg.item.value<execution_context_data::debug_data_entity>());
-            }
-        } else {
-            auto& notify = m.board_ref->debug_data_subscriber;
-            if (notify) {
-                auto proxy = m.pipeline.lock()->get_pipe(m.pipe);
-                notify(proxy.name(), arg.item.value<execution_context_data::debug_data_entity>());
-            }
-        }
+        //if (arg.item.checked() == false) {
+        //    auto& unchecked_notify = m.board_ref->debug_data_unchecked;
+        //    if (unchecked_notify) {
+        //        auto proxy = m.pipeline.lock()->get_pipe(m.pipe);
+        //        unchecked_notify(proxy.name(), arg.item.value<execution_context_data::debug_data_entity>());
+        //    }
+        //} else {
+        //    auto& notify = m.board_ref->debug_data_subscriber;
+        //    if (notify) {
+        //        auto proxy = m.pipeline.lock()->get_pipe(m.pipe);
+        //        notify(proxy.name(), arg.item.value<execution_context_data::debug_data_entity>());
+        //    }
+        //}
     });
     events().destroy([&](auto&) {
         for (auto item : m.values.at(0)) {
@@ -181,7 +181,7 @@ void pipepp::gui::pipe_detail_panel::update(std::shared_ptr<execution_context_da
 {
     auto& m = *impl_;
     m.debug_data._update(std::move(data));
-    return;
+#if 0
     auto proxy = m.pipeline.lock()->get_pipe(m.pipe);
 
     // -- 타이머 문자열 빌드
@@ -265,4 +265,5 @@ void pipepp::gui::pipe_detail_panel::update(std::shared_ptr<execution_context_da
         //    m.values.scroll(false, showing);
     } catch (std::exception&) {}
     m.values.auto_draw(true);
+#endif
 }

@@ -12,7 +12,7 @@ int main(void)
 
     pipepp::gui::pipeline_board board(fm, {}, true);
     fm["main"] << board;
-    board.debug_data_subscriber = [](std::string_view a, auto& b) { printf("hell, world! %s", a.data()); return true ; };
+    // board.debug_data_subscriber = [](std::string_view a, auto& b) { printf("hell, world! %s", a.data()); return true ; };
 
     auto pipe
       = build_pipeline();

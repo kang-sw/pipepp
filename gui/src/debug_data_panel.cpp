@@ -296,17 +296,21 @@ private:
     {
         if (is_timer_slot()) { return; }
         if (colapsed_or_subscribed_) {
-            auto subscriber = m.board_ref->debug_data_subscriber;
-            if (subscriber) {
-                auto& data = std::get<debug_data_desc>(slot_);
-                colapsed_or_subscribed_ = subscriber(category_, data);
-            }
+            auto& subscriber = m.board_ref->debug_data_subscriber;
+            auto& data = std::get<debug_data_desc>(slot_);
+            pipeline_board::data_subscribe_arg arg;
+            arg.category = category_;
+            arg.debug_data = &data;
+            subscriber.emit(arg, *this);
+
+            colapsed_or_subscribed_ = !arg.expired();
         } else if (handle_unchecked && !colapsed_or_subscribed_) {
-            auto uncheck_handler = m.board_ref->debug_data_unchecked;
-            if (uncheck_handler) {
-                auto& data = std::get<debug_data_desc>(slot_);
-                uncheck_handler(category_, data);
-            }
+            auto& uncheck_handler = m.board_ref->debug_data_unchecked;
+            auto& data = std::get<debug_data_desc>(slot_);
+            pipeline_board::data_subscribe_arg arg;
+            arg.category = category_;
+            arg.debug_data = &data;
+            uncheck_handler.emit(arg, *this);
         }
     }
 

@@ -96,11 +96,22 @@ public:
     nana::panel<true>& graph_panel();
 
 public:
+    struct data_subscribe_arg : nana::event_arg {
+        std::string_view category;
+        execution_context_data::debug_data_entity const* debug_data;
+
+        void expire() const { expired_ = true; }
+        bool expired() const { return expired_; }
+
+    private:
+        mutable bool expired_ = false;
+    };
+
     /**
      *
      */
-    std::function<bool(std::string_view, execution_context_data::debug_data_entity const&)> debug_data_subscriber;
-    std::function<void(std::string_view, execution_context_data::debug_data_entity const&)> debug_data_unchecked;
+    nana::basic_event<data_subscribe_arg> debug_data_subscriber;
+    nana::basic_event<data_subscribe_arg> debug_data_unchecked;
     std::function<void(pipe_id_t id, std::string_view key)> option_changed;
 
     nana::color main_connection_line_color = nana::colors::black;

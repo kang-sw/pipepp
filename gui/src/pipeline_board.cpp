@@ -438,8 +438,6 @@ void pipepp::gui::pipeline_board::reset_pipeline(std::shared_ptr<pipepp::detail:
                 auto details = view->create_panel(*this).lock();
                 m.detail_panel_tab.append(details->caption(), *details, std::make_shared<tabbar_entity>(view, details.get()));
                 details->move(nana::rectangle{m.tabwnd_placeholder.pos(), m.tabwnd_placeholder.size()});
-                m.tabbar_visible = true;
-                m.update_tabbar();
 
                 details->events().destroy([&](auto) {
                     for (size_t i = 0; i < m.detail_panel_tab.length(); ++i) {
@@ -459,6 +457,9 @@ void pipepp::gui::pipeline_board::reset_pipeline(std::shared_ptr<pipepp::detail:
                     }
                 }
             }
+
+            m.tabbar_visible = true;
+            m.update_tabbar();
         });
     }
 

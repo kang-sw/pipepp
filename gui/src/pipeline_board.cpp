@@ -7,8 +7,10 @@
 #include "nana/basic_types.hpp"
 #include "nana/gui/drawing.hpp"
 #include "nana/gui/widgets/group.hpp"
+#include "nana/gui/widgets/tabbar.hpp"
 #include "nana/paint/graphics.hpp"
 #include "pipepp/gui/basic_utility.hpp"
+#include "pipepp/gui/pipe_detail_panel.hpp"
 #include "pipepp/gui/pipe_view.hpp"
 #include "pipepp/pipeline.hpp"
 
@@ -26,13 +28,29 @@ struct line_desc {
     bool is_optional_connection;
 };
 
+struct tabbar_entity {
+    pipepp::gui::pipe_view* view = nullptr;
+    pipepp::gui::pipe_detail_panel* panel = nullptr;
+
+    ~tabbar_entity()
+    {
+        if (view) {
+            view->close_details();
+        }
+    }
+};
+
 struct pipepp::gui::pipeline_board::data_type {
+    data_type(pipeline_board& b)
+        : self(b)
+    {}
+
     pipeline_board& self;
     nana::drawing drawing{self};
 
     std::weak_ptr<detail::pipeline_base> pipe;
 
-    double zoom;
+    double zoom = 0;
     nana::point center;
 
     nana::size widget_default_size = {196, 100};
@@ -41,6 +59,37 @@ struct pipepp::gui::pipeline_board::data_type {
     std::vector<pipe_widget_desc> widgets;
     std::vector<nana::point> all_points;
     std::vector<line_desc> line_descriptions; // all_points
+
+    nana::panel<true> graph{nana::window{self}};
+    nana::panel<false> tabwnd_placeholder{nana::window{self}};
+    nana::button width_sizer{self};
+    bool tabbar_visible = true;
+    int tabbar_weight = 480;
+
+    nana::tabbar<std::shared_ptr<tabbar_entity>> detail_panel_tab{self};
+
+    nana::place layout{self};
+
+public:
+    std::string divtext()
+    {
+        constexpr auto DIV_notab = "<GRAPH><SIZER weight=10>";
+        constexpr auto DIV_tab = "<GRAPH>"
+                                 "<vert weight=10 <weight=20><SIZER><weight=20>>"
+                                 "<vert weight={0} <TABBAR weight=20><TABWND>>";
+        if (tabbar_visible) {
+            _cache.clear();
+            _cache.reserve(64);
+
+            std::format_to(std::back_inserter(_cache), DIV_tab, tabbar_weight);
+        } else {
+            return DIV_notab;
+        }
+        return std::move(_cache);
+    }
+
+private:
+    std::string _cache;
 };
 
 pipepp::gui::pipeline_board::pipeline_board(const nana::window& wd, const nana::rectangle& r, bool visible)
@@ -48,23 +97,23 @@ pipepp::gui::pipeline_board::pipeline_board(const nana::window& wd, const nana::
     , impl_(std::make_unique<data_type>(*this))
 {
 
-    auto& m = impl_;
+    auto& m = *impl_;
 
-    events().mouse_move([&, prev_mouse_pos_ = nana::point{}](nana::arg_mouse const& arg) mutable {
+    m.graph.events().mouse_move([&, prev_mouse_pos_ = nana::point{}](nana::arg_mouse const& arg) mutable {
         if (arg.left_button) {
             auto delta = arg.pos - prev_mouse_pos_;
-            m->center += delta;
+            m.center += delta;
             _update_widget_pos();
             nana::drawing{*this}.update();
         }
         prev_mouse_pos_ = arg.pos;
     });
 
-    nana::drawing{*this}.draw_diehard([&](nana::paint::graphics& gp) {
-        std::span<nana::point> all_pts{m->all_points};
-        auto offset = m->center;
+    nana::drawing{m.graph}.draw_diehard([&](nana::paint::graphics& gp) {
+        std::span<nana::point> all_pts{m.all_points};
+        auto offset = m.center;
 
-        for (auto& ld : m->line_descriptions) {
+        for (auto& ld : m.line_descriptions) {
             auto line_color = ld.is_optional_connection ? optional_connection_line_color : main_connection_line_color;
             auto points = all_pts.subspan(ld.index_offset + 1, ld.index_count - 1);
             auto begin_pt = all_pts[ld.index_offset] + offset;
@@ -76,6 +125,54 @@ pipepp::gui::pipeline_board::pipeline_board(const nana::window& wd, const nana::
             }
         }
     });
+
+    events().destroy([&m](auto&) {
+        for (size_t i = 0; i < m.detail_panel_tab.length(); ++i) {
+            m.detail_panel_tab.at(i)->view = nullptr;
+        }
+    });
+
+    m.layout["GRAPH"] << m.graph;
+    m.layout["SIZER"] << m.width_sizer;
+    m.layout["TABBAR"] << m.detail_panel_tab;
+    m.layout["TABWND"] << m.tabwnd_placeholder;
+
+    m.width_sizer.edge_effects(false);
+    m.width_sizer.caption("||");
+    m.width_sizer.borderless(true);
+    m.width_sizer.cursor(nana::cursor::size_we);
+
+    m.width_sizer.events().mouse_move([this, &m, prv = nana::point{}](nana::arg_mouse const& arg) mutable {
+        auto cursor_pos = m.width_sizer.pos() + arg.pos;
+        if (arg.left_button) {
+            auto delta = cursor_pos - prv;
+            m.tabbar_weight = std::clamp<int>(m.tabbar_weight - delta.x, 0, size().width - 40);
+
+            m.layout.div(m.divtext());
+            m.layout.collocate();
+        }
+        prv = cursor_pos;
+    });
+
+    m.tabwnd_placeholder.events().resized([&m](nana::arg_resized rz) {
+        nana::rectangle rt{m.tabwnd_placeholder.pos(), m.tabwnd_placeholder.size()};
+        for (size_t i = 0; i < m.detail_panel_tab.length(); ++i) {
+            m.detail_panel_tab.at(i)->panel->move(rt);
+        }
+    });
+
+    m.detail_panel_tab.events().tab_click([&m](auto) {
+        m.layout.div(m.divtext());
+        m.layout.collocate();
+    });
+
+    m.layout.div(m.divtext());
+    m.layout.collocate();
+
+    using kit_t = decltype(m.detail_panel_tab)::kits;
+    m.detail_panel_tab.toolbox(kit_t::scroll, true);
+    m.detail_panel_tab.toolbox(kit_t::list, true);
+    m.detail_panel_tab.toolbox(kit_t::close, true);
 }
 
 pipepp::gui::pipeline_board::~pipeline_board() = default;
@@ -176,6 +273,8 @@ void pipepp::gui::pipeline_board::_update_widget_pos()
 void pipepp::gui::pipeline_board::_m_bgcolor(const nana::color& color)
 {
     super::_m_bgcolor(color);
+    impl_->graph.bgcolor(color);
+    impl_->detail_panel_tab.bgcolor(color);
     for (auto& widget : impl_->widgets) {
         if (widget.view) {
             widget.view->bgcolor(color);
@@ -186,6 +285,8 @@ void pipepp::gui::pipeline_board::_m_bgcolor(const nana::color& color)
 void pipepp::gui::pipeline_board::_m_typeface(const nana::paint::font& font)
 {
     super::_m_typeface(font);
+    impl_->graph.typeface(font);
+    impl_->detail_panel_tab.typeface(font);
     for (auto& widget : impl_->widgets) {
         if (widget.view) {
             widget.view->typeface(font);
@@ -258,7 +359,7 @@ void pipepp::gui::pipeline_board::reset_pipeline(std::shared_ptr<pipepp::detail:
         elem.slot_sibling_order = slot.width;
         elem.slot_hierarchy_level = slot.height;
 
-        elem.view = std::make_unique<decltype(elem.view)::element_type>(*this, nana::rectangle{}, true);
+        elem.view = std::make_unique<decltype(elem.view)::element_type>(m.graph, nana::rectangle{}, true);
         elem.view->reset_view(pipeline, id);
         elem.view->size(m.widget_default_size);
 
@@ -266,11 +367,23 @@ void pipepp::gui::pipeline_board::reset_pipeline(std::shared_ptr<pipepp::detail:
         elem.view->bgcolor(bgcolor());
 
         // 디테일 뷰 띄우기
-        elem.view->btn_events().click([this, view = elem.view.get()](auto) {
+        elem.view->btn_events().click([this, view = elem.view.get(), &m](auto) {
+            //if (!view->details()) {
+            //    view->open_details(*view);
+            //} else {
+            //    view->close_details();
+            //}
             if (!view->details()) {
-                view->open_details(*view);
+                auto details = view->create_panel(*this).lock();
+                m.detail_panel_tab.append(details->caption(), *details, std::make_shared<tabbar_entity>(view, details.get()));
+                details->move(nana::rectangle{m.tabwnd_placeholder.pos(), m.tabwnd_placeholder.size()});
             } else {
-                view->close_details();
+                for (size_t i = 0; i < m.detail_panel_tab.length(); ++i) {
+                    if (m.detail_panel_tab.at(i)->view == view) {
+                        m.detail_panel_tab.activated(i);
+                        break;
+                    }
+                }
             }
         });
     }

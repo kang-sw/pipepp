@@ -14,7 +14,7 @@ class menu;
 }
 
 /**
- * PipelineÀÇ ¸ðµç ÆÄÀÌÇÁ ³ëµå¸¦ Ç¥½ÃÇÏ´Â GUI ¸ðµâÀÇ ÃÖ»óÀ§ Å¬·¡½ºÀÔ´Ï´Ù.
+ * Pipelineì˜ ëª¨ë“  íŒŒì´í”„ ë…¸ë“œë¥¼ í‘œì‹œí•˜ëŠ” GUI ëª¨ë“ˆì˜ ìµœìƒìœ„ í´ëž˜ìŠ¤ìž…ë‹ˆë‹¤.
  *
  * +------------------+
  * |  [panel]         |     +---------------+
@@ -43,22 +43,22 @@ class menu;
  */
 namespace pipepp::gui {
 /**
- * PipelineÀÇ ¸ðµç ÆÄÀÌÇÁ ³ëµå¸¦ Ç¥½ÃÇÏ´Â GUI ¸ðµâÀÇ ÃÖ»óÀ§ Å¬·¡½ºÀÔ´Ï´Ù.
- * ºäÆ÷Æ® ¹× ÇÏ´ÜÀÇ »óÅÂ ¹Ù·Î ±¸¼ºµÇ¾î ÀÖ½À´Ï´Ù.
- * ¸Þ´º ¹Ù´Â ºäÆ÷Æ®¿¡ embed µÇÁø ¾ÊÁö¸¸, ÁÖ ¸Þ´º¹Ù¿¡ attach °¡´ÉÇÕ´Ï´Ù.
+ * Pipelineì˜ ëª¨ë“  íŒŒì´í”„ ë…¸ë“œë¥¼ í‘œì‹œí•˜ëŠ” GUI ëª¨ë“ˆì˜ ìµœìƒìœ„ í´ëž˜ìŠ¤ìž…ë‹ˆë‹¤.
+ * ë·°í¬íŠ¸ ë° í•˜ë‹¨ì˜ ìƒíƒœ ë°”ë¡œ êµ¬ì„±ë˜ì–´ ìžˆìŠµë‹ˆë‹¤.
+ * ë©”ë‰´ ë°”ëŠ” ë·°í¬íŠ¸ì— embed ë˜ì§„ ì•Šì§€ë§Œ, ì£¼ ë©”ë‰´ë°”ì— attach ê°€ëŠ¥í•©ë‹ˆë‹¤.
  *
- * ºäÆ÷Æ®:
- *      ÆÄÀÌÇÁ¶óÀÎÀÇ °¢ ÆÄÀÌÇÁ¸¦ ¿¬°á ¼ø¼­¿¡ µû¶ó (Æ®¸® ÇüÅÂ·Î) Ç¥½ÃÇÕ´Ï´Ù.
- *      ÁÜ ¹× ½ºÆÐ´× ±â´ÉÀ» Á¦°øÇÏ¿©, ¸¶¿ì½º·Î µå·¡±×ÇÏ°Å³ª ÁÜÀ» ÅëÇØ ÀÏºÎ¸¸ °¡½ÃÈ­ÇÒ ¼ö ÀÖ½À´Ï´Ù.
- *      ÁÜ 100% ÀÏ ¶§¿Í ±× ÀÌÇÏÀÏ ¶§ °¢°¢ ÀÌº¥Æ®¸¦ Æ®¸®°Å ÇÏ¿©, ¿ä¾à ºä¿Í »ó¼¼ ºä »çÀÌ¸¦ ÀüÈ¯ÇÒ ¼ö ÀÖ½À´Ï´Ù.
- *          ¿ä¾à ºä: ÆÄÀÌÇÁ ÀÌ¸§, »óÅÂ Á¡µî
- *          »ó¼¼ ºä: ÆÄÀÌÇÁ ÀÌ¸§, ¼Ò¿ä ½Ã°£, »óÅÂ Á¡µî(idle: ÃÊ·Ï, running: »¡°­, suspended: °ËÁ¤)
+ * ë·°í¬íŠ¸:
+ *      íŒŒì´í”„ë¼ì¸ì˜ ê° íŒŒì´í”„ë¥¼ ì—°ê²° ìˆœì„œì— ë”°ë¼ (íŠ¸ë¦¬ í˜•íƒœë¡œ) í‘œì‹œí•©ë‹ˆë‹¤.
+ *      ì¤Œ ë° ìŠ¤íŒ¨ë‹ ê¸°ëŠ¥ì„ ì œê³µí•˜ì—¬, ë§ˆìš°ìŠ¤ë¡œ ë“œëž˜ê·¸í•˜ê±°ë‚˜ ì¤Œì„ í†µí•´ ì¼ë¶€ë§Œ ê°€ì‹œí™”í•  ìˆ˜ ìžˆìŠµë‹ˆë‹¤.
+ *      ì¤Œ 100% ì¼ ë•Œì™€ ê·¸ ì´í•˜ì¼ ë•Œ ê°ê° ì´ë²¤íŠ¸ë¥¼ íŠ¸ë¦¬ê±° í•˜ì—¬, ìš”ì•½ ë·°ì™€ ìƒì„¸ ë·° ì‚¬ì´ë¥¼ ì „í™˜í•  ìˆ˜ ìžˆìŠµë‹ˆë‹¤.
+ *          ìš”ì•½ ë·°: íŒŒì´í”„ ì´ë¦„, ìƒíƒœ ì ë“±
+ *          ìƒì„¸ ë·°: íŒŒì´í”„ ì´ë¦„, ì†Œìš” ì‹œê°„, ìƒíƒœ ì ë“±(idle: ì´ˆë¡, running: ë¹¨ê°•, suspended: ê²€ì •)
  *
  *
- *      ÆÄÀÌÇÁ ºä:
- *          ÆÄÀÌÇÁ Á¤º¸¸¦ ¿ä¾àÇÕ´Ï´Ù. ¿ä¾à ºä¿Í »ó¼¼ ºä µÎ °¡Áö ¸ðµå¸¦ Á¦°øÇÏ¸ç, ºäÆ÷Æ®ÀÇ ÁÜ »óÅÂ¿¡ µû¶ó
- *           µÎ ¸ðµå »çÀÌ¿¡ ÀüÈ¯ÀÌ ÀÏ¾î³³´Ï´Ù. Å¬¸¯ ½Ã µðÅ×ÀÏ ÆÐ³ÎÀÌ ÆË¾÷µÇ¸ç, ÆÄÀÌÇÁ ¿É¼Ç ¼³Á¤, µð¹ö±× µ¥ÀÌÅÍ
- *           È®ÀÎ, °èÃø ½Ã°£ È®ÀÎ µîÀÌ °¡´ÉÇÕ´Ï´Ù.
+ *      íŒŒì´í”„ ë·°:
+ *          íŒŒì´í”„ ì •ë³´ë¥¼ ìš”ì•½í•©ë‹ˆë‹¤. ìš”ì•½ ë·°ì™€ ìƒì„¸ ë·° ë‘ ê°€ì§€ ëª¨ë“œë¥¼ ì œê³µí•˜ë©°, ë·°í¬íŠ¸ì˜ ì¤Œ ìƒíƒœì— ë”°ë¼
+ *           ë‘ ëª¨ë“œ ì‚¬ì´ì— ì „í™˜ì´ ì¼ì–´ë‚©ë‹ˆë‹¤. í´ë¦­ ì‹œ ë””í…Œì¼ íŒ¨ë„ì´ íŒì—…ë˜ë©°, íŒŒì´í”„ ì˜µì…˜ ì„¤ì •, ë””ë²„ê·¸ ë°ì´í„°
+ *           í™•ì¸, ê³„ì¸¡ ì‹œê°„ í™•ì¸ ë“±ì´ ê°€ëŠ¥í•©ë‹ˆë‹¤.
  */
 class pipeline_board : public nana::panel<true> {
 public:
@@ -69,23 +69,23 @@ public:
     ~pipeline_board();
 
     /**
-     * ¸Þ´º¿¡ ±â´ÉÀ» ¿¬°áÇÕ´Ï´Ù.
+     * ë©”ë‰´ì— ê¸°ëŠ¥ì„ ì—°ê²°í•©ë‹ˆë‹¤.
      */
     void build_menu(nana::menu&) const;
 
 public:
     /**
-     * ÀÎÅÍÆäÀÌ½º ÇÒ ÆÄÀÌÇÁ¶óÀÎÀ» ÁöÁ¤ÇÕ´Ï´Ù.
+     * ì¸í„°íŽ˜ì´ìŠ¤ í•  íŒŒì´í”„ë¼ì¸ì„ ì§€ì •í•©ë‹ˆë‹¤.
      */
     void reset_pipeline(std::shared_ptr<detail::pipeline_base> pipeline);
 
     /**
-     * ÆÄÀÌÇÁ¶óÀÎ ºä Á¤º¸ ¾÷µ¥ÀÌÆ® ½ÅÈ£ º¸³»±â
+     * íŒŒì´í”„ë¼ì¸ ë·° ì •ë³´ ì—…ë°ì´íŠ¸ ì‹ í˜¸ ë³´ë‚´ê¸°
      */
     void update();
 
     /**
-     * ÁßÁ¡ À§Ä¡ °­Á¦ º¯°æ
+     * ì¤‘ì  ìœ„ì¹˜ ê°•ì œ ë³€ê²½
      */
     void center(nana::point = {});
     nana::point center() const;

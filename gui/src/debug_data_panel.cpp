@@ -1,8 +1,8 @@
 #include "pipepp/gui/debug_data_panel.hpp"
 #include <cassert>
+#include <format>
 #include <iterator>
 #include <variant>
-#include <format>
 
 #include "nana/basic_types.hpp"
 #include "nana/gui/drawing.hpp"
@@ -139,7 +139,7 @@ public:
             using namespace std::chrono;
 
             std::format_to(insert(str_left), "{0:>{1}}{3} {2} ", "",
-                      level * m.indent, data.name, colapsed_or_subscribed_ ? '=' : '|');
+                           level * m.indent, data.name, colapsed_or_subscribed_ ? '=' : '|');
             std::format_to(insert(str_right), "{0:.4f} ms", duration<double, std::milli>{data.elapsed}.count());
 
             // timer color set
@@ -184,13 +184,13 @@ public:
 
             text_.fgcolor(is_obsolete()
                             ? colors::dim_gray
-                            : colapsed_or_subscribed_
-                                ? colors::yellow
-                                : std::get_if<std::any>(&data.data)
-                                    ? colors::orange
-                                    : std::get_if<std::string>(&data.data)
-                                        ? color(204, 102, 0)
-                                        : colors::green);
+                          : colapsed_or_subscribed_
+                            ? colors::yellow
+                          : std::get_if<std::any>(&data.data)
+                            ? colors::orange
+                          : std::get_if<std::string>(&data.data)
+                            ? color(204, 102, 0)
+                            : colors::green);
             text_.bgcolor(colapsed_or_subscribed_ ? colors::dark_green : colors::black);
         }
 
@@ -230,6 +230,7 @@ public:
 
     void width(unsigned v)
     {
+        if (v == ~unsigned{}) { v = 0; }
         size({v, m.elem_height});
         for (auto& w : children_) { w->width(v); }
     }

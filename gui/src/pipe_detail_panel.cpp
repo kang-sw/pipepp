@@ -45,8 +45,14 @@ pipepp::gui::pipe_detail_panel::pipe_detail_panel(nana::window owner)
 {
     auto& m = *impl_;
 
-    auto hnd_pipe_board = nana::API::get_parent_window(owner);
-    auto pipe_board = dynamic_cast<pipeline_board*>(nana::API::get_widget(hnd_pipe_board));
+    nana::window hnd_pipe_board = owner;
+    pipeline_board* pipe_board = nullptr;
+    do {
+        pipe_board = dynamic_cast<pipeline_board*>(nana::API::get_widget(hnd_pipe_board));
+        hnd_pipe_board = nana::API::get_parent_window(hnd_pipe_board);
+    } while (hnd_pipe_board != nullptr && pipe_board == nullptr);
+
+    assert(!!pipe_board);
     m.board_ref = pipe_board;
     m.debug_data._set_board_ref(m.board_ref);
 

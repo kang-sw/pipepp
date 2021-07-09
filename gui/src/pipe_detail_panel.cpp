@@ -37,8 +37,10 @@ struct pipepp::gui::pipe_detail_panel::data_type {
     nana::listbox values{self};
 };
 
-pipepp::gui::pipe_detail_panel::pipe_detail_panel(nana::window owner, const nana::rectangle& rectangle, const nana::appearance& appearance)
-    : form(rectangle, appearance)
+pipepp::gui::pipe_detail_panel::pipe_detail_panel(nana::window owner)
+    : /*form(rectangle, appearance)
+    , */
+    panel(owner, true)
     , impl_(std::make_unique<data_type>(*this))
 {
     auto& m = *impl_;
@@ -91,7 +93,7 @@ pipepp::gui::pipe_detail_panel::pipe_detail_panel(nana::window owner, const nana
             }
         }
     });
-    events().unload([&](auto&) {
+    events().destroy([&](auto&) {
         for (auto item : m.values.at(0)) {
             item.check(false);
         }

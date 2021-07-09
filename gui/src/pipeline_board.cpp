@@ -121,23 +121,23 @@ void pipepp::gui::pipeline_board::_clear_views()
 
 void pipepp::gui::pipeline_board::_calc_hierarchical_node_positions(pipepp::detail::pipe_proxy_base root_proxy, std::unordered_multimap<pipepp::pipe_id_t, pipepp::pipe_id_t>& connections, std::map<pipepp::pipe_id_t, nana::size>& positions)
 {
-    // 1. °èÃş ±¸Á¶ °è»ê ¹æ½Ä
-    //      1. ·çÆ® ÇÁ·Ï½ÃºÎÅÍ ÀÚ¼Õ ÇÁ·Ï½Ã·Î iterateÇØ ¸¶ÁÖÄ¡´Â ¸ğµç id¸¦ hierarchy_occurencesÀÇ
-    //        ´ëÀÀµÇ´Â ÀÎµ¦½º¿¡ ³Ö½À´Ï´Ù. ÇØ´ç ¹è¿­ÀÇ ÀÎµ¦½º´Â °èÃş ³ôÀÌ¸¦ ÀÇ¹ÌÇÕ´Ï´Ù.
-    //       . ¶ÇÇÑ, id °¢°¢ÀÌ µîÀåÇÏ´Â ÃÖ´ë °èÃş ¹øÈ£¸¦ ÁöÁ¤ÇÕ´Ï´Ù.
-    //       . hierarchy_occurrences¿¡¼­, ÇØ´ç hierarchy index¿Í max_hierarchyÀÇ °ªÀÌ °°Àº
-    //        °æ¿ì¿¡¸¸ ÀÎ½ºÅÏ½º°¡ Á¸ÀçÇÕ´Ï´Ù.
-    //      2. ·»´õ¸µ ½Ã, ¼öÆò ¹æÇâÀÌ hierarchyÀÇ ±íÀÌ°¡ µË´Ï´Ù.
-    //       . ¼öÁ÷ ¹æÇâÀº À§¿¡¼­ºÎÅÍ ¾Æ·¡·Î ³»·Á¿À´Â ¹æ½ÄÀ» ÃëÇÏ´Âµ¥, ¼öÁ÷ ¹æÇâÀÇ ³ôÀÌ´Â
-    //        hierarchy_occurences¿¡¼­ °¡Àå ¸ÕÀú ÇØ´ç id°¡ ³ªÅ¸³ª´Â ÁöÁ¡À¸·Î ¼³Á¤ÇÕ´Ï´Ù.
-    //        ´Ü, »ó±âÇÑ ¹Ù¿Í °°ÀÌ ¸ÕÀú max_hierarchy°¡ ÀÏÄ¡ÇØ¾ß ÇÕ´Ï´Ù.
+    // 1. ê³„ì¸µ êµ¬ì¡° ê³„ì‚° ë°©ì‹
+    //      1. ë£¨íŠ¸ í”„ë¡ì‹œë¶€í„° ìì† í”„ë¡ì‹œë¡œ iterateí•´ ë§ˆì£¼ì¹˜ëŠ” ëª¨ë“  idë¥¼ hierarchy_occurencesì˜
+    //        ëŒ€ì‘ë˜ëŠ” ì¸ë±ìŠ¤ì— ë„£ìŠµë‹ˆë‹¤. í•´ë‹¹ ë°°ì—´ì˜ ì¸ë±ìŠ¤ëŠ” ê³„ì¸µ ë†’ì´ë¥¼ ì˜ë¯¸í•©ë‹ˆë‹¤.
+    //       . ë˜í•œ, id ê°ê°ì´ ë“±ì¥í•˜ëŠ” ìµœëŒ€ ê³„ì¸µ ë²ˆí˜¸ë¥¼ ì§€ì •í•©ë‹ˆë‹¤.
+    //       . hierarchy_occurrencesì—ì„œ, í•´ë‹¹ hierarchy indexì™€ max_hierarchyì˜ ê°’ì´ ê°™ì€
+    //        ê²½ìš°ì—ë§Œ ì¸ìŠ¤í„´ìŠ¤ê°€ ì¡´ì¬í•©ë‹ˆë‹¤.
+    //      2. ë Œë”ë§ ì‹œ, ìˆ˜í‰ ë°©í–¥ì´ hierarchyì˜ ê¹Šì´ê°€ ë©ë‹ˆë‹¤.
+    //       . ìˆ˜ì§ ë°©í–¥ì€ ìœ„ì—ì„œë¶€í„° ì•„ë˜ë¡œ ë‚´ë ¤ì˜¤ëŠ” ë°©ì‹ì„ ì·¨í•˜ëŠ”ë°, ìˆ˜ì§ ë°©í–¥ì˜ ë†’ì´ëŠ”
+    //        hierarchy_occurencesì—ì„œ ê°€ì¥ ë¨¼ì € í•´ë‹¹ idê°€ ë‚˜íƒ€ë‚˜ëŠ” ì§€ì ìœ¼ë¡œ ì„¤ì •í•©ë‹ˆë‹¤.
+    //        ë‹¨, ìƒê¸°í•œ ë°”ì™€ ê°™ì´ ë¨¼ì € max_hierarchyê°€ ì¼ì¹˜í•´ì•¼ í•©ë‹ˆë‹¤.
     //
     using namespace std;
     using detail::pipe_proxy_base;
     set<pipe_id_t> visit_mask;
     auto recursive_build_tree
       = [&](auto& recall, pipe_proxy_base const& proxy, size_t width, size_t hierarchy) -> size_t {
-        // post-order recursive ¿¬»êÀ» ÅëÇØ ´ÙÀ½ ºê·£Ä¡ÀÇ ¿ÀÇÁ¼ÂÀ» ±¸ÇÕ´Ï´Ù.
+        // post-order recursive ì—°ì‚°ì„ í†µí•´ ë‹¤ìŒ ë¸Œëœì¹˜ì˜ ì˜¤í”„ì…‹ì„ êµ¬í•©ë‹ˆë‹¤.
         size_t output_index = 0, num_output_link = proxy.num_output_nodes();
         for (size_t valid_output_index = 0; output_index < num_output_link; ++output_index) {
             auto output = proxy.get_output_node(output_index);
@@ -145,8 +145,8 @@ void pipepp::gui::pipeline_board::_calc_hierarchical_node_positions(pipepp::deta
             connections.emplace(proxy.id(), output.id());
 
             if (visit_mask.emplace(output.id()).second) {
-                // Ã³À½ ¸¶ÁÖÄ¡´Â ³ëµå¿¡ ´ëÇØ¼­¸¸ Àç±ÍÀûÀ¸·Î Å½»öÀ» ¼öÇàÇÕ´Ï´Ù.
-                // ³ëµåÀÇ ³Êºñ¸¦ 1¾¿ Àç±ÍÀûÀ¸·Î Áõ°¡½ÃÅµ´Ï´Ù.
+                // ì²˜ìŒ ë§ˆì£¼ì¹˜ëŠ” ë…¸ë“œì— ëŒ€í•´ì„œë§Œ ì¬ê·€ì ìœ¼ë¡œ íƒìƒ‰ì„ ìˆ˜í–‰í•©ë‹ˆë‹¤.
+                // ë…¸ë“œì˜ ë„ˆë¹„ë¥¼ 1ì”© ì¬ê·€ì ìœ¼ë¡œ ì¦ê°€ì‹œí‚µë‹ˆë‹¤.
                 position.width = (int)width + (valid_output_index > 0);
                 width = recall(recall, output, width + (valid_output_index > 0), hierarchy + 1);
                 ++valid_output_index;
@@ -196,11 +196,11 @@ void pipepp::gui::pipeline_board::_m_typeface(const nana::paint::font& font)
 void pipepp::gui::pipeline_board::reset_pipeline(std::shared_ptr<pipepp::detail::pipeline_base> pipeline)
 {
     // TODO
-    // 0. ÀÌ¹Ì Á¸ÀçÇÏ´Â pipe_view °³Ã¼¸¦ ¸ğµÎ ¼Ò°ÅÇÕ´Ï´Ù.
-    // 1. pipelineÀÇ Ã¹ pipe_proxyºÎÅÍ iterateÇÏ¿©, °èÃş Á¤º¸¸¦ ¼öÁıÇÕ´Ï´Ù.
-    // 2. °èÃş Á¤º¸¸¦ ¹ÙÅÁÀ¸·Î °¢ À§Á¬ÀÇ À§Ä¡¸¦ °è»êÇÕ´Ï´Ù.
-    // 3. °¢ À§Á¬À» ¿¬°áÇÏ´Â Á÷¼± Á¤º¸¸¦ ºôµåÇÕ´Ï´Ù.
-    // 4. ¸ğµç À§Á¬À» ½ºÆùÇÏ°í, ´ëÀÀµÇ´Â ÆÄÀÌÇÁ¸¦ °ø±ŞÇÕ´Ï´Ù.
+    // 0. ì´ë¯¸ ì¡´ì¬í•˜ëŠ” pipe_view ê°œì²´ë¥¼ ëª¨ë‘ ì†Œê±°í•©ë‹ˆë‹¤.
+    // 1. pipelineì˜ ì²« pipe_proxyë¶€í„° iterateí•˜ì—¬, ê³„ì¸µ ì •ë³´ë¥¼ ìˆ˜ì§‘í•©ë‹ˆë‹¤.
+    // 2. ê³„ì¸µ ì •ë³´ë¥¼ ë°”íƒ•ìœ¼ë¡œ ê° ìœ„ì ¯ì˜ ìœ„ì¹˜ë¥¼ ê³„ì‚°í•©ë‹ˆë‹¤.
+    // 3. ê° ìœ„ì ¯ì„ ì—°ê²°í•˜ëŠ” ì§ì„  ì •ë³´ë¥¼ ë¹Œë“œí•©ë‹ˆë‹¤.
+    // 4. ëª¨ë“  ìœ„ì ¯ì„ ìŠ¤í°í•˜ê³ , ëŒ€ì‘ë˜ëŠ” íŒŒì´í”„ë¥¼ ê³µê¸‰í•©ë‹ˆë‹¤.
     auto& m = *impl_;
 
     // 0.
@@ -219,9 +219,9 @@ void pipepp::gui::pipeline_board::reset_pipeline(std::shared_ptr<pipepp::detail:
     map<pipe_id_t, nana::size> positions;
     _calc_hierarchical_node_positions(root_proxy, connections, positions);
 
-    // 3. ¿¬°á Á¤º¸¸¦ Á÷¼± ÁıÇÕÀ¸·Î ¸¸µì´Ï´Ù.
-    //  . ÃßÈÄ, º¹ÀâÇÑ °î¼± µîÀÇ Á¡ Á¤º¸¸¦ ¸¸µé °¡´É¼ºÀ» ¿°µÎ¿¡ µÎ°í, Á¡ ¸ñ·Ï°ú Á÷¼± Á¤º¸¸¦
-    //   ºĞ¸®ÇÏ¿´½À´Ï´Ù.
+    // 3. ì—°ê²° ì •ë³´ë¥¼ ì§ì„  ì§‘í•©ìœ¼ë¡œ ë§Œë“­ë‹ˆë‹¤.
+    //  . ì¶”í›„, ë³µì¡í•œ ê³¡ì„  ë“±ì˜ ì  ì •ë³´ë¥¼ ë§Œë“¤ ê°€ëŠ¥ì„±ì„ ì—¼ë‘ì— ë‘ê³ , ì  ëª©ë¡ê³¼ ì§ì„  ì •ë³´ë¥¼
+    //   ë¶„ë¦¬í•˜ì˜€ìŠµë‹ˆë‹¤.
     {
         auto gap = m.widget_default_size + m.widget_default_gap;
         map<pipe_id_t, int> slot_order_from;
@@ -251,7 +251,7 @@ void pipepp::gui::pipeline_board::reset_pipeline(std::shared_ptr<pipepp::detail:
         }
     }
 
-    // 4. À§Á¬À» ½ºÆùÇÏ°í ÆÄÀÌÇÁ Á¤º¸¸¦ ÀÔ·ÂÇÕ´Ï´Ù.
+    // 4. ìœ„ì ¯ì„ ìŠ¤í°í•˜ê³  íŒŒì´í”„ ì •ë³´ë¥¼ ì…ë ¥í•©ë‹ˆë‹¤.
     for (auto const& [id, slot] : positions) {
         auto& elem = m.widgets.emplace_back();
         elem.pipe_id = id;
@@ -264,6 +264,15 @@ void pipepp::gui::pipeline_board::reset_pipeline(std::shared_ptr<pipepp::detail:
 
         elem.view->typeface({"consolas", 11.0});
         elem.view->bgcolor(bgcolor());
+
+        // ë””í…Œì¼ ë·° ë„ìš°ê¸°
+        elem.view->btn_events().click([this, view = elem.view.get()](auto) {
+            if (!view->details()) {
+                view->open_details(*view);
+            } else {
+                view->close_details();
+            }
+        });
     }
 
     _update_widget_pos();

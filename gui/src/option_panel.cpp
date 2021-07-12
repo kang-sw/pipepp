@@ -324,7 +324,7 @@ void pipepp::gui::option_panel::reload(std::weak_ptr<detail::pipeline_base> pl, 
 
             if (category_name[0] == '.') { category_name.erase(0, 1); };
             item = item.empty() ? tree.insert(name, std::move(category_name)) : item.append(name, std::move(category_name));
-            item.expand(item.level() < 2);
+            item.expand(true);
         }
 
         item = item.empty() ? tree.insert(std::move(key), "") : item.append(std::move(key), "");

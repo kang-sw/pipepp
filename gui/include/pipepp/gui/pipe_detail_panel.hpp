@@ -1,7 +1,8 @@
 #pragma once
 #include <memory>
 
-#include "nana/gui/widgets/form.hpp"
+#include "nana/gui/place.hpp"
+#include "nana/gui/widgets/panel.hpp"
 #include "pipepp/execution_context.hpp"
 #include "pipepp/options.hpp"
 
@@ -19,18 +20,22 @@ class pipeline_base;
 
 namespace pipepp::gui {
 /**
- * ´ÜÀÏ ÆÄÀÌÇÁÀÇ ¿É¼ÇÀ» ¹× µğ¹ö±× µ¥ÀÌÅÍ¸¦ Ç¥½ÃÇÕ´Ï´Ù.
+ * ë‹¨ì¼ íŒŒì´í”„ì˜ ì˜µì…˜ì„ ë° ë””ë²„ê·¸ ë°ì´í„°ë¥¼ í‘œì‹œí•©ë‹ˆë‹¤.
  */
-class pipe_detail_panel : public nana::form {
-    using super = nana::form;
+class pipe_detail_panel : public nana::panel<false> {
+    using super = nana::panel;
 
 public:
-    pipe_detail_panel(nana::window owner, const nana::rectangle& rectangle, const nana::appearance& appearance);
-    ~pipe_detail_panel();
+    pipe_detail_panel(nana::window owner);
+    ~pipe_detail_panel() override;
 
 public:
     void reset_pipe(std::weak_ptr<detail::pipeline_base> pl, pipe_id_t id);
     void update(std::shared_ptr<execution_context_data>);
+
+    void div(std::string s) { _place.div(std::move(s)); }
+    void collocate() { _place.collocate(); }
+    auto& operator[](char const* s) { return _place[s]; }
 
 public:
     size_t num_timer_text_view_horizontal_chars = 58;
@@ -38,6 +43,8 @@ public:
 private:
     struct data_type;
     std::unique_ptr<data_type> impl_;
+
+    nana::place _place{*this};
 };
 
 } // namespace pipepp::gui

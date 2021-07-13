@@ -1,6 +1,6 @@
 #include <bitset>
 #include <cassert>
-#include "fmt/format.h"
+#include <format>
 #include "kangsw/helpers/enum_arithmetic.hxx"
 #include "kangsw/helpers/hash_index.hxx"
 #include "kangsw/helpers/misc.hxx"
@@ -45,7 +45,7 @@ void pipepp::detail::pipe_base::input_slot_t::_propagate_fence_abortion(fence_in
         if (query_result.value() && link_input._submit_input(pending_fence, owner_.id(), {}, {}, true)) {
             ++output_link_index;
         } else {
-            while (!link_input._wait_for_executor());
+            for (size_t n_wait = 50; !link_input._wait_for_executor() && n_wait > 0; --n_wait) {}
         }
     } else {
         ++output_link_index;
@@ -73,7 +73,7 @@ bool pipepp::detail::pipe_base::executor_slot::_wait_ready(std::chrono::millisec
     }
 
     std::unique_lock _lock{done_notify_.second};
-    if ( !_is_busy() ) { return true; } // Mutex 잠그는 동안 끝났을 가능성 ...
+    if (!_is_busy()) { return true; } // Mutex 잠그는 동안 끝났을 가능성 ...
     return done_notify_.first.wait_for(_lock, duration, [this]() { return !_is_busy(); });
 }
 
@@ -113,7 +113,7 @@ void pipepp::detail::pipe_base::executor_slot::_launch_callback()
     PIPEPP_ELAPSE_BLOCK("A. Executor Run Time")
     {
         latest_execution_result_.store(
-          exec_res = executor()->invoke__(cached_input_, cached_output_),
+          exec_res = executor()->invoke__(*fence_object_, cached_input_, cached_output_),
           std::memory_order_relaxed);
     }
 
@@ -188,7 +188,7 @@ void pipepp::detail::pipe_base::executor_slot::_perform_output_link(size_t outpu
         using namespace std::chrono;
         auto delay = 0us;
 
-        PIPEPP_ELAPSE_SCOPE_DYNAMIC(fmt::format(":: [{}]", link.pipe->name()).c_str());
+        PIPEPP_ELAPSE_SCOPE_DYNAMIC(std::format(":: [{}]", link.pipe->name()).c_str());
         if (link.pipe->is_launched() == false) {
             throw pipe_exception("linked pipe is not launched yet!");
         }

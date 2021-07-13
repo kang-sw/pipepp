@@ -3,7 +3,7 @@
 #include <chrono>
 #include <functional>
 
-#include "fmt/format.h"
+#include <format>
 #include "nana/basic_types.hpp"
 #include "nana/gui/drawing.hpp"
 #include "nana/gui/programming_interface.hpp"
@@ -37,14 +37,22 @@ struct pipepp::gui::pipe_detail_panel::data_type {
     nana::listbox values{self};
 };
 
-pipepp::gui::pipe_detail_panel::pipe_detail_panel(nana::window owner, const nana::rectangle& rectangle, const nana::appearance& appearance)
-    : form(rectangle, appearance)
+pipepp::gui::pipe_detail_panel::pipe_detail_panel(nana::window owner)
+    : /*form(rectangle, appearance)
+    , */
+    panel(owner, true)
     , impl_(std::make_unique<data_type>(*this))
 {
     auto& m = *impl_;
 
-    auto hnd_pipe_board = nana::API::get_parent_window(owner);
-    auto pipe_board = dynamic_cast<pipeline_board*>(nana::API::get_widget(hnd_pipe_board));
+    nana::window hnd_pipe_board = owner;
+    pipeline_board* pipe_board = nullptr;
+    do {
+        pipe_board = dynamic_cast<pipeline_board*>(nana::API::get_widget(hnd_pipe_board));
+        hnd_pipe_board = nana::API::get_parent_window(hnd_pipe_board);
+    } while (hnd_pipe_board != nullptr && pipe_board == nullptr);
+
+    assert(!!pipe_board);
     m.board_ref = pipe_board;
     m.debug_data._set_board_ref(m.board_ref);
 
@@ -77,21 +85,21 @@ pipepp::gui::pipe_detail_panel::pipe_detail_panel(nana::window owner, const nana
     m.values.append_header("Name", header_div);
     m.values.append_header("Value", header_div);
     m.values.events().checked([&](nana::arg_listbox const& arg) {
-        if (arg.item.checked() == false) {
-            auto& unchecked_notify = m.board_ref->debug_data_unchecked;
-            if (unchecked_notify) {
-                auto proxy = m.pipeline.lock()->get_pipe(m.pipe);
-                unchecked_notify(proxy.name(), arg.item.value<execution_context_data::debug_data_entity>());
-            }
-        } else {
-            auto& notify = m.board_ref->debug_data_subscriber;
-            if (notify) {
-                auto proxy = m.pipeline.lock()->get_pipe(m.pipe);
-                notify(proxy.name(), arg.item.value<execution_context_data::debug_data_entity>());
-            }
-        }
+        //if (arg.item.checked() == false) {
+        //    auto& unchecked_notify = m.board_ref->debug_data_unchecked;
+        //    if (unchecked_notify) {
+        //        auto proxy = m.pipeline.lock()->get_pipe(m.pipe);
+        //        unchecked_notify(proxy.name(), arg.item.value<execution_context_data::debug_data_entity>());
+        //    }
+        //} else {
+        //    auto& notify = m.board_ref->debug_data_subscriber;
+        //    if (notify) {
+        //        auto proxy = m.pipeline.lock()->get_pipe(m.pipe);
+        //        notify(proxy.name(), arg.item.value<execution_context_data::debug_data_entity>());
+        //    }
+        //}
     });
-    events().unload([&](auto&) {
+    events().destroy([&](auto&) {
         for (auto item : m.values.at(0)) {
             item.check(false);
         }
@@ -173,7 +181,7 @@ void pipepp::gui::pipe_detail_panel::update(std::shared_ptr<execution_context_da
 {
     auto& m = *impl_;
     m.debug_data._update(std::move(data));
-    return;
+#if 0
     auto proxy = m.pipeline.lock()->get_pipe(m.pipe);
 
     // -- 타이머 문자열 빌드
@@ -184,7 +192,7 @@ void pipepp::gui::pipe_detail_panel::update(std::shared_ptr<execution_context_da
         std::string text;
         text.reserve(1024);
         auto& timers = data->timers;
-        fmt::format_to(std::back_inserter(text), "{0:<{1}}\n", "", horizontal_chars + 3);
+        std::format_to(std::back_inserter(text), "{0:<{1}}\n", "", horizontal_chars + 3);
 
         auto left_chars = horizontal_chars - 15;
 
@@ -206,7 +214,7 @@ void pipepp::gui::pipe_detail_panel::update(std::shared_ptr<execution_context_da
         for (size_t line = 1; auto& tm : timers) {
             auto left_indent = tm.category_level;
 
-            fmt::format_to(
+            std::format_to(
               std::back_inserter(text),
               "|{0:<{3}}{1:.<{4}}{2:.>15.4f} ms\n", "",
               tm.name, 1000.0 * std::chrono::duration<double>{tm.elapsed}.count(),
@@ -257,4 +265,5 @@ void pipepp::gui::pipe_detail_panel::update(std::shared_ptr<execution_context_da
         //    m.values.scroll(false, showing);
     } catch (std::exception&) {}
     m.values.auto_draw(true);
+#endif
 }

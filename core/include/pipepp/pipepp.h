@@ -49,6 +49,8 @@ using options = const detail::option_base;
     };                                                                         \
     struct CLASS : ___category_##CLASS
 
+#define PIPEPP_CATEGORY_S(CLASS) PIPEPP_CATEGORY(CLASS, #CLASS)
+
 #define ___PIPEPP_OPTION_4(NAME, VALUE, DESC, VERIFY) PIPEPP_OPTION_CAT_DESC(NAME, VALUE, DESC, VERIFY)
 #define ___PIPEPP_OPTION_3(NAME, VALUE, DESC) PIPEPP_OPTION_CAT_DESC(NAME, VALUE, DESC)
 #define ___PIPEPP_OPTION_2(NAME, VALUE) PIPEPP_OPTION_CAT(NAME, VALUE)

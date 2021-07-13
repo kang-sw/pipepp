@@ -1,5 +1,5 @@
 #include <chrono>
-#include "fmt/format.h"
+#include <format>
 #include "kangsw/helpers/misc.hxx"
 #include "kangsw/helpers/zip.hxx"
 #include "nana/basic_types.hpp"
@@ -12,9 +12,16 @@
 #include "pipepp/gui/pipe_detail_panel.hpp"
 #include "pipepp/gui/pipe_view.hpp"
 
+#include "kangsw/helpers/optional.hxx"
+#include "nana/gui/widgets/form.hpp"
 #include "nana/gui/widgets/label.hpp"
+#include "nana/gui/widgets/menu.hpp"
 #include "pipepp/gui/pipeline_board.hpp"
 #include "pipepp/pipeline.hpp"
+
+namespace nana {
+class form;
+}
 
 using clock_type = std::chrono::system_clock;
 
@@ -27,6 +34,9 @@ struct pipepp::gui::pipe_view::data_type {
 
     std::shared_ptr<execution_context_data> exec_data;
     std::shared_ptr<pipe_detail_panel> detail_view;
+    std::unique_ptr<nana::form> detail_view_form;
+
+    kangsw::optional<nana::menu> rclick_menu;
 
     nana::place layout{self};
     nana::panel<true> title{self};
@@ -63,11 +73,11 @@ void pipepp::gui::pipe_view::_label_events()
         auto tweak = proxy.tweaks();
         auto backcolor = proxy.is_paused()
                            ? nana::colors::dark_red
-                           : m.upper_node_paused
-                               ? nana::colors::yellow
-                               : tweak.selective_input
-                                   ? nana::color(43, 100, 64)
-                                   : nana::color(64, 33, 64);
+                         : m.upper_node_paused
+                           ? nana::colors::yellow
+                         : tweak.selective_input
+                           ? nana::color(43, 100, 64)
+                           : nana::color(64, 33, 64);
 
         auto bottomcolor = tweak.selective_output
                              ? nana::color(35, 48, 121)
@@ -95,12 +105,32 @@ void pipepp::gui::pipe_view::_label_events()
     m.button.events().mouse_down([&](nana::arg_mouse const& arg) {
         if (arg.right_button) {
             auto proxy = impl_->pipeline.lock()->get_pipe(impl_->pipe);
-            proxy.is_paused() ? proxy.unpause() : proxy.pause();
-            _refresh_btn_color(!!details());
-            nana::drawing(m.label).update();
 
-            auto& dirty = m.board_ref->option_changed;
-            if (dirty) { dirty(m.pipe, {}); }
+            if (!m.rclick_menu.empty()) { m.rclick_menu.reset(); }
+            auto& mn = m.rclick_menu.emplace();
+            std::string state_text = std::format("{0}{1}{2}{3}/",
+                                                 proxy.name(),
+                                                 proxy.is_optional() ? "/Optional" : "",
+                                                 proxy.tweaks().selective_input ? "/Sel In" : "",
+                                                 proxy.tweaks().selective_input ? "/Sel Out" : "");
+            mn.append(state_text).enabled(false);
+            mn.append(
+              proxy.is_paused() ? "&Resume" : "Pause (&R)",
+              [this, paused = proxy.is_paused(), proxy](auto) mutable {
+                  paused ? proxy.unpause() : proxy.pause();
+                  _refresh_btn_color(!!details());
+                  nana::drawing(impl_->label).update();
+
+                  auto& dirty = impl_->board_ref->option_changed;
+                  if (dirty) { dirty(impl_->pipe, {}); }
+              });
+
+            if (details()) {
+                mn.append_splitter();
+                mn.append("&Close Detail View", [&](auto) { close_details(); });
+            }
+
+            mn.popup(*this, arg.pos.x, arg.pos.y);
         }
     });
 
@@ -116,7 +146,15 @@ pipepp::gui::pipe_view::pipe_view(const nana::window& wd, const nana::rectangle&
     , impl_(std::make_unique<data_type>(*this))
 {
     auto& m = *impl_;
-    auto pipe_board = dynamic_cast<pipeline_board*>(nana::API::get_widget(wd));
+    
+    nana::window hnd_pipe_board = wd;
+    pipeline_board* pipe_board = nullptr;
+    do {
+        pipe_board = dynamic_cast<pipeline_board*>(nana::API::get_widget(hnd_pipe_board));
+        hnd_pipe_board = nana::API::get_parent_window(hnd_pipe_board);
+    } while (hnd_pipe_board != nullptr && pipe_board == nullptr);
+
+    assert(!!pipe_board);
     m.board_ref = pipe_board;
 
     m.layout.div("vert<MAIN weight=23><INTERVAL weight=60 margin=[0,1,0,1]><EXEC_COND margin=[0,1,0,1]>");
@@ -130,10 +168,10 @@ pipepp::gui::pipe_view::pipe_view(const nana::window& wd, const nana::rectangle&
     // m.label.typeface(nana::paint::font("consolas", 11.0));
     _label_events();
 
-    m.button.events().click([&](nana::arg_click const& arg) {
-        details() == nullptr ? open_details(*this) : details()->focus();
-        _refresh_btn_color(!!details());
-    });
+    // m.button.events().click([&](nana::arg_click const& arg) {
+    //     details() == nullptr ? open_details(*this) : details()->focus();
+    //     _refresh_btn_color(!!details());
+    // });
 
     nana::drawing(m.executor_notes).draw_diehard([&](nana::paint::graphics& gp) {
         auto bgcol = nana::color(34, 22, 34);
@@ -243,7 +281,7 @@ void pipepp::gui::pipe_view::update()
           kangsw::zip(lst_tm, lst_tget, lst_lerp)) {
             auto dur = std::chrono::duration<double>(time).count() * 1000.0;
             *base = std::lerp(*base, dur, 0.33);
-            *tget = fmt::format("{0:>10.4f} ms", *base);
+            *tget = std::format("{0:>10.4f} ms", *base);
         }
         nana::drawing(m.label).update();
 
@@ -253,8 +291,7 @@ void pipepp::gui::pipe_view::update()
         m.latest_exec_receive = clock_type::now();
         m.upper_node_paused = false;
         _refresh_btn_color(!!details());
-    }
-    else if (clock_type::now() - m.latest_exec_receive > 500ms) {
+    } else if (clock_type::now() - m.latest_exec_receive > 500ms) {
         m.latest_exec_receive = clock_type::now();
         auto has_any_paused_input = [&](auto recurse, detail::pipe_proxy_base const& prx) -> bool {
             if (prx.is_paused()) { return true; }
@@ -302,11 +339,11 @@ void pipepp::gui::pipe_view::open_details(const nana::window& wd)
     auto& m = *impl_;
     if (m.detail_view == nullptr || m.detail_view->empty()) {
         nana::rectangle parent_rect;
-        parent_rect.position(nana::API::cursor_position());
+        // parent_rect.position(nana::API::cursor_position());
         parent_rect.width = 640;
         parent_rect.height = 480;
-        parent_rect.x -= parent_rect.width;
-        parent_rect.y -= 5;
+        // parent_rect.x -= parent_rect.width;
+        // parent_rect.y -= 5;
 
         nana::appearance appear;
         appear.floating = false;
@@ -316,30 +353,63 @@ void pipepp::gui::pipe_view::open_details(const nana::window& wd)
         appear.sizable = true;
         appear.taskbar = false;
 
-        auto p = m.detail_view
-          = std::make_shared<pipe_detail_panel>(wd, parent_rect, appear);
+        auto& f = m.detail_view_form = std::make_unique<nana::form>(wd, parent_rect, appear);
+        auto p = m.detail_view = std::make_shared<pipe_detail_panel>(*f);
 
-        p->icon({});
-        p->move(parent_rect.position());
+        f->icon({});
+        f->caption(m.title.caption());
+        // f->move(parent_rect.position());
 
         p->reset_pipe(m.pipeline, m.pipe);
         if (m.exec_data) { p->update(m.exec_data); }
 
-        p->events().destroy([&](auto) {
+        f->events().unload([&](auto) {
             _refresh_btn_color(false);
         });
         _refresh_btn_color(true);
-        p->show();
+        f->show();
+
+        f->div("MAIN");
+        f->get_place()["MAIN"] << *p;
+        p->collocate();
+        f->collocate();
     }
+}
+
+std::weak_ptr<pipepp::gui::pipe_detail_panel> pipepp::gui::pipe_view::create_panel(nana::window const& wd)
+{
+    auto& m = *impl_;
+    if (m.detail_view == nullptr || m.detail_view->empty()) {
+        auto& p = m.detail_view = std::make_shared<pipe_detail_panel>(wd);
+        p->reset_pipe(m.pipeline, m.pipe);
+        if (m.exec_data) { p->update(m.exec_data); }
+
+        _refresh_btn_color(true);
+        return p;
+    }
+
+    _refresh_btn_color(false);
+    return {};
+}
+
+nana::button::event_type& pipepp::gui::pipe_view::btn_events()
+{
+    return impl_->button.events();
 }
 
 void pipepp::gui::pipe_view::close_details()
 {
     auto& m = *impl_;
+    if (m.detail_view_form) {
+        m.detail_view_form.reset();
+    }
+
     if (m.detail_view) {
         m.detail_view->close();
         m.detail_view.reset();
     }
+
+    _refresh_btn_color(false);
 }
 
 void pipepp::gui::pipe_view::_m_caption(native_string_type&& f)

@@ -6,11 +6,17 @@
 #include "kangsw/helpers/zip.hxx"
 #include "nana/basic_types.hpp"
 #include "nana/gui/drawing.hpp"
+#include "nana/gui/timer.hpp"
 #include "nana/gui/widgets/group.hpp"
+#include "nana/gui/widgets/label.hpp"
+#include "nana/gui/widgets/tabbar.hpp"
 #include "nana/paint/graphics.hpp"
 #include "pipepp/gui/basic_utility.hpp"
+#include "pipepp/gui/pipe_detail_panel.hpp"
 #include "pipepp/gui/pipe_view.hpp"
 #include "pipepp/pipeline.hpp"
+
+using namespace std::literals;
 
 struct pipe_widget_desc {
     std::unique_ptr<pipepp::gui::pipe_view> view;
@@ -26,13 +32,60 @@ struct line_desc {
     bool is_optional_connection;
 };
 
+class trivial_subscriber_label : public nana::panel<true> {
+public:
+    explicit trivial_subscriber_label(nana::window par)
+        : panel(par, true)
+    {
+        layout_.div("<NAME><VALUE> <margin=3 weight=20 <vert weight=20 <EXIT> > >");
+        layout_["NAME"] << name_;
+        layout_["VALUE"] << value_;
+        layout_["EXIT"] << exit_;
+
+        exit_.caption("-");
+        exit_.transparent(true);
+
+        nana::paint::font fnt("consolas", 11.0);
+        name_.typeface(fnt);
+        value_.typeface(fnt);
+        exit_.typeface(fnt);
+    }
+
+    void set_name(std::string const& n) { name_.caption(n); }
+    void set_value(std::string const& n) { value_.caption(n); }
+
+    auto& on_exit() { return exit_.events().click; }
+
+private:
+    nana::place layout_{*this};
+    nana::label name_{*this};
+    nana::label value_{*this};
+    nana::button exit_{*this};
+};
+
+struct tabbar_entity {
+    pipepp::gui::pipe_view* view = nullptr;
+    pipepp::gui::pipe_detail_panel* panel = nullptr;
+
+    ~tabbar_entity()
+    {
+        if (view) {
+            view->close_details();
+        }
+    }
+};
+
 struct pipepp::gui::pipeline_board::data_type {
+    data_type(pipeline_board& b)
+        : self(b)
+    {}
+
     pipeline_board& self;
     nana::drawing drawing{self};
 
     std::weak_ptr<detail::pipeline_base> pipe;
 
-    double zoom;
+    double zoom = 0;
     nana::point center;
 
     nana::size widget_default_size = {196, 100};
@@ -41,6 +94,68 @@ struct pipepp::gui::pipeline_board::data_type {
     std::vector<pipe_widget_desc> widgets;
     std::vector<nana::point> all_points;
     std::vector<line_desc> line_descriptions; // all_points
+
+    std::map<std::string, std::unique_ptr<trivial_subscriber_label>> subscriptions;
+
+    nana::panel<true> graph{nana::window{self}};
+    nana::panel<false> tabwnd_placeholder{nana::window{self}};
+    nana::button width_sizer{self};
+    nana::timer destroy_update_timer{16ms};
+    bool tabbar_visible = false;
+    float tabbar_rate = 0.5f;
+
+    nana::tabbar<std::shared_ptr<tabbar_entity>> detail_panel_tab{self};
+
+    nana::place layout{self};
+
+public:
+    std::string divtext()
+    {
+        constexpr auto DIV_notab = "<GRAPH><SIZER weight=15>";
+        constexpr auto DIV_tab = "<GRAPH arrange=[variable,16,repeated]>"
+                                 "<vert weight=15 <SIZER>>"
+                                 "<vert weight={0} <TABBAR weight=24 margin=[0, 0, 0, 0]><TABWND>>";
+        if (tabbar_visible) {
+            _cache.clear();
+            _cache.reserve(64);
+
+            int tabbar_weight = tabbar_rate * self.size().width;
+            std::format_to(std::back_inserter(_cache), DIV_tab, tabbar_weight);
+        } else {
+            return DIV_notab;
+        }
+        return std::move(_cache);
+    }
+
+    void update_tabbar()
+    {
+
+        layout.div(divtext());
+        layout.collocate();
+    }
+
+    void destroy_update()
+    {
+        for (size_t i = 0; i < detail_panel_tab.length(); ++i) {
+            auto& ptr = detail_panel_tab.at(i);
+            if (ptr->view == nullptr) {
+                detail_panel_tab.erase(i);
+                break;
+            }
+        }
+    }
+
+    void subscribe_update_notify(data_subscribe_arg const& arg)
+    {
+
+    }
+
+    void unsubscribe_notify(data_subscribe_arg const& arg)
+    {
+    }
+
+private:
+    std::string _cache;
 };
 
 pipepp::gui::pipeline_board::pipeline_board(const nana::window& wd, const nana::rectangle& r, bool visible)
@@ -48,23 +163,23 @@ pipepp::gui::pipeline_board::pipeline_board(const nana::window& wd, const nana::
     , impl_(std::make_unique<data_type>(*this))
 {
 
-    auto& m = impl_;
+    auto& m = *impl_;
 
-    events().mouse_move([&, prev_mouse_pos_ = nana::point{}](nana::arg_mouse const& arg) mutable {
+    m.graph.events().mouse_move([&, prev_mouse_pos_ = nana::point{}](nana::arg_mouse const& arg) mutable {
         if (arg.left_button) {
             auto delta = arg.pos - prev_mouse_pos_;
-            m->center += delta;
+            m.center += delta;
             _update_widget_pos();
-            nana::drawing{*this}.update();
+            nana::drawing{m.graph}.update();
         }
         prev_mouse_pos_ = arg.pos;
     });
 
-    nana::drawing{*this}.draw_diehard([&](nana::paint::graphics& gp) {
-        std::span<nana::point> all_pts{m->all_points};
-        auto offset = m->center;
+    nana::drawing{m.graph}.draw_diehard([&](nana::paint::graphics& gp) {
+        std::span<nana::point> all_pts{m.all_points};
+        auto offset = m.center;
 
-        for (auto& ld : m->line_descriptions) {
+        for (auto& ld : m.line_descriptions) {
             auto line_color = ld.is_optional_connection ? optional_connection_line_color : main_connection_line_color;
             auto points = all_pts.subspan(ld.index_offset + 1, ld.index_count - 1);
             auto begin_pt = all_pts[ld.index_offset] + offset;
@@ -76,6 +191,92 @@ pipepp::gui::pipeline_board::pipeline_board(const nana::window& wd, const nana::
             }
         }
     });
+
+    events().destroy([&m](auto&) {
+        for (size_t i = 0; i < m.detail_panel_tab.length(); ++i) {
+            m.detail_panel_tab.at(i)->view = nullptr;
+        }
+    });
+
+    events().resized([&m, this](nana::arg_resized arg) {
+        auto x = size().width;
+        m.update_tabbar();
+    });
+
+    m.layout["GRAPH"] << m.graph;
+    m.layout["SIZER"] << m.width_sizer;
+    m.layout["TABBAR"] << m.detail_panel_tab;
+    m.layout["TABWND"] << m.tabwnd_placeholder;
+
+    m.width_sizer.edge_effects(false);
+    m.width_sizer.caption("||");
+    m.width_sizer.borderless(true);
+    m.width_sizer.cursor(nana::cursor::size_we);
+
+    m.width_sizer.events().mouse_move([this, &m, prv = nana::point{}](nana::arg_mouse const& arg) mutable {
+        auto cursor_pos = m.width_sizer.pos() + arg.pos;
+        if (arg.left_button) {
+            auto delta = cursor_pos - prv;
+            auto tabbar_weight = m.tabbar_rate * size().width;
+            tabbar_weight = std::clamp<int>(tabbar_weight - delta.x, 55, size().width - 40);
+            m.tabbar_rate = tabbar_weight / size().width;
+
+            m.layout.div(m.divtext());
+            m.layout.collocate();
+        }
+        prv = cursor_pos;
+    });
+
+    m.width_sizer.events().dbl_click([this, &m](auto) {
+        m.tabbar_visible = !m.tabbar_visible;
+        m.update_tabbar();
+
+        if (!m.tabbar_visible) {
+            for (size_t i = 0; i < m.detail_panel_tab.length(); ++i) {
+                auto& arg = *m.detail_panel_tab.at(i);
+                if (arg.view) { arg.panel->hide(); }
+            }
+        } else if (m.detail_panel_tab.length()) {
+            m.detail_panel_tab.at(m.detail_panel_tab.activated())->panel->show();
+        }
+    });
+
+    m.tabwnd_placeholder.events().resized([&m](nana::arg_resized rz) {
+        nana::rectangle rt{m.tabwnd_placeholder.pos(), m.tabwnd_placeholder.size()};
+        for (size_t i = 0; i < m.detail_panel_tab.length(); ++i) {
+            m.detail_panel_tab.at(i)->panel->move(rt);
+        }
+    });
+
+    m.detail_panel_tab.events().tab_click([&m](auto) { m.update_tabbar(); });
+    m.detail_panel_tab.events().activated([&m](auto) {
+        m.update_tabbar();
+        for (size_t i = 0; i < m.detail_panel_tab.length(); ++i) {
+            bool is_active = i == m.detail_panel_tab.activated();
+            m.detail_panel_tab.tab_bgcolor(i, is_active ? nana::colors::white : nana::colors::gray);
+        }
+    });
+
+    m.detail_panel_tab.events().removed([&m](auto) {
+        m.tabbar_visible &= m.detail_panel_tab.length() > 1;
+        m.update_tabbar();
+    });
+
+    m.layout.div(m.divtext());
+    m.layout.collocate();
+
+    using kit_t = decltype(m.detail_panel_tab)::kits;
+    m.detail_panel_tab.toolbox(kit_t::scroll, true);
+    m.detail_panel_tab.toolbox(kit_t::list, true);
+    m.detail_panel_tab.toolbox(kit_t::close, true);
+
+    m.detail_panel_tab.close_fly(true);
+    m.destroy_update_timer.elapse([&]() { m.destroy_update(), m.destroy_update_timer.stop(); });
+
+    typeface({"consolas", 11.0});
+
+    debug_data_subscriber(std::bind(&data_type::subscribe_update_notify, &m, std::placeholders::_1));
+    debug_data_unchecked(std::bind(&data_type::unsubscribe_notify, &m, std::placeholders::_1));
 }
 
 pipepp::gui::pipeline_board::~pipeline_board() = default;
@@ -98,12 +299,17 @@ void pipepp::gui::pipeline_board::center(nana::point center)
 {
     impl_->center = center;
     _update_widget_pos();
-    nana::drawing{*this}.update();
+    nana::drawing{impl_->graph}.update();
 }
 
 nana::point pipepp::gui::pipeline_board::center() const
 {
     return impl_->center;
+}
+
+nana::panel<true>& pipepp::gui::pipeline_board::graph_panel()
+{
+    return impl_->graph;
 }
 
 void pipepp::gui::pipeline_board::_clear_views()
@@ -121,23 +327,23 @@ void pipepp::gui::pipeline_board::_clear_views()
 
 void pipepp::gui::pipeline_board::_calc_hierarchical_node_positions(pipepp::detail::pipe_proxy_base root_proxy, std::unordered_multimap<pipepp::pipe_id_t, pipepp::pipe_id_t>& connections, std::map<pipepp::pipe_id_t, nana::size>& positions)
 {
-    // 1. °èÃş ±¸Á¶ °è»ê ¹æ½Ä
-    //      1. ·çÆ® ÇÁ·Ï½ÃºÎÅÍ ÀÚ¼Õ ÇÁ·Ï½Ã·Î iterateÇØ ¸¶ÁÖÄ¡´Â ¸ğµç id¸¦ hierarchy_occurencesÀÇ
-    //        ´ëÀÀµÇ´Â ÀÎµ¦½º¿¡ ³Ö½À´Ï´Ù. ÇØ´ç ¹è¿­ÀÇ ÀÎµ¦½º´Â °èÃş ³ôÀÌ¸¦ ÀÇ¹ÌÇÕ´Ï´Ù.
-    //       . ¶ÇÇÑ, id °¢°¢ÀÌ µîÀåÇÏ´Â ÃÖ´ë °èÃş ¹øÈ£¸¦ ÁöÁ¤ÇÕ´Ï´Ù.
-    //       . hierarchy_occurrences¿¡¼­, ÇØ´ç hierarchy index¿Í max_hierarchyÀÇ °ªÀÌ °°Àº
-    //        °æ¿ì¿¡¸¸ ÀÎ½ºÅÏ½º°¡ Á¸ÀçÇÕ´Ï´Ù.
-    //      2. ·»´õ¸µ ½Ã, ¼öÆò ¹æÇâÀÌ hierarchyÀÇ ±íÀÌ°¡ µË´Ï´Ù.
-    //       . ¼öÁ÷ ¹æÇâÀº À§¿¡¼­ºÎÅÍ ¾Æ·¡·Î ³»·Á¿À´Â ¹æ½ÄÀ» ÃëÇÏ´Âµ¥, ¼öÁ÷ ¹æÇâÀÇ ³ôÀÌ´Â
-    //        hierarchy_occurences¿¡¼­ °¡Àå ¸ÕÀú ÇØ´ç id°¡ ³ªÅ¸³ª´Â ÁöÁ¡À¸·Î ¼³Á¤ÇÕ´Ï´Ù.
-    //        ´Ü, »ó±âÇÑ ¹Ù¿Í °°ÀÌ ¸ÕÀú max_hierarchy°¡ ÀÏÄ¡ÇØ¾ß ÇÕ´Ï´Ù.
+    // 1. ê³„ì¸µ êµ¬ì¡° ê³„ì‚° ë°©ì‹
+    //      1. ë£¨íŠ¸ í”„ë¡ì‹œë¶€í„° ìì† í”„ë¡ì‹œë¡œ iterateí•´ ë§ˆì£¼ì¹˜ëŠ” ëª¨ë“  idë¥¼ hierarchy_occurencesì˜
+    //        ëŒ€ì‘ë˜ëŠ” ì¸ë±ìŠ¤ì— ë„£ìŠµë‹ˆë‹¤. í•´ë‹¹ ë°°ì—´ì˜ ì¸ë±ìŠ¤ëŠ” ê³„ì¸µ ë†’ì´ë¥¼ ì˜ë¯¸í•©ë‹ˆë‹¤.
+    //       . ë˜í•œ, id ê°ê°ì´ ë“±ì¥í•˜ëŠ” ìµœëŒ€ ê³„ì¸µ ë²ˆí˜¸ë¥¼ ì§€ì •í•©ë‹ˆë‹¤.
+    //       . hierarchy_occurrencesì—ì„œ, í•´ë‹¹ hierarchy indexì™€ max_hierarchyì˜ ê°’ì´ ê°™ì€
+    //        ê²½ìš°ì—ë§Œ ì¸ìŠ¤í„´ìŠ¤ê°€ ì¡´ì¬í•©ë‹ˆë‹¤.
+    //      2. ë Œë”ë§ ì‹œ, ìˆ˜í‰ ë°©í–¥ì´ hierarchyì˜ ê¹Šì´ê°€ ë©ë‹ˆë‹¤.
+    //       . ìˆ˜ì§ ë°©í–¥ì€ ìœ„ì—ì„œë¶€í„° ì•„ë˜ë¡œ ë‚´ë ¤ì˜¤ëŠ” ë°©ì‹ì„ ì·¨í•˜ëŠ”ë°, ìˆ˜ì§ ë°©í–¥ì˜ ë†’ì´ëŠ”
+    //        hierarchy_occurencesì—ì„œ ê°€ì¥ ë¨¼ì € í•´ë‹¹ idê°€ ë‚˜íƒ€ë‚˜ëŠ” ì§€ì ìœ¼ë¡œ ì„¤ì •í•©ë‹ˆë‹¤.
+    //        ë‹¨, ìƒê¸°í•œ ë°”ì™€ ê°™ì´ ë¨¼ì € max_hierarchyê°€ ì¼ì¹˜í•´ì•¼ í•©ë‹ˆë‹¤.
     //
     using namespace std;
     using detail::pipe_proxy_base;
     set<pipe_id_t> visit_mask;
     auto recursive_build_tree
       = [&](auto& recall, pipe_proxy_base const& proxy, size_t width, size_t hierarchy) -> size_t {
-        // post-order recursive ¿¬»êÀ» ÅëÇØ ´ÙÀ½ ºê·£Ä¡ÀÇ ¿ÀÇÁ¼ÂÀ» ±¸ÇÕ´Ï´Ù.
+        // post-order recursive ì—°ì‚°ì„ í†µí•´ ë‹¤ìŒ ë¸Œëœì¹˜ì˜ ì˜¤í”„ì…‹ì„ êµ¬í•©ë‹ˆë‹¤.
         size_t output_index = 0, num_output_link = proxy.num_output_nodes();
         for (size_t valid_output_index = 0; output_index < num_output_link; ++output_index) {
             auto output = proxy.get_output_node(output_index);
@@ -145,8 +351,8 @@ void pipepp::gui::pipeline_board::_calc_hierarchical_node_positions(pipepp::deta
             connections.emplace(proxy.id(), output.id());
 
             if (visit_mask.emplace(output.id()).second) {
-                // Ã³À½ ¸¶ÁÖÄ¡´Â ³ëµå¿¡ ´ëÇØ¼­¸¸ Àç±ÍÀûÀ¸·Î Å½»öÀ» ¼öÇàÇÕ´Ï´Ù.
-                // ³ëµåÀÇ ³Êºñ¸¦ 1¾¿ Àç±ÍÀûÀ¸·Î Áõ°¡½ÃÅµ´Ï´Ù.
+                // ì²˜ìŒ ë§ˆì£¼ì¹˜ëŠ” ë…¸ë“œì— ëŒ€í•´ì„œë§Œ ì¬ê·€ì ìœ¼ë¡œ íƒìƒ‰ì„ ìˆ˜í–‰í•©ë‹ˆë‹¤.
+                // ë…¸ë“œì˜ ë„ˆë¹„ë¥¼ 1ì”© ì¬ê·€ì ìœ¼ë¡œ ì¦ê°€ì‹œí‚µë‹ˆë‹¤.
                 position.width = (int)width + (valid_output_index > 0);
                 width = recall(recall, output, width + (valid_output_index > 0), hierarchy + 1);
                 ++valid_output_index;
@@ -176,6 +382,8 @@ void pipepp::gui::pipeline_board::_update_widget_pos()
 void pipepp::gui::pipeline_board::_m_bgcolor(const nana::color& color)
 {
     super::_m_bgcolor(color);
+    impl_->graph.bgcolor(color);
+    impl_->detail_panel_tab.bgcolor(color);
     for (auto& widget : impl_->widgets) {
         if (widget.view) {
             widget.view->bgcolor(color);
@@ -186,6 +394,8 @@ void pipepp::gui::pipeline_board::_m_bgcolor(const nana::color& color)
 void pipepp::gui::pipeline_board::_m_typeface(const nana::paint::font& font)
 {
     super::_m_typeface(font);
+    impl_->graph.typeface(font);
+    impl_->detail_panel_tab.typeface(font);
     for (auto& widget : impl_->widgets) {
         if (widget.view) {
             widget.view->typeface(font);
@@ -196,11 +406,11 @@ void pipepp::gui::pipeline_board::_m_typeface(const nana::paint::font& font)
 void pipepp::gui::pipeline_board::reset_pipeline(std::shared_ptr<pipepp::detail::pipeline_base> pipeline)
 {
     // TODO
-    // 0. ÀÌ¹Ì Á¸ÀçÇÏ´Â pipe_view °³Ã¼¸¦ ¸ğµÎ ¼Ò°ÅÇÕ´Ï´Ù.
-    // 1. pipelineÀÇ Ã¹ pipe_proxyºÎÅÍ iterateÇÏ¿©, °èÃş Á¤º¸¸¦ ¼öÁıÇÕ´Ï´Ù.
-    // 2. °èÃş Á¤º¸¸¦ ¹ÙÅÁÀ¸·Î °¢ À§Á¬ÀÇ À§Ä¡¸¦ °è»êÇÕ´Ï´Ù.
-    // 3. °¢ À§Á¬À» ¿¬°áÇÏ´Â Á÷¼± Á¤º¸¸¦ ºôµåÇÕ´Ï´Ù.
-    // 4. ¸ğµç À§Á¬À» ½ºÆùÇÏ°í, ´ëÀÀµÇ´Â ÆÄÀÌÇÁ¸¦ °ø±ŞÇÕ´Ï´Ù.
+    // 0. ì´ë¯¸ ì¡´ì¬í•˜ëŠ” pipe_view ê°œì²´ë¥¼ ëª¨ë‘ ì†Œê±°í•©ë‹ˆë‹¤.
+    // 1. pipelineì˜ ì²« pipe_proxyë¶€í„° iterateí•˜ì—¬, ê³„ì¸µ ì •ë³´ë¥¼ ìˆ˜ì§‘í•©ë‹ˆë‹¤.
+    // 2. ê³„ì¸µ ì •ë³´ë¥¼ ë°”íƒ•ìœ¼ë¡œ ê° ìœ„ì ¯ì˜ ìœ„ì¹˜ë¥¼ ê³„ì‚°í•©ë‹ˆë‹¤.
+    // 3. ê° ìœ„ì ¯ì„ ì—°ê²°í•˜ëŠ” ì§ì„  ì •ë³´ë¥¼ ë¹Œë“œí•©ë‹ˆë‹¤.
+    // 4. ëª¨ë“  ìœ„ì ¯ì„ ìŠ¤í°í•˜ê³ , ëŒ€ì‘ë˜ëŠ” íŒŒì´í”„ë¥¼ ê³µê¸‰í•©ë‹ˆë‹¤.
     auto& m = *impl_;
 
     // 0.
@@ -219,9 +429,9 @@ void pipepp::gui::pipeline_board::reset_pipeline(std::shared_ptr<pipepp::detail:
     map<pipe_id_t, nana::size> positions;
     _calc_hierarchical_node_positions(root_proxy, connections, positions);
 
-    // 3. ¿¬°á Á¤º¸¸¦ Á÷¼± ÁıÇÕÀ¸·Î ¸¸µì´Ï´Ù.
-    //  . ÃßÈÄ, º¹ÀâÇÑ °î¼± µîÀÇ Á¡ Á¤º¸¸¦ ¸¸µé °¡´É¼ºÀ» ¿°µÎ¿¡ µÎ°í, Á¡ ¸ñ·Ï°ú Á÷¼± Á¤º¸¸¦
-    //   ºĞ¸®ÇÏ¿´½À´Ï´Ù.
+    // 3. ì—°ê²° ì •ë³´ë¥¼ ì§ì„  ì§‘í•©ìœ¼ë¡œ ë§Œë“­ë‹ˆë‹¤.
+    //  . ì¶”í›„, ë³µì¡í•œ ê³¡ì„  ë“±ì˜ ì  ì •ë³´ë¥¼ ë§Œë“¤ ê°€ëŠ¥ì„±ì„ ì—¼ë‘ì— ë‘ê³ , ì  ëª©ë¡ê³¼ ì§ì„  ì •ë³´ë¥¼
+    //   ë¶„ë¦¬í•˜ì˜€ìŠµë‹ˆë‹¤.
     {
         auto gap = m.widget_default_size + m.widget_default_gap;
         map<pipe_id_t, int> slot_order_from;
@@ -251,19 +461,55 @@ void pipepp::gui::pipeline_board::reset_pipeline(std::shared_ptr<pipepp::detail:
         }
     }
 
-    // 4. À§Á¬À» ½ºÆùÇÏ°í ÆÄÀÌÇÁ Á¤º¸¸¦ ÀÔ·ÂÇÕ´Ï´Ù.
+    // 4. ìœ„ì ¯ì„ ìŠ¤í°í•˜ê³  íŒŒì´í”„ ì •ë³´ë¥¼ ì…ë ¥í•©ë‹ˆë‹¤.
     for (auto const& [id, slot] : positions) {
         auto& elem = m.widgets.emplace_back();
         elem.pipe_id = id;
         elem.slot_sibling_order = slot.width;
         elem.slot_hierarchy_level = slot.height;
 
-        elem.view = std::make_unique<decltype(elem.view)::element_type>(*this, nana::rectangle{}, true);
+        elem.view = std::make_unique<decltype(elem.view)::element_type>(m.graph, nana::rectangle{}, true);
         elem.view->reset_view(pipeline, id);
         elem.view->size(m.widget_default_size);
 
         elem.view->typeface({"consolas", 11.0});
         elem.view->bgcolor(bgcolor());
+
+        // ë””í…Œì¼ ë·° ë„ìš°ê¸°
+        elem.view->btn_events().click([this, view = elem.view.get(), &m](auto) {
+            //if (!view->details()) {
+            //    view->open_details(*view);
+            //} else {
+            //    view->close_details();
+            //}
+            if (!view->details()) {
+                auto details = view->create_panel(*this).lock();
+                m.detail_panel_tab.append(details->caption(), *details, std::make_shared<tabbar_entity>(view, details.get()));
+                details->move(nana::rectangle{m.tabwnd_placeholder.pos(), m.tabwnd_placeholder.size()});
+
+                details->events().destroy([&](auto) {
+                    for (size_t i = 0; i < m.detail_panel_tab.length(); ++i) {
+                        auto& ptr = m.detail_panel_tab.at(i);
+                        if (ptr->view == view) {
+                            ptr->view = nullptr;
+                            break;
+                        }
+                    }
+                    m.destroy_update_timer.start();
+                });
+            } else {
+                for (size_t i = 0; i < m.detail_panel_tab.length(); ++i) {
+                    if (m.detail_panel_tab.at(i)->view == view) {
+                        m.detail_panel_tab.activated(i);
+                        m.detail_panel_tab.at(i)->panel->show();
+                        break;
+                    }
+                }
+            }
+
+            m.tabbar_visible = true;
+            m.update_tabbar();
+        });
     }
 
     _update_widget_pos();

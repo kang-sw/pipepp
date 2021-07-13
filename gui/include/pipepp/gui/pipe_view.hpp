@@ -3,13 +3,14 @@
 
 #include "nana/basic_types.hpp"
 #include "nana/gui/widgets/panel.hpp"
+#include "nana/gui/widgets/button.hpp"
 #include "pipepp/pipeline.hpp"
 
 namespace pipepp::gui {
 /**
- * ÆÄÀÌÇÁ ÇÏ³ª¸¦ Ç¥½ÃÇÕ´Ï´Ù.
+ * íŒŒì´í”„ í•˜ë‚˜ë¥¼ í‘œì‹œí•©ë‹ˆë‹¤.
  *
- * ±âº» Å©±â´Â 640x320ÀÌ¸ç, ÁÜ ¼öÁØ¿¡ µû¶ó ¿ä¾à ºä/»ó¼¼ ºä »çÀÌ¸¦ ÀüÈ¯ÇÕ´Ï´Ù.
+ * ê¸°ë³¸ í¬ê¸°ëŠ” 640x320ì´ë©°, ì¤Œ ìˆ˜ì¤€ì— ë”°ë¼ ìš”ì•½ ë·°/ìƒì„¸ ë·° ì‚¬ì´ë¥¼ ì „í™˜í•©ë‹ˆë‹¤.
  */
 class pipe_view : public nana::panel<false>, public std::enable_shared_from_this<pipe_view> {
 public:
@@ -22,34 +23,45 @@ public:
 
 public:
     /**
-     * ÆÄÀÌÇÁ ÇÁ·Ï½Ã·Î À§Á¬ ºä¸¦ ¸®¼ÂÇÕ´Ï´Ù.
+     * íŒŒì´í”„ í”„ë¡ì‹œë¡œ ìœ„ì ¯ ë·°ë¥¼ ë¦¬ì…‹í•©ë‹ˆë‹¤.
      */
     void reset_view(std::weak_ptr<detail::pipeline_base> pipeline, pipe_id_t pipe);
 
     /**
-     * ºä ¾÷µ¥ÀÌÆ®
+     * ë·° ì—…ë°ì´íŠ¸
      */
     void update();
 
     /**
-     * À§Á¬¿¡ ºä¸¦ Ç¥½ÃÇÕ´Ï´Ù.
+     * ìœ„ì ¯ì— ë·°ë¥¼ í‘œì‹œí•©ë‹ˆë‹¤.
      */
     void display_view(bool is_detail_view);
 
     /**
-     * ÆÄÀÌÇÁ ¸ğ´ÏÅÍ¸µ ÆĞ³ÎÀ» È¹µæÇÕ´Ï´Ù.
-     * open_details()¸¦ ÅëÇØ »ı¼ºµÈ °æ¿ì¿¡¸¸ ·¹ÆÛ·±½º¸¦ ¹İÈ¯ÇÕ´Ï´Ù. 
+     * íŒŒì´í”„ ëª¨ë‹ˆí„°ë§ íŒ¨ë„ì„ íšë“í•©ë‹ˆë‹¤.
+     * open_details()ë¥¼ í†µí•´ ìƒì„±ëœ ê²½ìš°ì—ë§Œ ë ˆí¼ëŸ°ìŠ¤ë¥¼ ë°˜í™˜í•©ë‹ˆë‹¤. 
      */
     std::shared_ptr<class pipe_detail_panel> details() const;
 
     /**
-     * ÆÄÀÌÇÁ ¸ğ´ÏÅÍ¸µ ÆĞ³ÎÀ» ¿±´Ï´Ù.
-     * ÀÌ¹Ì ¿¬ °æ¿ì, ¸Å°³ º¯¼ö´Â ¹«½ÃµÇ¸ç ±âÁ¸ÀÇ ·¹ÆÛ·±½º¸¦ ¹İÈ¯ÇÕ´Ï´Ù.
+     * íŒŒì´í”„ ëª¨ë‹ˆí„°ë§ íŒ¨ë„ì„ ìƒˆ í¼ì— ë„ì›ë‹ˆë‹¤.
+     * ì´ë¯¸ ì—° ê²½ìš°, ë§¤ê°œ ë³€ìˆ˜ëŠ” ë¬´ì‹œë˜ë©° ê¸°ì¡´ì˜ ë ˆí¼ëŸ°ìŠ¤ë¥¼ ë°˜í™˜í•©ë‹ˆë‹¤.
      */
     void open_details(const nana::window& wd = {});
 
     /**
-     * ÆÄÀÌÇÁ ¸ğ´ÏÅÍ¸µ ÆĞ³ÎÀÌ ¿­·ÁÀÖ´Ù¸é, ´İ½À´Ï´Ù.
+     * íŒŒì´í”„ ëª¨ë‹ˆí„°ë§ íŒ¨ë„ì„ ë°˜í™˜í•©ë‹ˆë‹¤.
+     *
+     */
+    std::weak_ptr<pipe_detail_panel> create_panel(nana::window const& wd);
+
+    /**
+     * @brief í´ë¦­ì— ëŒ€í•œ ì´ë²¤íŠ¸ë¥¼ ë°˜í™˜í•©ë‹ˆë‹¤.
+    */
+    nana::button::event_type& btn_events();
+
+    /**
+     * íŒŒì´í”„ ëª¨ë‹ˆí„°ë§ íŒ¨ë„ì´ ì—´ë ¤ìˆë‹¤ë©´, ë‹«ìŠµë‹ˆë‹¤.
      */
     void close_details();
 

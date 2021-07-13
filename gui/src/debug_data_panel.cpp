@@ -1,9 +1,9 @@
 #include "pipepp/gui/debug_data_panel.hpp"
 #include <cassert>
+#include <format>
 #include <iterator>
 #include <variant>
 
-#include "fmt/format.h"
 #include "nana/basic_types.hpp"
 #include "nana/gui/drawing.hpp"
 #include "nana/gui/place.hpp"
@@ -59,7 +59,7 @@ public:
         , owner_(owner)
         , m(owner.m)
     {
-        layout_.div(fmt::format("TEXT"));
+        layout_.div(std::format("TEXT"));
         layout_.collocate();
         layout_["TEXT"] << text_;
 
@@ -128,7 +128,6 @@ public:
     void refresh()
     {
         using std::string;
-        using namespace fmt;
         using insert = std::back_insert_iterator<string>;
 
         thread_local static string str_left;
@@ -139,9 +138,9 @@ public:
             auto& data = std::get<timer_data_desc>(slot_);
             using namespace std::chrono;
 
-            format_to(insert(str_left), "{0:>{1}}{3} {2} ", "",
-                      level * m.indent, data.name, colapsed_or_subscribed_ ? '=' : '|');
-            format_to(insert(str_right), "{0:.4f} ms", duration<double, std::milli>{data.elapsed}.count());
+            std::format_to(insert(str_left), "{0:>{1}}{3} {2} ", "",
+                           level * m.indent, data.name, colapsed_or_subscribed_ ? '=' : '|');
+            std::format_to(insert(str_right), "{0:.4f} ms", duration<double, std::milli>{data.elapsed}.count());
 
             // timer color set
             const static nana::color category_colors[] = {
@@ -166,7 +165,7 @@ public:
             text_.bgcolor(colapsed_or_subscribed_ ? colors(0x333333) : colors::black);
         } else if (is_debug_slot()) {
             auto& data = std::get<debug_data_desc>(slot_);
-            format_to(insert(str_left), "{0:>{1}}[{2}]", "", level * m.indent, data.name);
+            std::format_to(insert(str_left), "{0:>{1}}[{2}]", "", level * m.indent, data.name);
 
             std::visit(
               [&]<typename T0>(T0&& arg) {
@@ -185,13 +184,13 @@ public:
 
             text_.fgcolor(is_obsolete()
                             ? colors::dim_gray
-                            : colapsed_or_subscribed_
-                                ? colors::yellow
-                                : std::get_if<std::any>(&data.data)
-                                    ? colors::orange
-                                    : std::get_if<std::string>(&data.data)
-                                        ? color(204, 102, 0)
-                                        : colors::green);
+                          : colapsed_or_subscribed_
+                            ? colors::yellow
+                          : std::get_if<std::any>(&data.data)
+                            ? colors::orange
+                          : std::get_if<std::string>(&data.data)
+                            ? color(204, 102, 0)
+                            : colors::green);
             text_.bgcolor(colapsed_or_subscribed_ ? colors::dark_green : colors::black);
         }
 
@@ -231,6 +230,7 @@ public:
 
     void width(unsigned v)
     {
+        if (v > 1u << 31) { v = 10; }
         size({v, m.elem_height});
         for (auto& w : children_) { w->width(v); }
     }
@@ -284,6 +284,8 @@ public:
         return {};
     }
 
+    void pipe_name(std::string_view n) { pipe_name_ = n; }
+
 protected:
     void _m_move(int x, int y) override
     {
@@ -296,17 +298,23 @@ private:
     {
         if (is_timer_slot()) { return; }
         if (colapsed_or_subscribed_) {
-            auto subscriber = m.board_ref->debug_data_subscriber;
-            if (subscriber) {
-                auto& data = std::get<debug_data_desc>(slot_);
-                colapsed_or_subscribed_ = subscriber(category_, data);
-            }
+            auto& subscriber = m.board_ref->debug_data_subscriber;
+            auto& data = std::get<debug_data_desc>(slot_);
+            pipeline_board::data_subscribe_arg arg;
+            arg.category = category_;
+            arg.debug_data = &data;
+            arg.pipe_name = pipe_name_;
+            subscriber.emit(arg, *this);
+
+            colapsed_or_subscribed_ = !arg.expired();
         } else if (handle_unchecked && !colapsed_or_subscribed_) {
-            auto uncheck_handler = m.board_ref->debug_data_unchecked;
-            if (uncheck_handler) {
-                auto& data = std::get<debug_data_desc>(slot_);
-                uncheck_handler(category_, data);
-            }
+            auto& uncheck_handler = m.board_ref->debug_data_unchecked;
+            auto& data = std::get<debug_data_desc>(slot_);
+            pipeline_board::data_subscribe_arg arg;
+            arg.category = category_;
+            arg.debug_data = &data;
+            arg.pipe_name = pipe_name_;
+            uncheck_handler.emit(arg, *this);
         }
     }
 
@@ -337,6 +345,7 @@ private:
     std::variant<timer_data_desc, debug_data_desc> slot_;
     std::string string_;
     std::string category_;
+    std::string_view pipe_name_;
 
     std::weak_ptr<inline_widget> root_;
     std::vector<std::shared_ptr<inline_widget>> children_;
@@ -399,6 +408,9 @@ void pipepp::gui::debug_data_panel::_update(std::shared_ptr<execution_context_da
 
     auto& timers = data->timers;
 
+    auto proxy = m.pipeline.lock()->get_pipe(m.pipe);
+    auto const& name = proxy.name();
+
     m.root->make_obsolete();
     m.root->sibling_order(0);
     m.root->put(timers[0]);
@@ -406,23 +418,24 @@ void pipepp::gui::debug_data_panel::_update(std::shared_ptr<execution_context_da
     for (auto index : kangsw::iota{(size_t)1, timers.size()}) {
         auto& tm = timers[index];
 
-        // Category ID ±â¹ÝÀ¸·Î Å½»ö ¹× »ðÀÔ ½Ãµµ
+        // Category ID ê¸°ë°˜ìœ¼ë¡œ íƒìƒ‰ ë° ì‚½ìž… ì‹œë„
         auto [it, is_new] = m.timers.try_emplace(tm.category_id);
 
-        // Ä«Å×°í¸®¿¡ »õ·Î »ðÀÔ
+        // ì¹´í…Œê³ ë¦¬ì— ìƒˆë¡œ ì‚½ìž…
         if (is_new) {
             auto root = root_stack.at(tm.category_level - 1);
             it->second = root->append(tm);
         } else {
-            // ÀÌ¹Ì Á¸ÀçÇÏ´Â ¿£ÅÍÆ¼¸¦ ¾÷µ¥ÀÌÆ®ÇÏ´Â °æ¿ì, µ¿ ·¹º§ Ä«Å×°í¸®ÀÇ ÀÌÀü siblingÀ» ¹æ¹®,
+            // ì´ë¯¸ ì¡´ìž¬í•˜ëŠ” ì—”í„°í‹°ë¥¼ ì—…ë°ì´íŠ¸í•˜ëŠ” ê²½ìš°, ë™ ë ˆë²¨ ì¹´í…Œê³ ë¦¬ì˜ ì´ì „ siblingì„ ë°©ë¬¸,
             //
             it->second.lock()->put(tm);
         }
 
         auto ptr = it->second.lock();
         root_stack[tm.category_level] = ptr;
-        // sibling_stack[tm.category_level + 1] = 0; // ´ÙÀ½ ´Ü°èÀÇ Ä«Å×°í¸® ÀÎµ¦½º ÃÊ±âÈ­
-        ptr->sibling_order(tm.order); // ÇöÀç ´Ü°èÀÇ Ä«Å×°í¸® ÀÎµ¦½º Áõ°¡
+        // sibling_stack[tm.category_level + 1] = 0; // ë‹¤ìŒ ë‹¨ê³„ì˜ ì¹´í…Œê³ ë¦¬ ì¸ë±ìŠ¤ ì´ˆê¸°í™”
+        ptr->sibling_order(tm.order); // í˜„ìž¬ ë‹¨ê³„ì˜ ì¹´í…Œê³ ë¦¬ ì¸ë±ìŠ¤ ì¦ê°€
+        ptr->pipe_name(name);
     }
 
     for (auto& dt : data->debug_data) {
@@ -435,6 +448,7 @@ void pipepp::gui::debug_data_panel::_update(std::shared_ptr<execution_context_da
             widget = root_widget->append(dt);
 
         widget->sibling_order(dt.order);
+        widget->pipe_name(name);
     }
 
     m.root->reorder();

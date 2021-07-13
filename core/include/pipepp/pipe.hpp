@@ -95,7 +95,7 @@ namespace detail {
 class executor_base {
 public:
     virtual ~executor_base() = default;
-    virtual pipe_error invoke__(std::any& input, std::any& output) = 0;
+    virtual pipe_error invoke__(base_shared_context& shared, std::any& input, std::any& output) = 0;
 
 public:
     void set_context_ref(execution_context* ref) { context_ = ref, context_->_clear_records(); }
@@ -298,7 +298,7 @@ public:
         execution_context context_;
 
         std::shared_ptr<base_shared_context> fence_object_;
-        std::atomic<fence_index_t> fence_index_ = fence_index_t::none;
+        alignas(64) std::atomic<fence_index_t> fence_index_ = fence_index_t::none;
 
         std::any cached_input_;
         std::any cached_output_;
@@ -307,7 +307,7 @@ public:
         std::optional<execution_context::timer_scope_indicator> timer_scope_link_;
 
         size_t index_;
-        std::atomic_flag busy_flag_;
+        alignas(64) std::atomic_flag busy_flag_;
 
         mutable std::pair<std::condition_variable, std::mutex> done_notify_;
     };
@@ -548,16 +548,23 @@ void pipe_base::launch_by(size_t num_executors, Fn_&& factory, Args_&&... args)
 }
 
 } // namespace detail
+
+template <typename T>
+struct executor_traits {
+    using input_type = typename T::input_type;
+    using output_type = typename T::output_type;
+};
+
 /**
  * 독립된 알고리즘 실행기 하나를 정의합니다.
  * 파이프에 공급하는 모든 실행기는 이 클래스를 상속해야 합니다.
  */
-template <typename Exec_>
+template <typename Exec_, typename SharedData_ = nullptr_t>
 class executor final : public detail::executor_base {
 public:
     using executor_type = Exec_;
-    using input_type = typename executor_type::input_type;
-    using output_type = typename executor_type::output_type;
+    using input_type = typename executor_traits<executor_type>::input_type;
+    using output_type = typename executor_traits<executor_type>::output_type;
 
     static_assert(std::is_default_constructible_v<output_type>);
 
@@ -573,8 +580,21 @@ public:
     {
     }
 
+private:
+    template <typename T>
+    static pipe_error errflt(T r)
+    {
+        if constexpr (std::is_same_v<pipe_error, T>) {
+            return r;
+        } else if constexpr (std::is_same_v<void, T>) {
+            return pipe_error::ok;
+        } else {
+            return !!r ? pipe_error::ok : pipe_error::abort;
+        }
+    }
+
 public:
-    pipe_error invoke__(std::any& input, std::any& output) override
+    pipe_error invoke__(base_shared_context& shared, std::any& input, std::any& output) override
     {
         if (input.type() != typeid(input_type)) {
             throw pipe_input_exception("input type not match");
@@ -586,28 +606,77 @@ public:
         auto& ec = *context_;
         auto& in = std::any_cast<input_type&>(input);
         auto& out = std::any_cast<output_type&>(output);
+        auto& sd = (SharedData_&)(shared);
 
         using std::is_invocable_r_v;
+        using std::is_invocable_v;
 
+        using EXC = executor_type;
         using EC = execution_context&;
         using INR = input_type const&;
         using OUTR = output_type&;
         using OUT = output_type;
         using PE = pipe_error;
+        using SD = SharedData_&;
         auto constexpr ok = pipe_error::ok;
 
+        // TODO: Make this to receive shared_context reference
+
+        /* auto errflt = []<typename T>(T r) {
+            if constexpr (std::is_same_v<pipe_error, T>) {
+                return r;
+            } else if constexpr (std::is_same_v<void, T>) {
+                return pipe_error::ok;
+            } else {
+                return !!r ? pipe_error::ok : pipe_error::abort;
+            }
+        };*/
+
         // clang-format off
-        if      constexpr (is_invocable_r_v<PE, executor_type, EC, INR, OUTR>  ) { return exec_(ec, in, out); }
-        else if constexpr (is_invocable_r_v<void, executor_type, EC, INR, OUTR>) { exec_(ec, in, out); return ok; }
-        else if constexpr (is_invocable_r_v<OUT, executor_type, EC, INR>       ) { out = exec_(ec, in); return ok; }
-        else if constexpr (is_invocable_r_v<OUT, executor_type, INR>           ) { out = exec_(in); return ok; }
-        else if constexpr (is_invocable_r_v<void, executor_type, INR, OUTR>           ) { exec_(in, out); return ok; }
-        else { return std::invoke( &executor_type::invoke, &exec_, *context_, in, out); }
+             if constexpr (is_invocable_r_v<OUTR, EXC, EC, SD, INR>) { return (out = exec_(ec, sd, in)), ok; }
+        else if constexpr (is_invocable_r_v<OUTR, EXC, EC,     INR>) { return (out = exec_(ec,     in)), ok; }
+        else if constexpr (is_invocable_r_v<OUTR, EXC,     SD, INR>) { return (out = exec_(    sd, in)), ok; }
+        else if constexpr (is_invocable_r_v<OUTR, EXC,         INR>) { return (out = exec_(        in)), ok; }
+        else if constexpr (is_invocable_r_v<OUTR, EXC, EC, SD     >) { return (out = exec_(ec, sd    )), ok; }
+        else if constexpr (is_invocable_r_v<OUTR, EXC, EC         >) { return (out = exec_(ec        )), ok; }
+        else if constexpr (is_invocable_r_v<OUTR, EXC,     SD     >) { return (out = exec_(    sd    )), ok; }
+        else if constexpr (is_invocable_r_v<OUTR, EXC             >) { return (out = exec_(  )), ok; }
+
+        else if constexpr (is_invocable_r_v<void, EXC, EC,     INR, OUTR>) { return exec_(ec,     in, out), ok; }
+        else if constexpr (is_invocable_r_v<void, EXC, EC, SD, INR, OUTR>) { return exec_(ec, sd, in, out), ok; }
+        else if constexpr (is_invocable_r_v<void, EXC,     SD, INR, OUTR>) { return exec_(    sd, in, out), ok; }
+        else if constexpr (is_invocable_r_v<void, EXC,         INR, OUTR>) { return exec_(        in, out), ok; }
+        else if constexpr (is_invocable_r_v<void, EXC, EC,     INR      >) { return exec_(ec,     in     ), ok; }
+        else if constexpr (is_invocable_r_v<void, EXC, EC, SD, INR      >) { return exec_(ec, sd, in     ), ok; }
+        else if constexpr (is_invocable_r_v<void, EXC,     SD, INR      >) { return exec_(    sd, in     ), ok; }
+        else if constexpr (is_invocable_r_v<void, EXC,         INR      >) { return exec_(        in     ), ok; }
+        else if constexpr (is_invocable_r_v<void, EXC, EC, SD,      OUTR>) { return exec_(ec, sd,     out), ok; }
+        else if constexpr (is_invocable_r_v<void, EXC,     SD,      OUTR>) { return exec_(    sd,     out), ok; }
+        else if constexpr (is_invocable_r_v<void, EXC, EC,          OUTR>) { return exec_(ec,         out), ok; }
+        else if constexpr (is_invocable_r_v<void, EXC,              OUTR>) { return exec_(            out), ok; }
+        else if constexpr (is_invocable_r_v<void, EXC, EC               >) { return exec_(ec             ), ok; }
+        else if constexpr (is_invocable_r_v<void, EXC,     SD           >) { return exec_(    sd         ), ok; }
+        else if constexpr (is_invocable_r_v<void, EXC                   >) { return exec_(               ), ok; }
+
+        else if constexpr (is_invocable_v<EXC, EC,     INR, OUTR>) { return executor::errflt(exec_(ec,     in, out)); }
+        else if constexpr (is_invocable_v<EXC, EC, SD, INR, OUTR>) { return executor::errflt(exec_(ec, sd, in, out)); }
+        else if constexpr (is_invocable_v<EXC,     SD, INR, OUTR>) { return executor::errflt(exec_(    sd, in, out)); }
+        else if constexpr (is_invocable_v<EXC,         INR, OUTR>) { return executor::errflt(exec_(        in, out)); }
+        else if constexpr (is_invocable_v<EXC, EC,     INR      >) { return executor::errflt(exec_(ec,     in     )); }
+        else if constexpr (is_invocable_v<EXC, EC, SD, INR      >) { return executor::errflt(exec_(ec, sd, in     )); }
+        else if constexpr (is_invocable_v<EXC,     SD, INR      >) { return executor::errflt(exec_(    sd, in     )); }
+        else if constexpr (is_invocable_v<EXC,         INR      >) { return executor::errflt(exec_(        in     )); }
+        else if constexpr (is_invocable_v<EXC, EC, SD,      OUTR>) { return executor::errflt(exec_(ec, sd,     out)); }
+        else if constexpr (is_invocable_v<EXC,     SD,      OUTR>) { return executor::errflt(exec_(    sd,     out)); }
+        else if constexpr (is_invocable_v<EXC, EC,          OUTR>) { return executor::errflt(exec_(ec,         out)); }
+        else if constexpr (is_invocable_v<EXC,              OUTR>) { return executor::errflt(exec_(            out)); }
+        else if constexpr (is_invocable_v<EXC, EC               >) { return executor::errflt(exec_(ec             )); }
+        else if constexpr (is_invocable_v<EXC,     SD           >) { return executor::errflt(exec_(    sd         )); }
+        else if constexpr (is_invocable_v<EXC                   >) { return executor::errflt(exec_(               )); }
+
+        else { static_assert(false); return pipe_error::fatal; }
         // clang-format on
     }
-
-    // Non-virtual to be overriden by base class
-    pipe_error invoke(execution_context& context, input_type const& i, output_type& o) { throw; }
 
 private:
     void const* _get_actual_executor() const override { return &exec_; }
@@ -625,11 +694,11 @@ decltype(auto) make_executor(Args_&&... args)
     return std::make_unique<executor<Exec_>>(std::forward<Args_>(args)...);
 }
 
-template <typename Exec_, typename... Args_>
+template <typename Exec_, typename SharedData_ = nullptr_t, typename... Args_>
 decltype(auto) factory(Args_&&... args)
 {
     return [... args = std::forward<Args_>(args)]() mutable {
-        return std::make_unique<executor<Exec_>>(std::forward<Args_>(args)...);
+        return std::make_unique<executor<Exec_, SharedData_>>(std::forward<Args_>(args)...);
     };
 }
 

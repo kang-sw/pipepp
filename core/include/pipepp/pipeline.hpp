@@ -9,7 +9,18 @@
 #include "pipepp/pipe.hpp"
 
 namespace pipepp {
+static constexpr auto link_as_is =
+  [](auto&& prev_out, auto&& next_in) { next_in = std::forward<decltype(prev_out)>(prev_out);  return true; };
+
 namespace detail {
+
+class placeholder_executor {
+public:
+    using input_type = nullptr_t;
+    using output_type = nullptr_t;
+
+    void operator()() {}
+};
 
 class pipeline_base : public std::enable_shared_from_this<pipeline_base> {
 public:
@@ -53,7 +64,6 @@ protected:
 
     std::vector<std::tuple<size_t, std::function<factory_return_type(void)>>> adapters_;
 };
-
 class pipe_proxy_base {
     friend class pipeline_base;
     friend class std::optional<pipe_proxy_base>;
@@ -150,23 +160,37 @@ inline auto pipepp::detail::pipeline_base::get_pipe(std::string_view s)
     return rval;
 }
 
+template <typename Pipe_, typename Exec_, typename DestPipe_>
+concept _has_link_to = requires(Pipe_ p, Exec_ e, DestPipe_ dp)
+{
+    {Exec_::link_to};
+    {p.link_to(dp, &Exec_::link_to)};
+};
+
+template <typename Pipe_, typename Dest_, typename DestPipe_>
+concept _has_link_from = requires(Pipe_ p, Dest_ e, DestPipe_ dp)
+{
+    {Dest_::link_from};
+    {p.link_to(dp, &Dest_::link_from)};
+};
+
 } // namespace detail
 
 // template <typename SharedData_, typename InitialExec_>
 // class pipeline;
 
-template <typename SharedData_, typename Exec_>
+template <typename SharedData_, typename Exec_, typename Prev_ = nullptr_t>
 class pipe_proxy final : public detail::pipe_proxy_base {
     template <typename, typename>
     friend class pipeline;
-    template <typename, typename>
+    template <typename, typename, typename>
     friend class pipe_proxy;
 
 public:
     using shared_data_type = SharedData_;
     using executor_type = Exec_;
-    using input_type = typename executor_type::input_type;
-    using output_type = typename executor_type::output_type;
+    using input_type = typename executor_traits<executor_type>::input_type;
+    using output_type = typename executor_traits<executor_type>::output_type;
     using pipeline_type = pipeline<SharedData_, Exec_>;
 
 private:
@@ -175,26 +199,40 @@ private:
     {
     }
 
+    pipe_proxy(const std::weak_ptr<detail::pipeline_base>& pipeline, detail::pipe_base& pipe_ref, Prev_ prv)
+        : pipe_proxy_base(pipeline, pipe_ref)
+        , _prv(prv)
+    {
+    }
+
 public:
+    template <typename OtherPrev_>
+    auto& operator=(pipe_proxy<SharedData_, Exec_, OtherPrev_> const& o)
+    {
+        return pipe_proxy_base::operator=(o), *this;
+    }
+
+    auto& operator=(pipe_proxy const& o)
+    {
+        return memcpy(this, &o, sizeof *this), *this;
+    }
+
     /**
-     * AVAILABLE LINKER SIGNATURES
-     *
-     *  (                                                           )\n
-     *  (Next Input                                                 )\n
-     *  (SharedData,    Prev Output,    Next Input                  )\n
-     *  (SharedData,    Next Input                                  )\n
-     *  (Prev Output,   Next Input                                  )\n
-     *  (Exec Context,  Prev Output,    Next Input                  )\n
-     *  (Shared Data,   Exec Context,   Prev Output,    Next Input  )\n
+     * Traverse previous nodes
      */
-    template <typename LnkFn_, typename FactoryFn_, typename... FactoryArgs_>
-    pipe_proxy<SharedData_, typename std::invoke_result_t<FactoryFn_, FactoryArgs_...>::element_type::executor_type>
-    create_and_link_output(
-      std::string name, size_t num_executors, LnkFn_&& linker, FactoryFn_&& factory, FactoryArgs_&&... args);
+    template <size_t N_ = 1>
+    auto& prev()
+    {
+        if constexpr (N_ <= 1) { return _prv; }
+        if constexpr (N_ > 1) { return _prv.template prev<N_ - 1>(); }
+    }
+
+    auto set_optional_input() { return configure_tweaks().is_optional = true, *this; }
+    auto set_selective_input() { return configure_tweaks().selective_input = true, *this; }
+    auto set_selective_output() { return configure_tweaks().selective_output = true, *this; }
 
     /**
      * AVAILABLE LINKER SIGNATURES
-     *
      *  (                                                           )\n
      *  (Next Input                                                 )\n
      *  (SharedData,    Prev Output,    Next Input                  )\n
@@ -203,8 +241,40 @@ public:
      *  (Exec Context,  Prev Output,    Next Input                  )\n
      *  (Shared Data,   Exec Context,   Prev Output,    Next Input  )\n
      */
-    template <typename Dest_, typename LnkFn_>
-    pipe_proxy<shared_data_type, Dest_> link_output(pipe_proxy<shared_data_type, Dest_> dest, LnkFn_&& linker);
+    template <typename Dest_, typename OtherPrev_, typename LnkFn_>
+    auto link_to(pipe_proxy<shared_data_type, Dest_, OtherPrev_> dest, LnkFn_&& linker)
+    {
+        using prev_output_type = output_type;
+        using next_input_type = typename executor_traits<Dest_>::input_type;
+        pipe().connect_output_to<shared_data_type, prev_output_type, next_input_type>(
+          dest.pipe(), std::forward<LnkFn_>(linker));
+
+        pipe_proxy<shared_data_type, Dest_, pipe_proxy> retval{pipeline_, *dest.pipe_, *this};
+        return retval;
+    }
+
+    /**
+     * Searches linker function automatically.
+     *
+     * Priority:
+     *      1) prev out == next in := link_as_is
+     *      2) Exec_ has link_to and is invocable with Shared, PrevOut, NextIn
+     *      3) Dest_ has link_from and is invocable with Shared, PrevOut, NextIn
+     *
+     */
+    template <typename Dest_, typename OtherPrev_>
+    auto link_to(pipe_proxy<shared_data_type, Dest_, OtherPrev_> dest)
+    {
+        if constexpr (std::is_same_v<output_type, typename executor_traits<Dest_>::input_type>) {
+            return link_to(dest, link_as_is);
+        } else if constexpr (detail::_has_link_to<pipe_proxy, Exec_, decltype(dest)>) {
+            return link_to(dest, &Exec_::link_to);
+        } else if constexpr (detail::_has_link_from<pipe_proxy, Dest_, decltype(dest)>) {
+            return link_to(dest, &Dest_::link_from);
+        } else {
+            static_assert(false);
+        }
+    }
 
     /**
      * AVAILABLE OUTPUT HANDLER SIGNATURES
@@ -219,7 +289,33 @@ public:
      *   (Pipe Err,     SharedData,     Exec Context,   Result  )\n
      */
     template <typename Fn_>
-    pipe_proxy& add_output_handler(Fn_&& handler);
+    auto& add_output_handler(Fn_&& handler)
+    {
+        auto wrapper = [fn_ = std::move(handler)](pipe_error e, base_shared_context& s, execution_context& ec, std::any const& o) {
+            auto& sd = static_cast<SharedData_&>(s);
+            auto& out = std::any_cast<output_type const&>(o);
+
+            using PE = pipe_error;
+            using SD = SharedData_&;
+            using EC = execution_context&;
+            using OUT = output_type const&;
+
+            bool const okay = e <= pipe_error::warning;
+            // clang-format off
+            if constexpr (std::is_invocable_v<Fn_>) { if (okay) fn_(); }
+            if constexpr (std::is_invocable_v<Fn_, PE, SD, OUT>) { fn_(e, sd, out); }
+            else if constexpr (std::is_invocable_v<Fn_, SD>) { if (okay) { fn_(sd); } }
+            else if constexpr (std::is_invocable_v<Fn_, SD, EC>) { if (okay) { fn_(sd, ec); } }
+            else if constexpr (std::is_invocable_v<Fn_, PE, OUT>) { fn_(e, o); }
+            else if constexpr (std::is_invocable_v<Fn_, SD, OUT>) { if (okay) { fn_(sd, out); } }
+            else if constexpr (std::is_invocable_v<Fn_, SD, EC, OUT>) { if (okay) { fn_(sd, ec, out); } }
+            else if constexpr (std::is_invocable_v<Fn_, PE, SD, EC, OUT>) { fn_(e, sd, ec, out); }
+            else { static_assert(false, "No invocable method"); }
+            // clang-format on
+        };
+        pipe().add_output_handler(std::move(wrapper));
+        return *this;
+    } // namespace pipepp
 
 private:
     std::shared_ptr<pipeline_type> _lock() const
@@ -230,64 +326,21 @@ private:
     }
 
 private:
+    Prev_ _prv;
 };
 
-template <typename SharedData_, typename Exec_>
-template <typename Dest_, typename LnkFn_>
-pipe_proxy<typename pipe_proxy<SharedData_, Exec_>::shared_data_type, Dest_>
-pipe_proxy<SharedData_, Exec_>::link_output(pipe_proxy<shared_data_type, Dest_> dest, LnkFn_&& linker)
-{
-    using prev_output_type = output_type;
-    using next_input_type = typename Dest_::input_type;
-    pipe().connect_output_to<shared_data_type, prev_output_type, next_input_type>(
-      dest.pipe(), std::forward<LnkFn_>(linker));
-
-    return dest;
-}
-
-template <typename SharedData_, typename Exec_>
-template <typename Fn_>
-pipe_proxy<SharedData_, Exec_>&
-pipe_proxy<SharedData_, Exec_>::add_output_handler(Fn_&& handler)
-{
-    auto wrapper = [fn_ = std::move(handler)](pipe_error e, base_shared_context& s, execution_context& ec, std::any const& o) {
-        auto& sd = static_cast<SharedData_&>(s);
-        auto& out = std::any_cast<output_type const&>(o);
-
-        using PE = pipe_error;
-        using SD = SharedData_&;
-        using EC = execution_context&;
-        using OUT = output_type const&;
-
-        bool const okay = e <= pipe_error::warning;
-        // clang-format off
-        if constexpr (std::is_invocable_v<Fn_>) { if(okay) fn_(); }
-        if constexpr (std::is_invocable_v<Fn_, PE, SD, OUT>) { fn_(e, sd, out); }
-        else if constexpr (std::is_invocable_v<Fn_, SD>) { if (okay) { fn_(sd); } }
-        else if constexpr (std::is_invocable_v<Fn_, SD, EC>) { if (okay) { fn_(sd, ec); } }
-        else if constexpr (std::is_invocable_v<Fn_, PE, OUT>) { fn_(e, o); }
-        else if constexpr (std::is_invocable_v<Fn_, SD, OUT>) { if (okay) { fn_(sd, out); } }
-        else if constexpr (std::is_invocable_v<Fn_, SD, EC, OUT>) { if (okay) { fn_(sd, ec, out); } }
-        else if constexpr (std::is_invocable_v<Fn_, PE, SD, EC, OUT>) { fn_(e, sd, ec, out); }
-        else { static_assert(false, "No invocable method"); }
-        // clang-format on
-    };
-    pipe().add_output_handler(std::move(wrapper));
-    return *this;
-} // namespace pipepp
-
-template <typename SharedData_, typename InitialExec_>
+template <typename SharedData_, typename InitialExec_ = detail::placeholder_executor>
 class pipeline final : public detail::pipeline_base {
-    template <typename, typename>
+    template <typename, typename, typename>
     friend class pipe_proxy;
 
 public:
     using shared_data_type = SharedData_;
     using initial_executor_type = InitialExec_;
-    using input_type = typename initial_executor_type::input_type;
+    using input_type = typename executor_traits<initial_executor_type>::input_type;
     using initial_proxy_type = pipe_proxy<shared_data_type, initial_executor_type>;
 
-    ~pipeline() { sync(); }
+    ~pipeline() override { sync(); }
 
 private:
     template <typename Exec_, typename Fn_, typename... Args_> auto& _create_pipe(std::string initial_pipe_name, bool is_optional, size_t num_execs, Fn_&& exec_factory, Args_&&... args);
@@ -297,17 +350,21 @@ private:
 public:
     template <typename FactoryFn_, typename... FactoryArgs_>
     pipe_proxy<SharedData_, typename std::invoke_result_t<FactoryFn_, FactoryArgs_...>::element_type::executor_type>
-    create(std::string name, size_t num_executors, FactoryFn_&& factory, FactoryArgs_&&... args);
+    create_ex(std::string name, size_t num_executors, FactoryFn_&& factory, FactoryArgs_&&... args);
 
-    template <typename Fn_, typename... Args_>
-    static std::shared_ptr<pipeline> make(std::string initial_pipe_name, size_t num_initial_exec, Fn_&& factory, Args_&&... factory_args)
+    template <typename Exec_, size_t NumExec_ = 1, typename... ContructorArgs_>
+    pipe_proxy<SharedData_, Exec_>
+    create(std::string name, ContructorArgs_&&... args);
+
+    template <typename... Args_>
+    static std::shared_ptr<pipeline> make(std::string initial_pipe_name, size_t num_initial_exec = 1, Args_&&... factory_args)
     {
         return std::shared_ptr<pipeline>{
           new pipeline(
             std::move(initial_pipe_name),
             num_initial_exec,
-            std::forward<Fn_>(factory),
-            std::forward<Args_>(factory_args)...)};
+            pipepp::factory<InitialExec_, SharedData_>(
+              std::forward<Args_>(factory_args)...))};
     }
 
 public:
@@ -323,19 +380,29 @@ public:
     bool can_suply() const { return !pipes_.front()->is_paused() && pipes_.front()->can_submit_input_direct(); }
 
     // supply input (trigger)
-    template <typename Fn_>
+    template <typename Fn_ = void (*)(SharedData_&)>
     bool suply(
-      input_type input, Fn_&& shared_data_init_func = [](auto&&) {})
+      input_type input,
+      Fn_&& shared_data_init_func = [](auto&) {},
+      std::chrono::milliseconds timeout = std::chrono::milliseconds{1000})
     {
+        if (!wait_supliable(timeout)) { return false; }
+
         auto shared = _fetch_shared();
-        shared_data_init_func(static_cast<shared_data_type&>(*shared));
         shared->reload();
+        shared_data_init_func(static_cast<shared_data_type&>(*shared));
         return pipes_.front()->try_submit(std::move(input), std::move(shared));
     }
 
     bool wait_supliable(std::chrono::milliseconds timeout = std::chrono::milliseconds{10}) const
     {
-        return !pipes_.front()->is_paused() && pipes_.front()->wait_active_slot_idle(timeout);
+        auto until = std::chrono::system_clock::now() + timeout;
+        while (pipes_.front()->is_paused()) {
+            if (std::chrono::system_clock::now() > until) { return false; }
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        }
+
+        return pipes_.front()->wait_active_slot_idle(timeout);
     }
 
 protected:
@@ -347,6 +414,10 @@ protected:
 private:
 };
 
-static constexpr auto link_as_is = [](auto&& prev_out, auto&& next_in) { next_in = std::forward<decltype(prev_out)>(prev_out);  return true; };
+template <typename Shared_, typename InitExec_>
+using pl_sptr = std::shared_ptr<pipeline<Shared_, InitExec_>>;
+
+template <typename Shared_, typename InitExec_>
+using pl_wptr = std::weak_ptr<pipeline<Shared_, InitExec_>>;
 
 } // namespace pipepp

@@ -1,7 +1,7 @@
 #define CATCH_CONFIG_DISABLE_EXCEPTIONS
-#include <fmt/format.h>
 #include <iomanip>
 #include <sstream>
+#include <format>
 #include "catch.hpp"
 #include "pipepp/pipe.hpp"
 
@@ -25,7 +25,7 @@ struct test_exec {
         : prefix(pfx)
     {}
 
-    pipe_error invoke(execution_context& exec, input_type& input, output_type& output)
+    pipe_error operator()(execution_context& exec, input_type const& input, output_type& output)
     {
         using namespace std::chrono_literals;
         if (prefix.ends_with("opt")) {
@@ -39,12 +39,12 @@ struct test_exec {
         for (auto& str : input.contributes) { pref << std::setw(10) << str << " "; }
         pref << ":: " << std::setw(10) << prefix;
 
-        auto to_print = fmt::format("{:>50}: {} -> {}\n", pref.str(), input.value, output.value);
+        auto to_print = std::format("{:>50}: {} -> {}\n", pref.str(), input.value, output.value);
         lock.lock();
         logger << (to_print.c_str());
         lock.unlock();
 
-        input.contributes.clear();
+        // input.contributes.clear();
         output.contrib = prefix;
         return pipe_error::warning;
     }
@@ -139,7 +139,7 @@ TEST_CASE("pipe initialization", "[.]")
 
         static constexpr size_t NUM_CASES = 1024;
         for (int i = 0; i < NUM_CASES; i++) {
-            lock.lock(), logger << (fmt::format("{:->60}\n", ' ')), lock.unlock();
+            lock.lock(), logger << (std::format("{:->60}\n", ' ')), lock.unlock();
             while (!pipe0->try_submit(test_exec::input_type{i * 100}, std::make_shared<base_shared_context>())) {
                 std::this_thread::sleep_for(0.1ms);
             }
@@ -149,7 +149,7 @@ TEST_CASE("pipe initialization", "[.]")
             using namespace std::literals;
 
             while (pipe->is_async_operation_running()) { std::this_thread::sleep_for(1us); }
-            lock.lock(), logger << (fmt::format("{:-^60}\n", name + " synched"s)), lock.unlock();
+            lock.lock(), logger << (std::format("{:-^60}\n", name + " synched"s)), lock.unlock();
         }
 
         WARN(logger.str());

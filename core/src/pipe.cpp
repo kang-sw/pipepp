@@ -8,8 +8,6 @@
 #include "pipepp/options.hpp"
 #include "pipepp/pipepp.h"
 
-#define LOGTEMP printf("timer from %s\n", __func__);
-
 std::optional<bool> pipepp::detail::pipe_base::input_slot_t::can_submit_input(fence_index_t output_fence) const
 {
     auto active = active_input_fence();
@@ -53,7 +51,6 @@ void pipepp::detail::pipe_base::input_slot_t::_propagate_fence_abortion(fence_in
             } else {
                 while (!link_input._wait_for_executor(1000ms)) { std::this_thread::yield(); }
                 while (!link_input._wait_for_slot(pending_fence, 1000ms)) { std::this_thread::yield(); }
-                printf(std::format("{}: WAIT DONE for fence {}\n", link_input.owner_.name(), (size_t)pending_fence).c_str());
             }
         } else {
             ++output_link_index;
@@ -103,7 +100,6 @@ void pipepp::detail::pipe_base::executor_slot::_launch_async(launch_args_t arg)
 
     owner_.destruction_guard_.lock();
     owner_._thread_pool().add_task(&executor_slot::_launch_callback, this);
-    LOGTEMP;
 }
 
 kangsw::timer_thread_pool& pipepp::detail::pipe_base::executor_slot::workers()
@@ -160,7 +156,6 @@ void pipepp::detail::pipe_base::executor_slot::_perform_post_output()
     if (!_is_output_order()) {
         using namespace std::literals;
         owner_._thread_pool().add_timer(100us, &executor_slot::_perform_post_output, this);
-        LOGTEMP;
         return;
     }
 
@@ -435,7 +430,6 @@ void pipepp::detail::pipe_base::input_slot_t::_supply_input_to_active_executor(b
         // 재시도를 요청합니다.
         using namespace std::chrono_literals;
         owner_._thread_pool().add_timer(200us, &input_slot_t::_supply_input_to_active_executor, this, false);
-        LOGTEMP;
         return;
     }
 
@@ -520,7 +514,6 @@ bool pipepp::detail::pipe_base::input_slot_t::_submit_input(fence_index_t output
         if (owner_.output_links_.empty() == false) {
             owner_.destruction_guard_.lock();
             owner_._thread_pool().add_task(&input_slot_t::_propagate_fence_abortion, this, active_input_fence(), 0);
-            LOGTEMP;
         }
 
         // 다음 인덱스로 넘어갑니다.

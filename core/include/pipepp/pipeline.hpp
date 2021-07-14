@@ -159,22 +159,25 @@ inline auto pipepp::detail::pipeline_base::get_pipe(std::string_view s)
 
     return rval;
 }
-
-template <typename Pipe_, typename Exec_, typename DestPipe_>
-concept _has_link_to = requires(Pipe_ p, Exec_ e, DestPipe_ dp)
-{
-    {Exec_::link_to};
-    {p.link_to(dp, &Exec_::link_to)};
-};
-
-template <typename Pipe_, typename Dest_, typename DestPipe_>
-concept _has_link_from = requires(Pipe_ p, Dest_ e, DestPipe_ dp)
-{
-    {Dest_::link_from};
-    {p.link_to(dp, &Dest_::link_from)};
-};
-
 } // namespace detail
+
+template <typename Exec_, typename PrevOut_>
+struct link_from;
+
+template <typename Exec_, typename PrevOut_>
+concept has_link_from = requires
+{
+    {sizeof link_from<Exec_, PrevOut_>{}};
+};
+
+template <typename Exec_, typename NextIn_>
+struct link_to;
+
+template <typename Exec_, typename NextIn_>
+concept has_link_to = requires
+{
+    {sizeof link_to<Exec_, NextIn_>{}};
+};
 
 // template <typename SharedData_, typename InitialExec_>
 // class pipeline;
@@ -265,12 +268,20 @@ public:
     template <typename Dest_, typename OtherPrev_>
     auto link_to(pipe_proxy<shared_data_type, Dest_, OtherPrev_> dest)
     {
-        if constexpr (std::is_same_v<output_type, typename executor_traits<Dest_>::input_type>) {
+        using next_input_type = typename executor_traits<Dest_>::input_type;
+
+        if constexpr (has_link_to<Exec_, next_input_type>) {
+            return link_to(dest, pipepp::link_to<Exec_, next_input_type>{});
+
+        } else if constexpr (has_link_from<Dest_, output_type>) {
+            return link_to(dest, pipepp::link_from<Dest_, output_type>{});
+
+        } else if constexpr (has_link_from<Dest_, void>) {
+            return link_to(dest, pipepp::link_from<Dest_, void>{});
+
+        } else if constexpr (std::is_same_v<output_type, next_input_type>) {
             return link_to(dest, link_as_is);
-        } else if constexpr (detail::_has_link_to<pipe_proxy, Exec_, decltype(dest)>) {
-            return link_to(dest, &Exec_::link_to);
-        } else if constexpr (detail::_has_link_from<pipe_proxy, Dest_, decltype(dest)>) {
-            return link_to(dest, &Dest_::link_from);
+
         } else {
             static_assert(false);
         }

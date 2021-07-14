@@ -479,8 +479,7 @@ void pipe_base::connect_output_to(pipe_base& other, Fn_&& fn)
 
         // clang-format off
         bool R = true;
-        if      constexpr  (is_invocable_r_v<void, Fn_                    >) { fn_(                       ); }
-        else if constexpr  (is_invocable_r_v<bool, Fn_,             NI    >) { R  = fn_(            ni    ); }
+             if constexpr  (is_invocable_r_v<bool, Fn_,             NI    >) { R  = fn_(            ni    ); }
         else if constexpr  (is_invocable_r_v<bool, Fn_,         PO, NI    >) { R  = fn_(        po, ni    ); }
         else if constexpr  (is_invocable_r_v<bool, Fn_,     EC, PO, NI    >) { R  = fn_(    ec, po, ni    ); }
         else if constexpr  (is_invocable_r_v<bool, Fn_, SD,     PO, NI    >) { R  = fn_(sd,     po, ni    ); }
@@ -512,6 +511,7 @@ void pipe_base::connect_output_to(pipe_base& other, Fn_&& fn)
         else if constexpr  (is_invocable_r_v<NI,   Fn_,     EC, PO    , NO>) { ni = fn_(    ec, po    , no); }
         else if constexpr  (is_invocable_r_v<NI,   Fn_, SD, EC, PO    , NO>) { ni = fn_(sd, ec, po    , no); }
 
+        else if constexpr  (is_invocable_r_v<void, Fn_                    >) {      fn_();                   }
         else if constexpr  (is_invocable_r_v<void, Fn_,             NI    >) {      fn_(            ni    ); }
         else if constexpr  (is_invocable_r_v<void, Fn_, SD,         NI    >) {      fn_(sd,         ni    ); }
         else if constexpr  (is_invocable_r_v<void, Fn_, SD, EC,     NI    >) {      fn_(sd, ec,     ni    ); }

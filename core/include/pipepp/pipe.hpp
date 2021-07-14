@@ -10,11 +10,14 @@
 
 #include "kangsw/helpers/misc.hxx"
 #include "kangsw/helpers/ptr_proxy.hxx"
+#include "kangsw/thread/atomic_access.hxx"
 #include "kangsw/thread/thread_pool.hxx"
 #include "kangsw/thread/thread_utility.hxx"
 #include "pipepp/execution_context.hpp"
 
 namespace pipepp {
+using namespace std::literals;
+
 namespace detail {
 class pipeline_base;
 }
@@ -162,7 +165,7 @@ public:
         /**
          * 입력 인덱스 검증하기
          */
-        fence_index_t active_input_fence() const { return active_input_fence_; }
+        fence_index_t active_input_fence() const { return active_input_fence_.load(std::memory_order::memory_order_relaxed); }
 
         /**
          * @return has_value() == false이면 현재 입력을 버려야 합니다.
@@ -197,7 +200,12 @@ public:
         /**
          * 실행기 활성화 대기
          */
-        bool _wait_for_executor() const;
+        bool _wait_for_executor(std::chrono::milliseconds timeout = 10ms) const;
+
+        /**
+         * 입력 슬롯 대기
+         */
+        bool _wait_for_slot(fence_index_t min_fence, std::chrono::milliseconds timeout = 10ms) const;
 
     private:
         void _prepare_next();
@@ -215,6 +223,9 @@ public:
         std::vector<input_link_state> ready_conds_;
         std::atomic<fence_index_t> active_input_fence_ = fence_index_t::none;
         std::shared_ptr<base_shared_context> active_input_fence_object_;
+
+        mutable std::condition_variable input_fence_wait_;
+        mutable std::mutex input_fence_lock_;
     };
 
     class alignas(64) executor_slot {
@@ -237,7 +248,7 @@ public:
         fence_index_t fence_index() const { return fence_index_; }
         bool _is_executor_busy() const { return fence_index_ != fence_index_t::none; }
         bool _is_output_order() const { return index_ == owner_._pending_output_slot_index(); }
-        bool _is_busy() const { return _is_executor_busy() || busy_flag_.test(); }
+        bool _is_busy() const { return _is_executor_busy() || busy_flag_; }
         auto latest_exec_result() const { return latest_execution_result_.load(std::memory_order_relaxed); }
 
         /**
@@ -307,9 +318,9 @@ public:
         std::optional<execution_context::timer_scope_indicator> timer_scope_link_;
 
         size_t index_;
-        alignas(64) std::atomic_flag busy_flag_;
-
-        mutable std::pair<std::condition_variable, std::mutex> done_notify_;
+        mutable std::condition_variable done_notify_;
+        mutable std::mutex busy_flag_lock_;
+        alignas(64) volatile bool busy_flag_ = false;
     };
 
 public:

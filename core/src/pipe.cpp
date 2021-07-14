@@ -8,6 +8,8 @@
 #include "pipepp/options.hpp"
 #include "pipepp/pipepp.h"
 
+#define LOGTEMP printf("timer from %s\n", __func__);
+
 std::optional<bool> pipepp::detail::pipe_base::input_slot_t::can_submit_input(fence_index_t output_fence) const
 {
     auto active = active_input_fence();
@@ -29,7 +31,10 @@ void pipepp::detail::pipe_base::input_slot_t::_prepare_next()
 {
     using namespace kangsw::enum_arithmetic;
     for (auto& e : ready_conds_) { e = input_link_state::none; }
-    active_input_fence_ = active_input_fence_.load() + 1;
+    std::unique_lock lck{input_fence_lock_};
+    ((std::atomic<std::underlying_type_t<fence_index_t>>&)active_input_fence_).fetch_add(1, std::memory_order::acq_rel);
+
+    input_fence_wait_.notify_all();
     this->active_input_fence_object_.reset();
 }
 
@@ -41,40 +46,49 @@ void pipepp::detail::pipe_base::input_slot_t::_propagate_fence_abortion(fence_in
     auto& link_input = output_link.input_slot_;
     auto delay = 0us;
 
-    if (auto query_result = link_input.can_submit_input(pending_fence); query_result.has_value()) {
-        if (query_result.value() && link_input._submit_input(pending_fence, owner_.id(), {}, {}, true)) {
-            ++output_link_index;
+    while (output_link_index < owner_.output_links_.size()) {
+        if (auto query_result = link_input.can_submit_input(pending_fence); query_result.has_value()) {
+            if (query_result.value() && link_input._submit_input(pending_fence, owner_.id(), {}, {}, true)) {
+                ++output_link_index;
+            } else {
+                while (!link_input._wait_for_executor(1000ms)) { std::this_thread::yield(); }
+                while (!link_input._wait_for_slot(pending_fence, 1000ms)) { std::this_thread::yield(); }
+                printf(std::format("{}: WAIT DONE for fence {}\n", link_input.owner_.name(), (size_t)pending_fence).c_str());
+            }
         } else {
-            for (size_t n_wait = 50; !link_input._wait_for_executor() && n_wait > 0; --n_wait) {}
+            ++output_link_index;
         }
-    } else {
-        ++output_link_index;
-    }
 
-    if (output_link_index < owner_.output_links_.size()) {
-        owner_._thread_pool().add_timer(
-          delay, &input_slot_t::_propagate_fence_abortion, this, pending_fence, output_link_index);
-    } else {
-        // 탈출 조건 ... 전파 완료함
-        owner_.destruction_guard_.unlock();
+        //if () {
+        //    owner_._thread_pool().add_timer(
+        //      delay, &input_slot_t::_propagate_fence_abortion, this, pending_fence, output_link_index);
+        //    LOGTEMP;
+        //} else {
+        //    // 탈출 조건 ... 전파 완료함
+        //}
     }
+    owner_.destruction_guard_.unlock();
 }
 
 bool pipepp::detail::pipe_base::executor_slot::_wait_ready(std::chrono::milliseconds duration) const
 {
     using namespace std::literals;
 
-    // 잠깐동안 spinlock 돌리면서 대기
-    for (auto begin = system_clock::now();
-         system_clock::now() - begin < 50us;) {
-        if (!_is_busy()) { return true; }
+    //// 잠깐동안 spinlock 돌리면서 대기
+    //for (auto begin = system_clock::now();
+    //     system_clock::now() - begin < 50us;) {
+    //    if (!_is_busy()) { return true; }
 
-        std::this_thread::yield();
-    }
+    //    std::this_thread::yield();
+    //}
+    // Lock 시간 절약 ... 미리 한 번 체크
+    if (!_is_busy()) { return true; }
 
-    std::unique_lock _lock{done_notify_.second};
-    if (!_is_busy()) { return true; } // Mutex 잠그는 동안 끝났을 가능성 ...
-    return done_notify_.first.wait_for(_lock, duration, [this]() { return !_is_busy(); });
+    std::unique_lock _lock{busy_flag_lock_};
+
+    // 기다릴 필요 없으면 즉시 종료.
+    if (!_is_busy()) { return true; }
+    return done_notify_.wait_for(_lock, duration, [this]() { return !_is_busy(); });
 }
 
 void pipepp::detail::pipe_base::executor_slot::_launch_async(launch_args_t arg)
@@ -89,6 +103,7 @@ void pipepp::detail::pipe_base::executor_slot::_launch_async(launch_args_t arg)
 
     owner_.destruction_guard_.lock();
     owner_._thread_pool().add_task(&executor_slot::_launch_callback, this);
+    LOGTEMP;
 }
 
 kangsw::timer_thread_pool& pipepp::detail::pipe_base::executor_slot::workers()
@@ -107,7 +122,7 @@ void pipepp::detail::pipe_base::executor_slot::_launch_callback()
     pipe_error exec_res;
 
     PIPEPP_REGISTER_CONTEXT(context_write());
-    busy_flag_.test_and_set();
+    if (std::unique_lock lck{busy_flag_lock_}) { busy_flag_ = true; }
     timer_scope_total_ = context_write().timer_scope("Total Execution Time");
 
     PIPEPP_ELAPSE_BLOCK("A. Executor Run Time")
@@ -145,6 +160,7 @@ void pipepp::detail::pipe_base::executor_slot::_perform_post_output()
     if (!_is_output_order()) {
         using namespace std::literals;
         owner_._thread_pool().add_timer(100us, &executor_slot::_perform_post_output, this);
+        LOGTEMP;
         return;
     }
 
@@ -171,8 +187,8 @@ void pipepp::detail::pipe_base::executor_slot::_perform_post_output()
     owner_.destruction_guard_.unlock();
 
     // 이벤트 알림
-    busy_flag_.clear();
-    done_notify_.first.notify_all();
+    if (std::unique_lock lck{busy_flag_lock_}) { busy_flag_ = false; }
+    done_notify_.notify_all();
 }
 
 void pipepp::detail::pipe_base::executor_slot::_perform_output_link(size_t output_index, bool aborting)
@@ -419,6 +435,7 @@ void pipepp::detail::pipe_base::input_slot_t::_supply_input_to_active_executor(b
         // 재시도를 요청합니다.
         using namespace std::chrono_literals;
         owner_._thread_pool().add_timer(200us, &input_slot_t::_supply_input_to_active_executor, this, false);
+        LOGTEMP;
         return;
     }
 
@@ -503,6 +520,7 @@ bool pipepp::detail::pipe_base::input_slot_t::_submit_input(fence_index_t output
         if (owner_.output_links_.empty() == false) {
             owner_.destruction_guard_.lock();
             owner_._thread_pool().add_task(&input_slot_t::_propagate_fence_abortion, this, active_input_fence(), 0);
+            LOGTEMP;
         }
 
         // 다음 인덱스로 넘어갑니다.
@@ -540,8 +558,16 @@ bool pipepp::detail::pipe_base::input_slot_t::_can_submit_input_direct() const
     return owner_._active_exec_slot()._is_executor_busy() == false;
 }
 
-bool pipepp::detail::pipe_base::input_slot_t::_wait_for_executor() const
+bool pipepp::detail::pipe_base::input_slot_t::_wait_for_executor(std::chrono::milliseconds timeout) const
 {
-    using namespace std::literals;
-    return owner_._active_exec_slot()._wait_ready(10ms);
+    return owner_._active_exec_slot()._wait_ready(timeout);
+}
+
+bool pipepp::detail::pipe_base::input_slot_t::_wait_for_slot(fence_index_t min_fence, std::chrono::milliseconds timeout) const
+{
+    if (active_input_fence() >= min_fence) { return true; }
+
+    std::unique_lock lck_{input_fence_lock_};
+    if (active_input_fence() >= min_fence) { return true; }
+    return input_fence_wait_.wait_for(lck_, timeout, [&]() { return active_input_fence() >= min_fence; });
 }

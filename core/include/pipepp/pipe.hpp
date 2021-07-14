@@ -642,37 +642,21 @@ public:
         else if constexpr (is_invocable_r_v<OUTR, EXC,     SD     >) { return (out = exec_(    sd    )), ok; }
         else if constexpr (is_invocable_r_v<OUTR, EXC             >) { return (out = exec_(  )), ok; }
 
-        else if constexpr (is_invocable_r_v<void, EXC, EC,     INR, OUTR>) { return exec_(ec,     in, out), ok; }
-        else if constexpr (is_invocable_r_v<void, EXC, EC, SD, INR, OUTR>) { return exec_(ec, sd, in, out), ok; }
-        else if constexpr (is_invocable_r_v<void, EXC,     SD, INR, OUTR>) { return exec_(    sd, in, out), ok; }
-        else if constexpr (is_invocable_r_v<void, EXC,         INR, OUTR>) { return exec_(        in, out), ok; }
-        else if constexpr (is_invocable_r_v<void, EXC, EC,     INR      >) { return exec_(ec,     in     ), ok; }
-        else if constexpr (is_invocable_r_v<void, EXC, EC, SD, INR      >) { return exec_(ec, sd, in     ), ok; }
-        else if constexpr (is_invocable_r_v<void, EXC,     SD, INR      >) { return exec_(    sd, in     ), ok; }
-        else if constexpr (is_invocable_r_v<void, EXC,         INR      >) { return exec_(        in     ), ok; }
-        else if constexpr (is_invocable_r_v<void, EXC, EC, SD,      OUTR>) { return exec_(ec, sd,     out), ok; }
-        else if constexpr (is_invocable_r_v<void, EXC,     SD,      OUTR>) { return exec_(    sd,     out), ok; }
-        else if constexpr (is_invocable_r_v<void, EXC, EC,          OUTR>) { return exec_(ec,         out), ok; }
-        else if constexpr (is_invocable_r_v<void, EXC,              OUTR>) { return exec_(            out), ok; }
-        else if constexpr (is_invocable_r_v<void, EXC, EC               >) { return exec_(ec             ), ok; }
-        else if constexpr (is_invocable_r_v<void, EXC,     SD           >) { return exec_(    sd         ), ok; }
-        else if constexpr (is_invocable_r_v<void, EXC                   >) { return exec_(               ), ok; }
-
-        else if constexpr (is_invocable_v<EXC, EC,     INR, OUTR>) { return executor::errflt(exec_(ec,     in, out)); }
-        else if constexpr (is_invocable_v<EXC, EC, SD, INR, OUTR>) { return executor::errflt(exec_(ec, sd, in, out)); }
-        else if constexpr (is_invocable_v<EXC,     SD, INR, OUTR>) { return executor::errflt(exec_(    sd, in, out)); }
-        else if constexpr (is_invocable_v<EXC,         INR, OUTR>) { return executor::errflt(exec_(        in, out)); }
-        else if constexpr (is_invocable_v<EXC, EC,     INR      >) { return executor::errflt(exec_(ec,     in     )); }
-        else if constexpr (is_invocable_v<EXC, EC, SD, INR      >) { return executor::errflt(exec_(ec, sd, in     )); }
-        else if constexpr (is_invocable_v<EXC,     SD, INR      >) { return executor::errflt(exec_(    sd, in     )); }
-        else if constexpr (is_invocable_v<EXC,         INR      >) { return executor::errflt(exec_(        in     )); }
-        else if constexpr (is_invocable_v<EXC, EC, SD,      OUTR>) { return executor::errflt(exec_(ec, sd,     out)); }
-        else if constexpr (is_invocable_v<EXC,     SD,      OUTR>) { return executor::errflt(exec_(    sd,     out)); }
-        else if constexpr (is_invocable_v<EXC, EC,          OUTR>) { return executor::errflt(exec_(ec,         out)); }
-        else if constexpr (is_invocable_v<EXC,              OUTR>) { return executor::errflt(exec_(            out)); }
-        else if constexpr (is_invocable_v<EXC, EC               >) { return executor::errflt(exec_(ec             )); }
-        else if constexpr (is_invocable_v<EXC,     SD           >) { return executor::errflt(exec_(    sd         )); }
-        else if constexpr (is_invocable_v<EXC                   >) { return executor::errflt(exec_(               )); }
+        else if constexpr (is_invocable_v<EXC, EC,     INR, OUTR>) { if constexpr(std::is_same_v<void, std::invoke_result_t<EXC, EC,     INR, OUTR>>) return (exec_(ec,     in, out)), ok; else return executor::errflt(exec_(ec,     in, out)); }
+        else if constexpr (is_invocable_v<EXC, EC, SD, INR, OUTR>) { if constexpr(std::is_same_v<void, std::invoke_result_t<EXC, EC, SD, INR, OUTR>>) return (exec_(ec, sd, in, out)), ok; else return executor::errflt(exec_(ec, sd, in, out)); }
+        else if constexpr (is_invocable_v<EXC,     SD, INR, OUTR>) { if constexpr(std::is_same_v<void, std::invoke_result_t<EXC,     SD, INR, OUTR>>) return (exec_(    sd, in, out)), ok; else return executor::errflt(exec_(    sd, in, out)); }
+        else if constexpr (is_invocable_v<EXC,         INR, OUTR>) { if constexpr(std::is_same_v<void, std::invoke_result_t<EXC,         INR, OUTR>>) return (exec_(        in, out)), ok; else return executor::errflt(exec_(        in, out)); }
+        else if constexpr (is_invocable_v<EXC, EC,     INR      >) { if constexpr(std::is_same_v<void, std::invoke_result_t<EXC, EC,     INR      >>) return (exec_(ec,     in     )), ok; else return executor::errflt(exec_(ec,     in     )); }
+        else if constexpr (is_invocable_v<EXC, EC, SD, INR      >) { if constexpr(std::is_same_v<void, std::invoke_result_t<EXC, EC, SD, INR      >>) return (exec_(ec, sd, in     )), ok; else return executor::errflt(exec_(ec, sd, in     )); }
+        else if constexpr (is_invocable_v<EXC,     SD, INR      >) { if constexpr(std::is_same_v<void, std::invoke_result_t<EXC,     SD, INR      >>) return (exec_(    sd, in     )), ok; else return executor::errflt(exec_(    sd, in     )); }
+        else if constexpr (is_invocable_v<EXC,         INR      >) { if constexpr(std::is_same_v<void, std::invoke_result_t<EXC,         INR      >>) return (exec_(        in     )), ok; else return executor::errflt(exec_(        in     )); }
+        else if constexpr (is_invocable_v<EXC, EC, SD,      OUTR>) { if constexpr(std::is_same_v<void, std::invoke_result_t<EXC, EC, SD,      OUTR>>) return (exec_(ec, sd,     out)), ok; else return executor::errflt(exec_(ec, sd,     out)); }
+        else if constexpr (is_invocable_v<EXC,     SD,      OUTR>) { if constexpr(std::is_same_v<void, std::invoke_result_t<EXC,     SD,      OUTR>>) return (exec_(    sd,     out)), ok; else return executor::errflt(exec_(    sd,     out)); }
+        else if constexpr (is_invocable_v<EXC, EC,          OUTR>) { if constexpr(std::is_same_v<void, std::invoke_result_t<EXC, EC,          OUTR>>) return (exec_(ec,         out)), ok; else return executor::errflt(exec_(ec,         out)); }
+        else if constexpr (is_invocable_v<EXC,              OUTR>) { if constexpr(std::is_same_v<void, std::invoke_result_t<EXC,              OUTR>>) return (exec_(            out)), ok; else return executor::errflt(exec_(            out)); }
+        else if constexpr (is_invocable_v<EXC, EC               >) { if constexpr(std::is_same_v<void, std::invoke_result_t<EXC, EC               >>) return (exec_(ec             )), ok; else return executor::errflt(exec_(ec             )); }
+        else if constexpr (is_invocable_v<EXC,     SD           >) { if constexpr(std::is_same_v<void, std::invoke_result_t<EXC,     SD           >>) return (exec_(    sd         )), ok; else return executor::errflt(exec_(    sd         )); }
+        else if constexpr (is_invocable_v<EXC                   >) { if constexpr(std::is_same_v<void, std::invoke_result_t<EXC                   >>) return (exec_(               )), ok; else return executor::errflt(exec_(               )); }
 
         else { static_assert(false); return pipe_error::fatal; }
         // clang-format on
